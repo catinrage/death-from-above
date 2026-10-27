@@ -4,6 +4,7 @@ import { clamp, damp, lerp } from '../engine/math';
 import { fx as rnd } from '../engine/rng';
 import { Renderer, type PostFrame, type Quality } from '../engine/renderer';
 import { createModels } from '../models';
+import type { EdgeLayer } from '../ui/edge-layer';
 import type { PopupLayer } from '../ui/popups';
 import type {
 	PilotTagView,
@@ -81,6 +82,7 @@ import { Wingman, WING_HP } from './wingman';
 import { zoneAt } from './no-fire';
 import { AirBase } from './base';
 import { radioState } from './battle-audio';
+import { edgeMarkers, enemyContacts, type EdgeMarker } from './edge-markers';
 
 export interface GameCallbacks {
 	hud(h: HudSnapshot): void;
@@ -94,6 +96,7 @@ const STEP = 1 / 60;
 const ENV_BY_WAVE = [0.9, 0, 0.7, 1.25, 2.1, 3, 3, 3.6, 4.2, 5];
 /** Seconds between a campaign win and the debrief, so the last kills can land. */
 const DEBRIEF_DELAY = 3.5;
+const NO_EDGES: readonly EdgeMarker[] = [];
 /** Radius (CSS px) of the ring of threat chevrons around the aircraft. */
 const THREAT_RING = 74;
 /** Aircraft flown in training: it carries every kind of weapon the lessons use. */
@@ -149,6 +152,10 @@ export class Game {
 	/** Player two has no reticle: its missiles pick targets ahead of its nose. */
 	private readonly p2Targeting = new Targeting();
 	targetingLayer: TargetingLayer | null = null;
+	/** Faint screen-edge chevrons toward off-screen enemies. */
+	edgeLayer: EdgeLayer | null = null;
+	private readonly projectCss = (x: number, y: number, z: number): [number, number] | null =>
+		this.world.camera.project(x, y, z, this.cssW, this.cssH);
 	private readonly radioWatch = new RadioWatch();
 	private score = 0;
 	private combo = 0;
@@ -1097,6 +1104,7 @@ export class Game {
 			w.camera.project(x, y, 0, this.cssW, this.cssH)
 		);
 		this.targetingLayer?.render(this.targetingView());
+		this.edgeLayer?.render(this.edgeView());
 		this.hudTimer -= dt;
 		if (this.hudTimer <= 0) {
 			this.hudTimer = 1 / 15;
@@ -1166,6 +1174,11 @@ export class Game {
 		this.interest[0] = lo;
 		this.interest[1] = hi;
 		w.camera.interest = this.interest;
+	}
+
+	private edgeView(): readonly EdgeMarker[] {
+		if (this.phase !== 'playing' || !this.edgeLayer) return NO_EDGES;
+		return edgeMarkers(enemyContacts(this.world, this.projectCss), this.cssW, this.cssH);
 	}
 
 	private targetingView(): TargetingView {
