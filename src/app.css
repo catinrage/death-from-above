@@ -1,0 +1,48 @@
+:root {
+	--ink: #f3ece0;
+	--ink-dim: rgba(243, 236, 224, 0.62);
+	--ink-faint: rgba(243, 236, 224, 0.32);
+	--amber: #ffb04a;
+	--amber-hot: #ff7a2e;
+	--amber-glow: rgba(255, 150, 60, 0.45);
+	--danger: #ff4b3a;
+	--good: #8fe388;
+	--panel: rgba(10, 12, 20, 0.62);
+	--panel-strong: rgba(8, 10, 16, 0.82);
+	--line: rgba(255, 196, 120, 0.22);
+	--display: 'Chakra Petch', 'Rajdhani', 'Segoe UI', system-ui, sans-serif;
+	--body: 'Barlow Condensed', 'Arial Narrow', 'Segoe UI', system-ui, sans-serif;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	height: 100%;
+	overflow: hidden;
+	background: #06070b;
+	color: var(--ink);
+	font-family: var(--body);
+	-webkit-font-smoothing: antialiased;
+	user-select: none;
+}
+
+button {
+	font: inherit;
+	color: inherit;
+}
+
+:focus-visible {
+	outline: 2px solid var(--amber);
+	outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	* {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+	}
+}

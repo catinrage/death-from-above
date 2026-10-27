@@ -1,0 +1,143 @@
+import type { AircraftId, BombId } from './types';
+
+export type GamePhase = 'loading' | 'title' | 'playing' | 'paused' | 'gameover';
+export type Tone = 'info' | 'warn' | 'good';
+
+export interface HudBomb {
+	id: BombId;
+	short: string;
+	count: number;
+	max: number;
+	color: string;
+	slot: number;
+}
+
+export interface HudFeedItem {
+	id: number;
+	text: string;
+	points: number;
+}
+
+export interface HudMessage {
+	id: number;
+	text: string;
+	sub: string;
+	tone: Tone;
+}
+
+/** Everything the HUD shows, refreshed ~15 times a second. */
+export interface HudSnapshot {
+	hp: number;
+	hpMax: number;
+	boost: number;
+	heat: number;
+	overheated: boolean;
+	flares: number;
+	flaresMax: number;
+	bombs: HudBomb[];
+	selected: BombId;
+	score: number;
+	combo: number;
+	multiplier: number;
+	comboTime: number;
+	wave: number;
+	waveState: string;
+	enemies: number;
+	baseHp: number;
+	baseMax: number;
+	baseUnderAttack: boolean;
+	altitude: number;
+	speed: number;
+	lives: number;
+	lock: number;
+	inbound: boolean;
+	stall: boolean;
+	pullUp: boolean;
+	boundary: number;
+	ceiling: boolean;
+	rearming: boolean;
+	landed: boolean;
+	damageDir: number;
+	damageFlash: number;
+	aircraft: AircraftId;
+	timeOfDay: string;
+	respawn: number;
+	feed: HudFeedItem[];
+	fps: number;
+	/** Bullet-time meter 0..1 and whether it is running. */
+	focus: number;
+	focusActive: boolean;
+	missiles: number;
+	missilesMax: number;
+	/** Targets painted for the next missile salvo. */
+	locks: number;
+	/** Airbrake deployed. */
+	braking: boolean;
+	/** Nearest missile chasing the aircraft: range in metres (0 = none) and screen bearing (radians, 0 = right, clockwise). */
+	missileDist: number;
+	missileDir: number;
+	/** Range inside which a flare can fool it. */
+	flareWindow: number;
+}
+
+export interface GameOverStats {
+	score: number;
+	wave: number;
+	kills: number;
+	bestCombo: number;
+	time: number;
+	best: number;
+	newBest: boolean;
+	reason: string;
+}
+
+export function emptyHud(): HudSnapshot {
+	return {
+		hp: 1,
+		hpMax: 1,
+		boost: 1,
+		heat: 0,
+		overheated: false,
+		flares: 0,
+		flaresMax: 0,
+		bombs: [],
+		selected: 'gp',
+		score: 0,
+		combo: 0,
+		multiplier: 1,
+		comboTime: 0,
+		wave: 0,
+		waveState: 'idle',
+		enemies: 0,
+		baseHp: 1,
+		baseMax: 1,
+		baseUnderAttack: false,
+		altitude: 0,
+		speed: 0,
+		lives: 3,
+		lock: 0,
+		inbound: false,
+		stall: false,
+		pullUp: false,
+		boundary: 0,
+		ceiling: false,
+		rearming: false,
+		landed: false,
+		damageDir: 0,
+		damageFlash: 0,
+		aircraft: 'kestrel',
+		timeOfDay: '',
+		respawn: 0,
+		feed: [],
+		fps: 0,
+		focus: 1,
+		focusActive: false,
+		missiles: 0,
+		missilesMax: 0,
+		locks: 0,
+		braking: false,
+		missileDist: 0,
+		missileDir: 0,
+		flareWindow: 450
+	};
+}

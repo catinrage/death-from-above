@@ -1,0 +1,493 @@
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import { Game } from '$lib/game/game';
+	import { QUALITY_PRESETS } from '$lib/engine/renderer';
+	import {
+		emptyHud,
+		type GameOverStats,
+		type GamePhase,
+		type HudMessage,
+		type HudSnapshot
+	} from '$lib/game/hud';
+	import type { AircraftId } from '$lib/game/types';
+	import { PopupLayer } from './popups';
+	import { TargetingLayer } from './targeting-layer';
+	import {
+		loadSettings,
+		readBestScore,
+		saveSettings,
+		type QualityLevel,
+		type Settings
+	} from './settings';
+	import Hud from './Hud.svelte';
+	import TitleScreen from './TitleScreen.svelte';
+	import Hangar from './Hangar.svelte';
+	import { stockLoadout, type Loadout } from '$lib/game/loadout';
+	import PauseMenu from './PauseMenu.svelte';
+	import GameOver from './GameOver.svelte';
+	import Controls from './Controls.svelte';
+
+	let canvas: HTMLCanvasElement;
+	let popupRoot: HTMLDivElement;
+	let targetRoot: HTMLDivElement;
+	let game: Game | null = null;
+	let phase = $state<GamePhase>('loading');
+	let hud = $state<HudSnapshot>(emptyHud());
+	let messages = $state<HudMessage[]>([]);
+	let over = $state<GameOverStats | null>(null);
+	let settings = $state<Settings>(loadSettings());
+	let hangarOpen = $state(false);
+	const loadout = $derived<Loadout>(
+		settings.loadouts[settings.aircraft] ?? stockLoadout(settings.aircraft)
+	);
+	let best = $state(readBestScore());
+	let showControls = $state(false);
+	let error = $state('');
+
+	onMount(() => {
+		const boot = setTimeout(() => {
+			try {
+				game = new Game(
+					canvas,
+					{
+						hud: (h) => (hud = h),
+						phase: (p) => {
+							phase = p;
+							if (p === 'title') best = readBestScore();
+						},
+						message: pushMessage,
+						gameOver: (s) => (over = s)
+					},
+					QUALITY_PRESETS[settings.quality]
+				);
+				game.popups = new PopupLayer(popupRoot);
+				game.targetingLayer = new TargetingLayer(targetRoot);
+				if (new URLSearchParams(location.search).has('debug')) {
+					(window as unknown as { __dfa: Game }).__dfa = game;
+				}
+				game.audio.setVolume(settings.volume);
+				game.preview(settings.aircraft, loadout);
+				game.start();
+			} catch (e) {
+				error = e instanceof Error ? e.message : String(e);
+			}
+		}, 60);
+		const onResize = (): void => game?.resize();
+		window.addEventListener('resize', onResize);
+		return () => {
+			clearTimeout(boot);
+			window.removeEventListener('resize', onResize);
+			game?.dispose();
+		};
+	});
+
+	function pushMessage(m: HudMessage): void {
+		// Missile launches already drive the flashing HUD warning.
+		if (m.text === 'MISSILE LAUNCH' || messages.some((x) => x.text === m.text)) return;
+		messages = [...messages.slice(-2), m];
+		const ttl = m.text.startsWith('WAVE') ? 3800 : 2000;
+		setTimeout(() => (messages = messages.filter((x) => x.id !== m.id)), ttl);
+	}
+
+	function sortie(): void {
+		over = null;
+		messages = [];
+		showControls = false;
+		void game?.audio.unlock();
+		hangarOpen = false;
+		if (game) game.showcase = false;
+		game?.newGame(settings.aircraft, loadout);
+		canvas.focus();
+	}
+
+	function toTitle(): void {
+		over = null;
+		messages = [];
+		game?.toTitle();
+	}
+
+	function selectAircraft(id: AircraftId): void {
+		settings = { ...settings, aircraft: id };
+		saveSettings(settings);
+		game?.preview(id, loadout);
+	}
+
+	function setLoadout(l: Loadout): void {
+		settings = { ...settings, loadouts: { ...settings.loadouts, [settings.aircraft]: l } };
+		saveSettings(settings);
+		game?.preview(settings.aircraft, l);
+	}
+
+	function openHangar(open: boolean): void {
+		hangarOpen = open;
+		if (game) game.showcase = open;
+	}
+
+	function setQuality(q: QualityLevel): void {
+		settings = { ...settings, quality: q };
+		saveSettings(settings);
+		game?.setQuality(QUALITY_PRESETS[q]);
+	}
+
+	function setVolume(v: number): void {
+		settings = { ...settings, volume: v };
+		saveSettings(settings);
+		game?.audio.setVolume(v);
+	}
+</script>
+
+<div class="shell" class:flying={phase === 'playing'}>
+	<canvas bind:this={canvas} tabindex="-1"></canvas>
+	<div class="popups" bind:this={popupRoot}></div>
+	<div class="targeting" bind:this={targetRoot}></div>
+
+	{#if phase === 'loading' && !error}
+		<div class="loading">
+			<div class="mark">DFA</div>
+			<div class="bar"><span></span></div>
+			<p>Building the battlefield…</p>
+		</div>
+	{/if}
+
+	{#if error}
+		<div class="error" role="alert">
+			<h2>Can't start the renderer</h2>
+			<p>{error}</p>
+			<p class="hint">
+				This game needs a browser with WebGL 2 enabled (recent Chrome, Edge, Firefox or Safari).
+			</p>
+		</div>
+	{/if}
+
+	{#if phase === 'playing' || phase === 'paused'}
+		<Hud {hud} {messages} />
+	{/if}
+
+	{#if phase === 'title'}
+		{#if hangarOpen}
+			<Hangar
+				aircraft={settings.aircraft}
+				{loadout}
+				onSelect={selectAircraft}
+				onLoadout={setLoadout}
+				onBack={() => openHangar(false)}
+				onSortie={sortie}
+			/>
+		{:else}
+			<TitleScreen
+				{settings}
+				{loadout}
+				{best}
+				onSortie={sortie}
+				onHangar={() => openHangar(true)}
+				onQuality={setQuality}
+				onVolume={setVolume}
+				onControls={() => (showControls = true)}
+			/>
+		{/if}
+	{/if}
+
+	{#if phase === 'paused'}
+		<PauseMenu
+			onResume={() => game?.resume()}
+			onRestart={sortie}
+			onQuit={toTitle}
+			onControls={() => (showControls = true)}
+		/>
+	{/if}
+
+	{#if phase === 'gameover' && over}
+		<GameOver stats={over} onRetry={sortie} onTitle={toTitle} />
+	{/if}
+
+	{#if showControls}
+		<Controls onClose={() => (showControls = false)} />
+	{/if}
+</div>
+
+<style>
+	.shell {
+		position: fixed;
+		inset: 0;
+		overflow: hidden;
+	}
+
+	canvas {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		display: block;
+		outline: none;
+		cursor: crosshair;
+	}
+
+	/* The reticle replaces the system cursor while flying. */
+	.flying canvas {
+		cursor: none;
+	}
+
+	.targeting {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		overflow: hidden;
+		--tl: rgba(255, 238, 214, 0.9);
+		--tl-glow: rgba(0, 0, 0, 0.55);
+	}
+
+	.targeting:global(.focus) {
+		--tl: #82ecff;
+		--tl-glow: rgba(90, 220, 255, 0.55);
+	}
+
+	.targeting :global(.tl-reticle) {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 0;
+		height: 0;
+	}
+
+	.targeting :global(.tl-reticle .ring) {
+		position: absolute;
+		left: -20px;
+		top: -20px;
+		width: 40px;
+		height: 40px;
+		border-radius: 50%;
+		border: 1.5px solid var(--tl);
+		box-shadow: 0 0 10px var(--tl-glow);
+		transition:
+			transform 0.25s ease,
+			border-color 0.25s ease;
+	}
+
+	.targeting:global(.focus) :global(.tl-reticle .ring) {
+		transform: scale(1.4);
+		border-style: dashed;
+		animation: tl-spin 2.4s linear infinite;
+	}
+
+	.targeting :global(.tl-reticle .ticks) {
+		position: absolute;
+		left: -30px;
+		top: -30px;
+		width: 60px;
+		height: 60px;
+		background:
+			linear-gradient(var(--tl), var(--tl)) 50% 0 / 2px 9px no-repeat,
+			linear-gradient(var(--tl), var(--tl)) 50% 100% / 2px 9px no-repeat,
+			linear-gradient(var(--tl), var(--tl)) 0 50% / 9px 2px no-repeat,
+			linear-gradient(var(--tl), var(--tl)) 100% 50% / 9px 2px no-repeat;
+		filter: drop-shadow(0 0 3px var(--tl-glow));
+	}
+
+	.targeting :global(.tl-reticle .dot) {
+		position: absolute;
+		left: -2px;
+		top: -2px;
+		width: 4px;
+		height: 4px;
+		border-radius: 50%;
+		background: var(--tl);
+	}
+
+	.targeting :global(.tl-hover) {
+		position: absolute;
+		left: 0;
+		top: 0;
+		margin: 0;
+		translate: -50% -50%;
+		--c: rgba(255, 214, 140, 0.95);
+		background:
+			linear-gradient(var(--c), var(--c)) 0 0 / 12px 2px no-repeat,
+			linear-gradient(var(--c), var(--c)) 0 0 / 2px 12px no-repeat,
+			linear-gradient(var(--c), var(--c)) 100% 0 / 12px 2px no-repeat,
+			linear-gradient(var(--c), var(--c)) 100% 0 / 2px 12px no-repeat,
+			linear-gradient(var(--c), var(--c)) 0 100% / 12px 2px no-repeat,
+			linear-gradient(var(--c), var(--c)) 0 100% / 2px 12px no-repeat,
+			linear-gradient(var(--c), var(--c)) 100% 100% / 12px 2px no-repeat,
+			linear-gradient(var(--c), var(--c)) 100% 100% / 2px 12px no-repeat;
+		filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.7));
+	}
+
+	.targeting:global(.focus) :global(.tl-hover) {
+		--c: #82ecff;
+	}
+
+	.targeting :global(.tl-lock) {
+		position: absolute;
+		left: 0;
+		top: 0;
+		translate: -50% -50%;
+	}
+
+	.targeting :global(.tl-lock .diamond) {
+		position: absolute;
+		inset: 0;
+		border: 2px solid #ff5a3c;
+		rotate: 45deg;
+		box-shadow:
+			0 0 12px rgba(255, 80, 50, 0.75),
+			inset 0 0 8px rgba(255, 80, 50, 0.4);
+	}
+
+	.targeting :global(.tl-lock.fresh .diamond) {
+		animation: tl-lock 0.28s cubic-bezier(0.2, 1.4, 0.5, 1);
+	}
+
+	.targeting :global(.tl-lock b) {
+		position: absolute;
+		left: 100%;
+		top: -6px;
+		margin-left: 4px;
+		font-family: var(--display);
+		font-size: 12px;
+		color: #ffd0c2;
+		text-shadow: 0 0 6px rgba(255, 60, 30, 0.9);
+	}
+
+	@keyframes tl-spin {
+		to {
+			rotate: 360deg;
+		}
+	}
+
+	@keyframes tl-lock {
+		from {
+			scale: 2.2;
+			opacity: 0;
+		}
+		to {
+			scale: 1;
+			opacity: 1;
+		}
+	}
+
+	.popups {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		overflow: hidden;
+	}
+
+	.popups :global(.popup) {
+		position: absolute;
+		left: 0;
+		top: 0;
+		display: none;
+		text-align: center;
+		white-space: nowrap;
+		will-change: transform, opacity;
+		text-shadow:
+			0 0 12px rgba(0, 0, 0, 0.7),
+			0 1px 2px rgba(0, 0, 0, 0.9);
+	}
+
+	.popups :global(.popup .pts) {
+		display: block;
+		font-family: var(--display);
+		font-weight: 700;
+		font-size: 22px;
+		letter-spacing: 0.04em;
+		color: #fff4d8;
+	}
+
+	.popups :global(.popup .sub) {
+		display: block;
+		font-size: 13px;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--amber);
+	}
+
+	.popups :global(.popup.big .pts) {
+		font-size: 30px;
+		color: #ffd27a;
+		text-shadow: 0 0 18px rgba(255, 140, 40, 0.8);
+	}
+
+	.popups :global(.popup.supply .pts) {
+		color: var(--good);
+		font-size: 20px;
+	}
+
+	.loading {
+		position: absolute;
+		inset: 0;
+		display: grid;
+		place-content: center;
+		justify-items: center;
+		gap: 18px;
+		background: radial-gradient(ellipse at 50% 60%, #1a1420 0%, #06070b 70%);
+	}
+
+	.mark {
+		font-family: var(--display);
+		font-size: 64px;
+		font-weight: 700;
+		letter-spacing: 0.3em;
+		color: var(--amber);
+		text-shadow: 0 0 30px var(--amber-glow);
+	}
+
+	.bar {
+		width: 220px;
+		height: 2px;
+		background: rgba(255, 255, 255, 0.08);
+		overflow: hidden;
+	}
+
+	.bar span {
+		display: block;
+		width: 40%;
+		height: 100%;
+		background: var(--amber);
+		animation: slide 1.1s ease-in-out infinite;
+	}
+
+	.loading p {
+		margin: 0;
+		color: var(--ink-dim);
+		letter-spacing: 0.2em;
+		text-transform: uppercase;
+		font-size: 13px;
+	}
+
+	@keyframes slide {
+		from {
+			transform: translateX(-100%);
+		}
+		to {
+			transform: translateX(260%);
+		}
+	}
+
+	.error {
+		position: absolute;
+		inset: 0;
+		display: grid;
+		place-content: center;
+		text-align: center;
+		padding: 24px;
+		background: #06070b;
+	}
+
+	.error h2 {
+		font-family: var(--display);
+		color: var(--danger);
+		margin: 0 0 8px;
+	}
+
+	.error p {
+		margin: 4px 0;
+		max-width: 520px;
+		color: var(--ink-dim);
+		white-space: pre-wrap;
+	}
+
+	.error .hint {
+		color: var(--ink-faint);
+	}
+</style>

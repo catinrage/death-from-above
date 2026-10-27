@@ -1,0 +1,242 @@
+import { LightSystem } from '../engine/lights';
+import { ParticleSystem } from '../engine/particles';
+import { Rng } from '../engine/rng';
+import { CameraRig } from './camera';
+import { DebrisSystem } from './debris';
+import { UNITS } from './defs-units';
+import { Effects } from './effects';
+import { FireSystem } from './fires';
+import { Props } from './props';
+import { Bridge } from './bridge';
+import { RIVER, type River } from './river';
+import { GasClouds } from './gas';
+import type { Strike } from './specials';
+import { Surface } from './surface';
+import { Troops } from './troops';
+import { Terrain } from './terrain';
+import type { AirUnit } from './enemy-air';
+import type { Player } from './player';
+import type { Bomb } from './weapons';
+import type { Bullet, Flare, Missile, Shell } from './projectiles';
+import type { Owner, Unit, UnitKind } from './types';
+import type { AirBase } from './base';
+
+export type SfxId =
+	| 'explosion'
+	| 'bigExplosion'
+	| 'thunder'
+	| 'gun'
+	| 'cannon'
+	| 'rifle'
+	| 'mg'
+	| 'aaGun'
+	| 'flak'
+	| 'flakBurst'
+	| 'tankGun'
+	| 'artillery'
+	| 'missileLaunch'
+	| 'bombRelease'
+	| 'impactMetal'
+	| 'impactGround'
+	| 'flare'
+	| 'crash'
+	| 'pickup'
+	| 'siren'
+	| 'napalm'
+	| 'debris'
+	| 'hit'
+	| 'rearm'
+	| 'lockTone'
+	| 'launchWarn'
+	| 'empty'
+	| 'select'
+	| 'focusIn'
+	| 'focusOut'
+	| 'lockOn'
+	| 'splash'
+	| 'collapse'
+	| 'emp'
+	| 'caution'
+	| 'masterWarning'
+	| 'stallHorn'
+	| 'airbrake';
+
+export interface SoundSink {
+	play(id: SfxId, x: number, y: number, volume?: number, pitch?: number): void;
+	/** Explosion scaled by blast power (~0.3 shell, 1 bomb, 4 Thunderclap). */
+	boom(power: number, x: number, y: number, air?: boolean): void;
+	whistle(id: number, x: number, y: number, vy: number, active: boolean): void;
+}
+
+export interface WorldEvents {
+	kill(name: string, score: number, x: number, y: number, by: Owner): void;
+	message(text: string, sub?: string, tone?: 'info' | 'warn' | 'good'): void;
+	playerHit(amount: number): void;
+	supply(x: number, y: number): void;
+	slowmo(scale: number, duration: number): void;
+}
+
+const silentSound: SoundSink = { play: () => {}, boom: () => {}, whistle: () => {} };
+const silentEvents: WorldEvents = {
+	kill: () => {},
+	message: () => {},
+	playerHit: () => {},
+	supply: () => {},
+	slowmo: () => {}
+};
+
+/** All mutable simulation state. Systems read and write it directly. */
+export class World {
+	readonly terrain: Terrain;
+	readonly river: River | null;
+	readonly bridge: Bridge | null;
+	/** Terrain, water and bridge deck combined. */
+	readonly surface: Surface;
+	readonly particles = new ParticleSystem(16000);
+	readonly lights = new LightSystem();
+	readonly camera = new CameraRig();
+	readonly fx: Effects;
+	readonly debris = new DebrisSystem();
+	readonly fires: FireSystem;
+	readonly props: Props;
+	readonly rng: Rng;
+	readonly units: Unit[] = [];
+	readonly air: AirUnit[] = [];
+	readonly bombs: Bomb[] = [];
+	readonly bullets: Bullet[] = [];
+	readonly shells: Shell[] = [];
+	readonly missiles: Missile[] = [];
+	readonly flares: Flare[] = [];
+	/** Cruise missiles and ballistic warheads in flight. */
+	readonly strikes: Strike[] = [];
+	/** Friendly paratroopers. */
+	readonly troops = new Troops();
+	/** Chemical clouds. */
+	readonly gas = new GasClouds();
+	player: Player | null = null;
+	base!: AirBase;
+	sound: SoundSink = silentSound;
+	events: WorldEvents = silentEvents;
+	time = 0;
+	/** 0 at noon-ish, 1 at full night: drives searchlights and window lights. */
+	night = 0;
+	/** A radar station is alive: SAM locks are faster. */
+	radarCoverage = false;
+	/** A searchlight has the player in its beam: AA fire is more accurate. */
+	spotted = false;
+	/** Player cannot be damaged (attract mode). */
+	godMode = false;
+	/** Current wave; enemy accuracy scales with it. */
+	wave = 1;
+	/** Where the player's aiming reticle meets the battlefield (laser spot for guided bombs). */
+	designator: { x: number; y: number } | null = null;
+	/** Damage the player has taken, by cause (balancing aid). */
+	readonly damageTaken: Record<string, number> = {};
+	private nextId = 1;
+
+	constructor(seed = 2024) {
+		this.rng = new Rng(seed);
+		this.terrain = new Terrain(seed, undefined, undefined, RIVER);
+		this.river = this.terrain.river;
+		this.bridge = this.river ? new Bridge(this.river) : null;
+		this.surface = new Surface(this.terrain, this.river, this.bridge);
+		this.fx = new Effects(this.particles, this.lights, this.camera, this.surface);
+		this.fires = new FireSystem(this.fx, this.lights, this.terrain);
+		this.props = new Props(this.terrain, seed + 7, this.river);
+	}
+
+	/** Battle-line surface at x: ground, water or the bridge deck. */
+	ground(x: number): number {
+		return this.surface.ground(x);
+	}
+
+	spawnUnit(kind: UnitKind, x: number, z: number, dir: 1 | -1 = -1): Unit {
+		const u = this.makeUnit(kind, x, z, dir);
+		this.units.push(u);
+		return u;
+	}
+
+	/** A unit standing on the ground at (x, z), not yet part of any list. */
+	makeUnit(kind: UnitKind, x: number, z: number, dir: 1 | -1 = -1): Unit {
+		const def = UNITS[kind];
+		const u: Unit = {
+			id: this.nextId++,
+			def,
+			x,
+			y: this.surface.support(x, Infinity, z),
+			z,
+			dir,
+			speed: 0,
+			hp: def.hp,
+			alive: true,
+			remove: false,
+			deadTime: 0,
+			pitch: 0,
+			yaw: dir < 0 ? Math.PI : 0,
+			aimYaw: 0,
+			aimPitch: 0.1,
+			cooldown: this.rng.range(0.5, 2.5),
+			burst: 0,
+			lock: 0,
+			anim: this.rng.range(0, 10),
+			spin: this.rng.range(0, 6),
+			flash: 0,
+			state: 'advance',
+			stateTime: 0,
+			turretGone: false,
+			char: 0,
+			fire: null,
+			panic: 0,
+			lastHitBy: 'player',
+			lamp: null,
+			deployed: 0,
+			gap: 0,
+			spotting: false,
+			fall: 0,
+			stun: 0
+		};
+		return u;
+	}
+
+	newId(): number {
+		return this.nextId++;
+	}
+
+	/** Mobile hostiles still fighting (wave completion counts these). */
+	hostilesAlive(): number {
+		let n = 0;
+		for (const u of this.units) if (u.alive && !u.def.isStatic) n++;
+		for (const a of this.air) if (a.alive) n++;
+		return n;
+	}
+
+	/** Fresh battlefield for a new game. */
+	reset(): void {
+		this.clearCombat();
+		this.terrain.reset();
+		this.bridge?.rebuild(this);
+		this.props.reset();
+		this.base.reset();
+		this.player = null;
+		this.designator = null;
+		this.time = 0;
+	}
+
+	clearCombat(): void {
+		this.units.length = 0;
+		this.air.length = 0;
+		this.bombs.length = 0;
+		this.bullets.length = 0;
+		this.shells.length = 0;
+		this.missiles.length = 0;
+		this.flares.length = 0;
+		this.strikes.length = 0;
+		this.troops.clear();
+		this.gas.clear();
+		this.debris.clear();
+		this.fires.clear();
+		this.particles.clear();
+		this.lights.clear();
+		this.fx.clear();
+	}
+}

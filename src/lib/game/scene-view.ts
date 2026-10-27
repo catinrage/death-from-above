@@ -1,0 +1,451 @@
+import { DEFAULT_STYLE, type InstanceStyle, type Mesh } from '../engine/gl/mesh';
+import { mat4, type Mat4 } from '../engine/math';
+import type { MeshName, Models } from '../models';
+import { WORLD } from './constants';
+import { BOMBS } from './defs-bombs';
+import { brakeFx, engineFx } from './boost-fx';
+import { flareGlow, flareHeat } from './flare-fx';
+import { debrisMatrix } from './debris';
+import { Props, type Prop } from './props';
+import { poseParts, poseScratch, rootMatrix } from './unit-pose';
+import type { Unit } from './types';
+import type { World } from './world';
+
+const IDENTITY = mat4.create();
+/** Tracer colours are authored hot; this keeps them gold/red instead of clipping to white. */
+const TRACER_K = 0.5;
+
+/** Keeps sight dots readable when the camera pulls back to frame a long bomb throw. */
+function sightScale(w: World): number {
+	return Math.min(2.2, Math.max(1, w.camera.dist / 140));
+}
+
+/** Turns the simulation state into per-mesh instance lists every frame. */
+export class SceneView {
+	private readonly m: Mat4 = mat4.create();
+	private readonly m2: Mat4 = mat4.create();
+	private readonly root: Mat4 = mat4.create();
+	private readonly s: InstanceStyle = { ...DEFAULT_STYLE };
+	private readonly skip = new Set<number>();
+	showSight = true;
+	/** Paused: draw the scene but don't add per-frame lights that would never age out. */
+	frozen = false;
+
+	constructor(private readonly models: Models) {}
+
+	private style(char = 0, flash = 0, sway = 0, tint = 1, emissive = 1, embers = 0): InstanceStyle {
+		const s = this.s;
+		s.r = s.g = s.b = tint;
+		s.char = char;
+		s.flash = flash;
+		s.sway = sway;
+		s.emissive = emissive;
+		s.embers = embers;
+		return s;
+	}
+
+	private mesh(name: MeshName): Mesh {
+		return this.models[name];
+	}
+
+	collect(w: World, time: number): void {
+		const cam = w.camera;
+		const { halfW } = cam.viewExtents();
+		const nearMin = cam.x - halfW - 50,
+			nearMax = cam.x + halfW + 50;
+		for (const mesh of this.models.mountains) mesh.push(IDENTITY);
+		this.props(w, nearMin, nearMax);
+		this.base(w, time);
+		this.bridge(w, nearMin, nearMax);
+		this.units(w, nearMin - 30, nearMax + 30);
+		this.troops(w);
+		this.strikes(w);
+		this.debris(w);
+		this.ordnance(w);
+		this.air(w);
+		this.player(w, time);
+		this.bullets(w);
+		this.flares(w);
+	}
+
+	private pushProp(p: Prop, night: number): void {
+		const m = this.m;
+		mat4.fromTranslation(m, p.x, p.y, p.z);
+		if (p.fall > 0) mat4.rotateZ(m, m, -p.fall * p.fallDir);
+		mat4.rotateY(m, m, p.yaw);
+		mat4.scale(m, m, p.scale, p.scale, p.scale);
+		const sway = p.fall > 0 ? 0 : p.sway;
+		this.mesh(p.mesh).push(m, this.style(p.char, 0, sway, p.tint, 1, p.char > 0.6 ? 0.3 : 0));
+		if (p.glow && night > 0.15 && !p.ruined)
+			this.mesh(p.glow).push(m, this.style(0, 0, 0, 1, night * 1.3));
+	}
+
+	private props(w: World, nearMin: number, nearMax: number): void {
+		const f = w.camera.frame;
+		const night = w.night;
+		const far = w.props.far;
+		for (let i = Props.lowerBound(far, f.cullMinX); i < far.length && far[i].x <= f.cullMaxX; i++)
+			this.pushProp(far[i], night);
+		const near = w.props.near;
+		const span = (nearMax - nearMin) * 0.35;
+		for (
+			let i = Props.lowerBound(near, nearMin - span);
+			i < near.length && near[i].x <= nearMax + span;
+			i++
+		) {
+			this.pushProp(near[i], night);
+		}
+		const grass = w.props.grass;
+		const m = this.m;
+		for (let i = Props.lowerBound(grass, nearMin); i < grass.length && grass[i].x <= nearMax; i++) {
+			const g = grass[i];
+			const burnt = w.terrain.scorchAt(g.x, g.z);
+			const sy = g.scale * (1 - burnt * 0.65);
+			mat4.fromTranslation(m, g.x, g.y, g.z);
+			mat4.rotateY(m, m, g.yaw);
+			mat4.scale(m, m, g.scale, sy, g.scale);
+			this.mesh(g.mesh).push(m, this.style(burnt, 0, 1 - burnt, g.tint));
+		}
+	}
+
+	private base(w: World, time: number): void {
+		const m = this.m;
+		const damage = 1 - w.base.hp / w.base.maxHp;
+		for (const s of w.base.structures) {
+			const y =
+				s.mesh === 'runway'
+					? 2.06
+					: w.terrain.heightAtXZ(s.x, s.z) +
+						(s.mesh === 'kestrel' || s.mesh === 'grizzly' ? 1.4 : 0);
+			mat4.fromTranslation(m, s.x, y, s.z);
+			mat4.rotateY(m, m, s.yaw);
+			const char = s.fire ? 0.55 : s.mesh === 'runway' ? 0 : damage * 0.25;
+			this.mesh(s.mesh).push(m, this.style(char, 0, 0, 1, 1, s.fire ? 0.5 : 0));
+			if (s.glow && w.night > 0.15)
+				this.mesh(s.glow).push(m, this.style(0, 0, 0, 1, w.night * 1.4));
+		}
+		for (const g of w.base.guns) {
+			const y = w.terrain.heightAtXZ(g.x, g.z);
+			mat4.fromTranslation(m, g.x, y, g.z);
+			this.models.flakBase.push(m, this.style());
+			mat4.translate(m, m, 0, 1.2, 0);
+			mat4.rotateY(m, m, g.yaw);
+			this.models.flakMount.push(m, this.style());
+			mat4.translate(m, m, 0, 1.0, 0);
+			mat4.rotateZ(m, m, g.pitch);
+			this.models.flakBarrel.push(m, this.style());
+		}
+		// Runway edge lights and the tower beacon.
+		if (w.night > 0.2) {
+			for (let x = WORLD.runwayMinX + 6; x < WORLD.runwayMaxX; x += 24) {
+				for (const z of [-12.5, 12.5]) w.fx.immediateGlow(x, 2.4, z, 0.7, 2.5, 2.0, 1.0);
+			}
+		}
+		if (Math.sin(time * 3) > 0.6)
+			w.fx.immediateGlow(309.1, w.ground(307.5) + 15.3, -32.4, 1.5, 9, 1, 0.6);
+	}
+
+	private bridge(w: World, minX: number, maxX: number): void {
+		const b = w.bridge;
+		if (!b || b.east < minX - 200 || b.west > maxX + 200) return;
+		const m = this.m;
+		for (const s of b.spans) {
+			if (s.down) continue;
+			mat4.fromTranslation(m, (s.x0 + s.x1) / 2, b.deckY, 0);
+			const wear = b.wear(s);
+			this.models.bridgeSpan.push(
+				m,
+				this.style(wear * 0.7, s.flash * 0.25, 0, 1, 1, wear > 0.6 ? 0.3 : 0)
+			);
+		}
+		for (const x of b.piers) {
+			mat4.fromTranslation(m, x, b.deckY - 0.9, 0);
+			this.models.bridgePier.push(m, this.style());
+		}
+		for (const [x, dir] of [
+			[b.west, -1],
+			[b.east, 1]
+		] as const) {
+			mat4.fromTranslation(m, x + dir * 2.4, b.deckY, 0);
+			this.models.bridgeAbutment.push(m, this.style());
+		}
+	}
+
+	private units(
+		w: World,
+		minX: number,
+		maxX: number,
+		list: readonly Unit[] = w.units,
+		friend = false
+	): void {
+		const root = this.root;
+		for (const u of list) {
+			if (u.x < minX || u.x > maxX) continue;
+			rootMatrix(root, u);
+			if (!u.alive && u.def.death === 'collapse') mat4.scale(root, root, 1, 0.45, 1);
+			const mats = poseParts(u, root, poseScratch);
+			const embers = u.alive ? 0 : Math.max(0, 1 - u.deadTime / 35);
+			const style = this.style(u.char, u.flash * 0.7, 0, 1, u.alive ? 1 : 0, embers);
+			if (friend) {
+				// Friendly paratroopers wear lighter, bluer kit.
+				style.r = 0.95;
+				style.g = 1.05;
+				style.b = 1.35;
+			}
+			this.skip.clear();
+			const parts = u.def.parts;
+			for (let i = 0; i < parts.length; i++) {
+				const p = parts[i];
+				if (u.turretGone && (p.detach || (p.parent !== undefined && this.skip.has(p.parent)))) {
+					this.skip.add(i);
+					continue;
+				}
+				this.mesh(p.mesh).push(mats[i], style);
+			}
+			if (u.def.kind === 'searchlight' && u.alive && u.lamp) this.beam(w, u, mats[1]);
+		}
+	}
+
+	private troops(w: World): void {
+		const list = w.troops.list;
+		if (list.length === 0) return;
+		this.units(w, -1e9, 1e9, list, true);
+		const m = this.m;
+		for (const t of list) {
+			if (t.chute <= 0.02) continue;
+			mat4.fromTranslation(m, t.x, t.y + 1.7, t.z);
+			mat4.rotateZ(m, m, Math.sin(w.time * 1.3 + t.id) * 0.06 - t.vx * 0.01);
+			mat4.scale(m, m, t.chute, 0.3 + 0.7 * t.chute, t.chute);
+			this.models.parachute.push(m, this.style());
+		}
+	}
+
+	private strikes(w: World): void {
+		const m = this.m;
+		for (const s of w.strikes) {
+			mat4.fromTranslation(m, s.x, s.y, s.z);
+			mat4.rotateZ(m, m, s.angle);
+			this.mesh(s.kind === 'cruise' ? 'cruiseMissile' : 'warhead').push(m, this.style());
+			if (s.kind === 'cruise') {
+				const ex = s.x - Math.cos(s.angle) * 2.8,
+					ey = s.y - Math.sin(s.angle) * 2.8;
+				w.fx.immediateGlow(ex, ey, s.z, 1.4, 12, 6, 2.5);
+			}
+		}
+	}
+
+	private beam(w: World, u: Unit, lamp: Mat4): void {
+		const m = this.m2;
+		mat4.translate(m, lamp, 0.5, 0, 0);
+		mat4.rotateZ(m, m, -Math.PI / 2);
+		mat4.scale(m, m, 16, 300, 16);
+		const k = Math.min(1, (w.night - 0.35) * 3) * (u.spotting ? 0.11 : 0.07);
+		const s = this.style();
+		s.r = 1.0 * k;
+		s.g = 0.95 * k;
+		s.b = 0.82 * k;
+		this.models.beamCone.push(m, s);
+		w.fx.immediateGlow(
+			lamp[12] + lamp[0] * 0.6,
+			lamp[13] + lamp[1] * 0.6,
+			lamp[14] + lamp[2] * 0.6,
+			2.2,
+			14,
+			13,
+			11
+		);
+		if (u.lamp) {
+			u.lamp.x = lamp[12] + lamp[0] * 12;
+			u.lamp.y = lamp[13] + lamp[1] * 12;
+			u.lamp.z = lamp[14];
+		}
+	}
+
+	private debris(w: World): void {
+		const m = this.m,
+			m2 = this.m2;
+		for (const d of w.debris.list) {
+			debrisMatrix(m, d);
+			const s = this.style(d.char, 0, 0, 1, 0, d.burn > 0 ? 1 : d.char > 0.5 ? 0.3 : 0);
+			s.r = d.tint[0];
+			s.g = d.tint[1];
+			s.b = d.tint[2];
+			for (const p of d.parts) {
+				mat4.multiply(m2, m, p.local);
+				this.mesh(p.mesh).push(m2, s);
+			}
+		}
+	}
+
+	private ordnance(w: World): void {
+		const m = this.m;
+		for (const b of w.bombs) {
+			if (!b.alive || b.dig >= 0) continue;
+			mat4.fromTranslation(m, b.x, b.y, b.z);
+			mat4.rotateZ(m, m, b.angle);
+			if (b.spin) mat4.rotateX(m, m, b.spin);
+			this.mesh(b.def.mesh).push(m, this.style());
+		}
+		for (const s of w.missiles) {
+			mat4.fromTranslation(m, s.x, s.y, s.z);
+			mat4.rotateZ(m, m, s.angle);
+			this.models.missile.push(m, this.style());
+			if (s.age < s.burn) {
+				const ex = s.x - Math.cos(s.angle) * 1.7,
+					ey = s.y - Math.sin(s.angle) * 1.7;
+				w.fx.immediateGlow(ex, ey, s.z, 2.4, 16, 9, 4);
+				if (!this.frozen) w.lights.add(ex, ey, s.z, [1, 0.6, 0.3], 14, 22, { life: 0.04 });
+			}
+		}
+	}
+
+	private air(w: World): void {
+		const m = this.m;
+		for (const a of w.air) {
+			mat4.fromTranslation(m, a.x, a.y, a.z);
+			const st = this.style(a.dying ? 0.6 : 0, a.flash * 0.7, 0, 1, 1, a.dying ? 1 : 0);
+			if (a.kind === 'fighter') {
+				mat4.rotateZ(m, m, a.angle);
+				mat4.rotateX(m, m, a.roll);
+				this.models.enemyFighter.push(m, st);
+				const ca = Math.cos(a.angle),
+					sa = Math.sin(a.angle);
+				w.fx.immediateGlow(a.x - ca * 6.1, a.y - sa * 6.1, a.z, 1.4, 9, 4, 1.5);
+			} else {
+				mat4.rotateY(m, m, Math.PI + (a.dying ? a.rotor * 0.12 : 0));
+				mat4.rotateZ(m, m, a.tilt);
+				this.models.heliBody.push(m, st);
+				mat4.copy(this.m2, m);
+				mat4.translate(m, m, 0, 3.75, 0);
+				mat4.rotateY(m, m, a.rotor);
+				this.models.heliRotor.push(m, st);
+				mat4.translate(this.m2, this.m2, -7.9, 2.9, 0.15);
+				mat4.rotateZ(this.m2, this.m2, a.rotor * 1.7);
+				this.models.heliTailRotor.push(this.m2, st);
+			}
+		}
+	}
+
+	private player(w: World, time: number): void {
+		const p = w.player;
+		if (!p || p.crashed) return;
+		const m = this.m;
+		const sc = p.def.scale;
+		mat4.fromTranslation(m, p.x, p.y, p.z);
+		mat4.rotateZ(m, m, p.angle);
+		mat4.rotateX(m, m, p.roll + p.bank);
+		mat4.scale(m, m, sc, sc, sc);
+		const blink = p.invuln > 0 && Math.sin(time * 28) > 0 ? 0.25 : 0;
+		const st = this.style(
+			p.dying ? 0.5 : 0,
+			Math.max(p.hitFlash * 0.5, blink),
+			0,
+			1,
+			1,
+			p.dying ? 1 : 0
+		);
+		this.mesh(p.def.mesh).push(m, st);
+		for (const prop of p.def.props) {
+			mat4.translate(this.m2, m, prop[0], prop[1], prop[2]);
+			mat4.rotateX(this.m2, this.m2, p.propSpin);
+			this.models.propeller.push(this.m2, st);
+		}
+		const sel = p.ammo[p.selected] > 0 ? p.selected : 'gp';
+		const shown = Math.min(p.ammo[sel], p.def.hardpoints.length);
+		for (let i = 0; i < shown; i++) {
+			const h = p.def.hardpoints[i];
+			mat4.translate(this.m2, m, h[0], h[1], h[2]);
+			mat4.scale(this.m2, this.m2, 0.8, 0.8, 0.8);
+			this.mesh(BOMBS[sel].mesh).push(this.m2, st);
+		}
+		if (!p.alive) return;
+		const out: [number, number, number] = [0, 0, 0];
+		engineFx(w, p, time, !this.frozen);
+		brakeFx(w, p, !this.frozen);
+		const [tipX, tipY, span] = p.def.tip;
+		p.localToWorld([tipX, tipY, span], out);
+		w.fx.immediateGlow(out[0], out[1], out[2], 0.7, 0.4, 3, 0.8);
+		p.localToWorld([tipX, tipY, -span], out);
+		w.fx.immediateGlow(out[0], out[1], out[2], 0.7, 3, 0.3, 0.2);
+		if (Math.sin(time * 9) > 0.92) {
+			p.localToWorld([-6, 2.8, 0], out);
+			w.fx.immediateGlow(out[0], out[1], out[2], 1.6, 8, 8, 8);
+		}
+	}
+
+	private bullets(w: World): void {
+		for (const b of w.bullets) {
+			if (!b.tracer) continue;
+			w.fx.immediateStreak(
+				b.x,
+				b.y,
+				b.z,
+				b.vx,
+				b.vy,
+				b.size,
+				0.011,
+				b.color[0] * TRACER_K,
+				b.color[1] * TRACER_K,
+				b.color[2] * TRACER_K
+			);
+		}
+		for (const s of w.shells) {
+			if (s.kind === 'flak')
+				w.fx.immediateStreak(s.x, s.y, s.z, s.vx, s.vy, 0.12, 0.006, 3, 2.4, 1.6);
+			else w.fx.immediateGlow(s.x, s.y, s.z, s.kind === 'rocket' ? 1.4 : 0.6, 10, 5, 2);
+		}
+	}
+
+	private flares(w: World): void {
+		for (const f of w.flares) {
+			const heat = flareHeat(f);
+			flareGlow(w.fx, f);
+			if (!this.frozen && heat > 0)
+				w.lights.add(f.x, f.y, f.z, [1, 0.9, 0.75], 30 * heat, 40, { life: 0.03 });
+		}
+	}
+
+	/** Dotted bomb trajectory and impact marker. */
+	sight(w: World, pts: readonly number[], color: [number, number, number]): void {
+		if (!this.showSight) return;
+		const size = 0.42 * sightScale(w);
+		for (let i = 0; i + 1 < pts.length; i += 2) {
+			const fade = 1 - i / pts.length;
+			w.fx.immediateGlow(
+				pts[i],
+				pts[i + 1],
+				0,
+				size,
+				color[0] * fade,
+				color[1] * fade,
+				color[2] * fade
+			);
+		}
+	}
+
+	/**
+	 * Target reticle where the bomb will land: a ring standing on the ground
+	 * facing the camera, with a pulsing core. Grows when the camera pulls back.
+	 */
+	marker(w: World, x: number, y: number, time: number, color: [number, number, number]): void {
+		if (!this.showSight) return;
+		const k = sightScale(w);
+		const r = 5.5 * k;
+		const pulse = (1.8 + Math.sin(time * 8) * 0.5) * k;
+		w.fx.immediateGlow(x, y + 0.8, 0, pulse, color[0] * 1.6, color[1] * 1.6, color[2] * 1.6);
+		const n = 12;
+		for (let i = 0; i < n; i++) {
+			const a = (i / n) * Math.PI * 2 + time * 0.8;
+			const bright = i % 3 === 0 ? 1.4 : 0.8;
+			w.fx.immediateGlow(
+				x + Math.cos(a) * r,
+				y + r + Math.sin(a) * r,
+				0,
+				0.45 * k,
+				color[0] * bright,
+				color[1] * bright,
+				color[2] * bright
+			);
+		}
+	}
+}
