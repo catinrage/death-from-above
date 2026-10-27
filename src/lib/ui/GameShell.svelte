@@ -390,6 +390,63 @@
 		text-shadow: 0 0 6px rgba(255, 60, 30, 0.9);
 	}
 
+	/* Chevrons ringing the aircraft, pointing at whatever is hunting it. */
+	.targeting :global(.tl-threat) {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 0;
+		height: 0;
+		--c: #ff4a2e;
+		--glow: rgba(255, 70, 40, 0.8);
+		opacity: calc(0.55 + var(--lv) * 0.45);
+	}
+
+	.targeting :global(.tl-threat.lock) {
+		--c: #ffb35a;
+		--glow: rgba(255, 170, 70, 0.7);
+	}
+
+	.targeting :global(.tl-threat .chev) {
+		position: absolute;
+		left: -11px;
+		top: -11px;
+		width: 22px;
+		height: 22px;
+		rotate: var(--a);
+		scale: calc(0.85 + var(--lv) * 0.6);
+		background: var(--c);
+		clip-path: polygon(0 0, 100% 50%, 0 100%, 32% 50%);
+		filter: drop-shadow(0 0 5px var(--glow));
+	}
+
+	.targeting :global(.tl-threat.close .chev) {
+		animation: tl-threat 0.18s ease-in-out infinite alternate;
+	}
+
+	.targeting :global(.tl-threat b) {
+		position: absolute;
+		left: 0;
+		top: 0;
+		/* Just beyond the chevron, on the far side from the aircraft. */
+		translate: calc(-50% + cos(var(--a)) * 30px) calc(-50% + sin(var(--a)) * 22px);
+		font-family: var(--display);
+		font-size: 11px;
+		font-weight: 400;
+		letter-spacing: 0.08em;
+		white-space: nowrap;
+		color: var(--c);
+		text-shadow:
+			0 0 6px var(--glow),
+			0 1px 2px #000;
+	}
+
+	@keyframes tl-threat {
+		to {
+			opacity: 0.35;
+		}
+	}
+
 	@keyframes tl-spin {
 		to {
 			rotate: 360deg;

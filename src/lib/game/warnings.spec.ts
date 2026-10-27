@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Player } from './player';
 import { launchMissile } from './projectiles';
 import { testWorld } from './test-world';
-import { cockpitAlerts, missileThreat } from './warnings';
+import { cockpitAlerts, incomingThreats, lockThreat, missileThreat } from './warnings';
 
 describe('cockpit warnings', () => {
 	it('reports the closest missile homing on the aircraft and where it is', () => {
@@ -31,5 +31,38 @@ describe('cockpit warnings', () => {
 		// Straight below the aircraft: pointing down the screen.
 		expect(t.missileDir).toBeCloseTo(Math.PI / 2, 2);
 		expect(cockpitAlerts(w, p).missile).toBe(true);
+	});
+
+	it('lists every missile and locking launcher, missiles first and closest first', () => {
+		const w = testWorld();
+		const p = new Player('kestrel', 1500, w.ground(1500) + 200, 0);
+		w.player = p;
+		expect(incomingThreats(w, p)).toEqual([]);
+		const base = {
+			kind: 'sam',
+			angle: 0,
+			speed: 100,
+			maxSpeed: 200,
+			accel: 50,
+			turnRate: 2,
+			target: p,
+			burn: 4,
+			life: 8,
+			damage: 30,
+			owner: 'enemy',
+			seeker: 'radar'
+		} as const;
+		launchMissile(w, { ...base, x: 900, y: p.y });
+		launchMissile(w, { ...base, x: 1700, y: p.y });
+		p.lockers.push({ x: 2000, y: p.y - 200, progress: 0.3 });
+		p.lockers.push({ x: 1000, y: p.y - 200, progress: 0.9 });
+		const t = incomingThreats(w, p);
+		expect(t.map((x) => x.kind)).toEqual(['missile', 'missile', 'lock', 'lock']);
+		expect(t[0].dist).toBeCloseTo(200, 0);
+		expect(t[2].level).toBe(0.9);
+		// The launcher furthest along sits down and to the left: bearing between down and left.
+		const dir = lockThreat(p).lockDir;
+		expect(dir).toBeGreaterThan(Math.PI / 2);
+		expect(dir).toBeLessThan(Math.PI);
 	});
 });

@@ -143,6 +143,8 @@ export class Player implements Trackable {
 	/** Enemy launchers currently locking (reset by the AI every frame). */
 	lockedBy = 0;
 	lockProgress = 0;
+	/** Where each of those launchers sits and how far along its lock is (reset by the AI every frame). */
+	readonly lockers: { x: number; y: number; progress: number }[] = [];
 
 	/** What this sortie carries (the hangar may change it from stock). */
 	readonly loadout: Loadout;
