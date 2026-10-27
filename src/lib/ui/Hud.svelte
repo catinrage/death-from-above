@@ -76,6 +76,15 @@
 			</span>
 			<span class="pct">{Math.round(baseFrac * 100)}%</span>
 		</div>
+		{#if hud.boss}
+			<div class="base boss" transition:fade={{ duration: 200 }}>
+				<span class="lbl">{hud.boss.name}</span>
+				<span class="track">
+					<span class="fill" style:transform="scaleX({hud.boss.frac})"></span>
+				</span>
+				<span class="pct">{Math.round(hud.boss.frac * 100)}%</span>
+			</div>
+		{/if}
 	</section>
 
 	<section class="lives" aria-label="Reserve aircraft">
@@ -473,6 +482,19 @@
 
 	.base .fill {
 		background: linear-gradient(90deg, #ffe0a8, var(--amber));
+	}
+
+	.base.boss .lbl {
+		color: var(--danger);
+		text-transform: uppercase;
+	}
+
+	.base.boss .track {
+		height: 8px;
+	}
+
+	.base.boss .fill {
+		background: linear-gradient(90deg, #ff9d7a, var(--danger));
 	}
 
 	.fill.low {

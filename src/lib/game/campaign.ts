@@ -75,25 +75,27 @@ export const MISSIONS: readonly Mission[] = [
 		name: 'Iron Column',
 		tagline: 'Armour in strength',
 		brief:
-			'An armoured spearhead with mobile AA in tow. Tanks shrug off guns: use bombs, the bunker buster or missiles on their tops.',
+			'An armoured spearhead with mobile AA in tow, and behind it the Behemoth, a super-heavy tank. Tanks shrug off guns: use bombs, the bunker buster or missiles on their tops.',
 		biome: 'jungle',
 		env: [1.1],
 		weather: [{ kind: 'rain', wind: -6 }],
 		waves: {
 			last: 2,
 			offset: 2,
-			// Three tanks a wave so the six-tank goal can always be met.
-			tweaks: () => ({
+			// Three tanks a wave so the six-tank goal can always be met. The act's boss closes it.
+			tweaks: (wave) => ({
 				lead: { tank: 3, apc: 1.5, truck: 0.5, jeep: 0.5 },
-				units: ['tank', 'tank', 'tank']
+				units: ['tank', 'tank', 'tank'],
+				boss: wave === 2 ? 'superTank' : undefined
 			}),
 			briefings: [
 				'Tanks leading the column. Hit them from above',
-				'Second armoured group with AA escort. Watch the tracers'
+				'The Behemoth is coming. Its rear guns track aircraft, so bomb it from the front'
 			]
 		},
 		objectives: [
 			{ type: 'destroy', kinds: ['tank'], count: 6, label: 'Destroy tanks' },
+			{ type: 'destroy', kinds: ['superTank'], count: 1, label: 'Destroy the Behemoth' },
 			{ type: 'waves', count: 2 }
 		]
 	},
@@ -172,7 +174,7 @@ export const MISSIONS: readonly Mission[] = [
 		name: 'Wild Weasel',
 		tagline: 'Hunt the SAM sites',
 		brief:
-			'SAM launchers and their radars are shutting down the sky. Destroy them. Flare when the seeker closes, and kill the radar first to slow their locks.',
+			'SAM launchers and their radars are shutting down the sky, and a river cruiser is on its way to guard the bridge. Destroy them. Flare when the seeker closes, and kill the radar first to slow their locks.',
 		biome: 'snow',
 		env: [4.1],
 		weather: [{ kind: 'snow', wind: -5 }],
@@ -180,15 +182,20 @@ export const MISSIONS: readonly Mission[] = [
 			last: 2,
 			offset: 4,
 			statics: ['radar', 'radar'],
-			tweaks: () => ({ lead: { sam: 3.5, spaag: 1.5 }, units: ['sam', 'sam'] }),
+			tweaks: (wave) => ({
+				lead: { sam: 3.5, spaag: 1.5 },
+				units: ['sam', 'sam'],
+				boss: wave === 2 ? 'cruiser' : undefined
+			}),
 			briefings: [
 				'SAM launchers moving up with radar cover. Flares ready',
-				'More launchers inbound. Clear the sky'
+				'An AA cruiser is coming down the river to cover the crossing. Sink it'
 			]
 		},
 		objectives: [
 			{ type: 'destroy', kinds: ['sam'], count: 4, label: 'Destroy SAM launchers' },
 			{ type: 'destroy', kinds: ['radar'], count: 2, label: 'Destroy radar stations' },
+			{ type: 'destroy', kinds: ['cruiser'], count: 1, label: 'Sink the river cruiser' },
 			{ type: 'waves', count: 2 }
 		]
 	},

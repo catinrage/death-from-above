@@ -2,6 +2,7 @@ import { Rng } from '../engine/rng';
 import type { AllyKind } from './allies';
 import { WORLD } from './constants';
 import { MOBILE_KINDS, STATIC_KINDS, UNITS } from './defs-units';
+import { isBossKind, spawnBoss } from './boss';
 import { AirUnit, type AirKind } from './enemy-air';
 import { clearOfZones } from './no-fire';
 import type { UnitKind } from './types';
@@ -34,6 +35,8 @@ export interface WaveTweaks {
 	airCut?: number;
 	/** Vehicles the wave must field, each leading its own convoy, whatever the budget. */
 	units?: UnitKind[];
+	/** A boss that joins the wave on top of its budget. */
+	boss?: UnitKind;
 }
 
 export interface WaveOptions {
@@ -136,6 +139,8 @@ export function planWave(
 		orders.push({ t: rng.range(10, Math.max(20, t)), kind: 'fighter', z: 0 });
 	for (let i = 0; i < helis; i++)
 		orders.push({ t: rng.range(6, Math.max(16, t)), kind: 'heli', z: 0 });
+	// The cruiser opens the wave from the river; the tank follows the first convoy.
+	if (tweaks.boss) orders.push({ t: tweaks.boss === 'cruiser' ? 4 : 12, kind: tweaks.boss, z: 0 });
 	orders.sort((a, b) => a.t - b.t);
 
 	const statics: { kind: UnitKind; x: number }[] = [];
@@ -173,10 +178,17 @@ export function planWave(
 export function endlessTweaks(wave: number): WaveTweaks {
 	const late = Math.max(0, wave - 11);
 	return {
+		boss: endlessBoss(wave),
 		budget: 1 + Math.max(0, wave - 6) * 0.07,
 		fighters: late > 0 ? Math.min(4 + Math.floor(late / 3), 7) : undefined,
 		helis: late > 0 ? Math.min(4 + Math.floor(late / 3), 6) : undefined
 	};
+}
+
+/** Every fifth endless wave brings a boss, the tank and the cruiser in turn. */
+export function endlessBoss(wave: number): UnitKind | undefined {
+	if (wave % 5 !== 0) return undefined;
+	return wave % 10 === 5 ? 'superTank' : 'cruiser';
 }
 
 /** Score for beating a wave: grows with the wave and with what is left of the airfield. */
@@ -291,6 +303,10 @@ export class WaveDirector {
 			const x = WORLD.arenaMaxX + 60;
 			const y = o.kind === 'fighter' ? w.rng.range(170, 250) : w.ground(x) + 55;
 			w.air.push(new AirUnit(w.newId(), o.kind, x, y));
+			return;
+		}
+		if (isBossKind(o.kind)) {
+			spawnBoss(w, o.kind);
 			return;
 		}
 		w.spawnUnit(o.kind, WORLD.enemySpawnX + w.rng.range(0, 30), o.z, -1);

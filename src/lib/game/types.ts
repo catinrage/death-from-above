@@ -52,13 +52,27 @@ export type UnitKind =
 	| 'bunker'
 	| 'radar'
 	| 'depot'
-	| 'searchlight';
+	| 'searchlight'
+	| 'superTank'
+	| 'cruiser';
 
 export type WeaponKind =
 	'rifle' | 'mg' | 'autocannon' | 'flak' | 'sam' | 'manpads' | 'cannon' | 'artillery';
 
 export type PartDrive =
-	'yaw' | 'pitch' | 'wheel' | 'spin' | 'legL' | 'legR' | 'armL' | 'armR' | 'rack' | 'aim';
+	| 'yaw'
+	| 'pitch'
+	| 'wheel'
+	| 'spin'
+	| 'legL'
+	| 'legR'
+	| 'armL'
+	| 'armR'
+	| 'rack'
+	| 'aim'
+	/** A boss's secondary mounts, aimed apart from the main gun (`Unit.aux`). */
+	| 'auxYaw'
+	| 'auxPitch';
 
 export interface PartSpec {
 	mesh: MeshName;
@@ -70,7 +84,7 @@ export interface PartSpec {
 	detach?: boolean;
 }
 
-export type DeathStyle = 'ragdoll' | 'flip' | 'turretPop' | 'collapse' | 'blast';
+export type DeathStyle = 'ragdoll' | 'flip' | 'turretPop' | 'collapse' | 'blast' | 'sink';
 
 export interface UnitDef {
 	kind: UnitKind;
@@ -96,6 +110,8 @@ export interface UnitDef {
 	siege: number;
 	/** Supply bonus when destroyed. */
 	supply?: boolean;
+	/** A one-off heavy unit with its own health bar and secondary weapons. */
+	boss?: boolean;
 }
 
 /** Anything a missile can chase or a gunner can aim at. */
@@ -151,6 +167,24 @@ export interface Unit {
 	fall: number;
 	/** Seconds left knocked out by an EMP. */
 	stun: number;
+	/** Bosses only: aim and timers of the secondary weapon mounts. */
+	aux?: AuxMount;
+}
+
+export interface AuxMount {
+	yaw: number;
+	pitch: number;
+	/** Secondary gun: time to the next burst, rounds left in it, gap between rounds. */
+	cooldown: number;
+	burst: number;
+	gap: number;
+	/** A second main mount firing between the first one's rounds. */
+	second: number;
+	/** Radar lock build-up and reload of a boss's missile battery. */
+	lock: number;
+	salvo: number;
+	/** Where the unit is along a scripted route (the cruiser's distance up the river). */
+	route: number;
 }
 
 /** Where a guided weapon should go: a tracked target, or a fixed point on the battlefield. */

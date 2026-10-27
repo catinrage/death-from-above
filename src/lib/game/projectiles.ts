@@ -1,6 +1,6 @@
 import { angleDiff, clamp } from '../engine/math';
 import { fx as rnd } from '../engine/rng';
-import { damageUnit, explode, segmentVsCircle, segmentVsUnit } from './combat';
+import { damageUnit, explode, inBattlePlane, segmentVsCircle, segmentVsUnit } from './combat';
 import { homeOnEmitter } from './arm';
 import { WORLD } from './constants';
 import { BOMBS, type BlastSpec } from './defs-bombs';
@@ -160,7 +160,7 @@ function bulletHitsPlayerSide(w: World, b: Bullet, x0: number, y0: number): bool
 	let best = 2;
 	let unit: Unit | null = null;
 	for (const u of w.units) {
-		if (!u.alive || Math.abs(u.x - b.x) > 30) continue;
+		if (!u.alive || Math.abs(u.x - b.x) > 30 || !inBattlePlane(u)) continue;
 		const t = segmentVsUnit(u, x0, y0, b.x, b.y, 0.25);
 		if (t >= 0 && t < best) {
 			best = t;

@@ -13,6 +13,7 @@ import * as br from './bridge';
 import * as real from './aircraft-real';
 import * as sp from './ordnance-special';
 import * as extra from './aircraft-extra';
+import * as boss from './bosses';
 
 /** City blocks, shared by the building and its lit-window mesh so the panes line up. */
 const BLOCKS = {
@@ -67,6 +68,17 @@ const BUILDERS = {
 	apcGun: [veh.apcGun, true],
 	artilleryCarriage: [veh.artilleryCarriage, true],
 	artilleryBarrel: [veh.artilleryBarrel, true],
+	superTankHull: [boss.superTankHull, true],
+	superTankTurret: [boss.superTankTurret, true],
+	superTankBarrel: [boss.superTankBarrel, true],
+	superTankAA: [boss.superTankAA, true],
+	superTankAAGuns: [boss.superTankAAGuns, true],
+	cruiserHull: [boss.cruiserHull, true],
+	cruiserTurret: [boss.cruiserTurret, true],
+	cruiserGuns: [boss.cruiserGuns, true],
+	cruiserCiws: [boss.cruiserCiws, true],
+	cruiserCiwsGuns: [boss.cruiserCiwsGuns, true],
+	cruiserSam: [boss.cruiserSam, true],
 
 	soldierBody: [() => inf.soldierBody(false), true],
 	soldierBodyAA: [() => inf.soldierBody(true), true],

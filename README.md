@@ -91,12 +91,20 @@ and losing your aircraft doesn't hand you a fresh one.
   launchers with radar lock, howitzers, flak batteries, pillboxes, radar stations, fuel depots
   (chain reactions), searchlights at night, interceptors that dogfight you and gunships that rocket
   the airfield.
+- **Bosses** — each campaign act ends with one, and endless mode sends one every fifth wave, with
+  its own health bar:
+  - **Behemoth**: a super-heavy tank twice a battle tank's length, with a long main gun and a rear
+    AA turret that tracks aircraft. It takes a stack of bombs or a few bunker busters.
+  - **River cruiser**: steams up the river and anchors across it just below the bridge, then fills
+    the sky with twin flak mounts, a close-in gun and radar SAM pairs. It can't be hit until it
+    drops anchor, and sinks onto the river bed when it dies.
 - **Three ways to play** — pick one from the Sortie menu:
   - **Training**: twelve guided lessons, each with its own practice targets, covering steering,
     guns, bombs, ordnance selection, guided missiles, focus, flares, afterburner and airbrake, and
     rearming. You can't be shot down for good, and Enter skips a lesson.
   - **Campaign**: nine missions that get harder as you go, each with its own objectives (drop the
     bridge, kill the tanks, escort your own armour across the river, silence the flak, hunt the SAM sites, clear the sky, hold until dawn).
+    Iron Column ends with the Behemoth and Wild Weasel with the river cruiser.
     Winning one unlocks the next and earns up to three stars (win, airfield above 70%, no aircraft
     lost). Progress and best scores are saved in the browser.
   - **Endless**: waves until you fall, with a budget that grows each wave and more aircraft joining

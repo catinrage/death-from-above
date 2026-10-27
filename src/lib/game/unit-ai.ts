@@ -1,5 +1,6 @@
 import { angleDiff, clamp, damp, dampAngle, moveToward, wrapAngle } from '../engine/math';
 import { fx as rnd } from '../engine/rng';
+import { bossWeapons, bossWreck, sinkWreck, steamCruiser } from './boss';
 import { WORLD } from './constants';
 import { ENEMY_WEAPONS, type EnemyWeapon } from './defs-units';
 import { launchMissile, spawnBullet } from './projectiles';
@@ -46,9 +47,13 @@ export function updateUnits(w: World, dt: number): void {
 			continue;
 		}
 		u.spin += dt * (u.def.kind === 'radar' ? 1.1 : 2.6);
-		move(w, u, dt);
+		// The cruiser holds fire until it has dropped anchor.
+		if (u.def.kind === 'cruiser') {
+			if (!steamCruiser(w, u, dt)) continue;
+		} else move(w, u, dt);
 		if (u.def.kind === 'searchlight') searchlight(w, u, dt);
 		else if (u.def.weapon) engage(w, u, dt);
+		if (u.aux) bossWeapons(w, u, dt);
 	}
 	for (let i = w.units.length - 1; i >= 0; i--) if (w.units[i].remove) w.units.splice(i, 1);
 }
@@ -56,6 +61,7 @@ export function updateUnits(w: World, dt: number): void {
 function siegeLine(u: Unit): number {
 	if (u.def.kind === 'artillery') return WORLD.baseAttackX + 480;
 	if (u.def.kind === 'tank') return WORLD.baseAttackX + 70;
+	if (u.def.kind === 'superTank') return WORLD.baseAttackX + 150;
 	return WORLD.baseAttackX + u.def.half[0] * 2;
 }
 
@@ -466,6 +472,8 @@ function searchlight(w: World, u: Unit, dt: number): void {
 }
 
 export function wreck(w: World, u: Unit, dt: number): void {
+	if (u.def.death === 'sink') return sinkWreck(w, u, dt);
+	if (u.def.boss) bossWreck(w, u, dt);
 	u.deadTime += dt;
 	// Footing gone (a span fell): drop until something holds it up.
 	const rest = w.surface.support(u.x, u.y + 0.5, u.z);

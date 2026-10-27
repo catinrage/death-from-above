@@ -80,6 +80,7 @@ export function killUnit(w: World, u: Unit, fromX: number, cause: DamageCause, b
 	w.events.kill(u.def.name, u.def.score, u.x, u.y + u.def.half[1] * 2 + 3, by);
 	if (u.def.supply) w.events.supply(u.x, u.y + 6);
 	const dir = Math.sign(u.x - fromX) || (w.rng.chance(0.5) ? 1 : -1);
+	if (u.def.boss) bossDeath(w, u);
 	switch (u.def.death) {
 		case 'ragdoll':
 			return ragdoll(w, u, dir, cause);
@@ -91,7 +92,36 @@ export function killUnit(w: World, u: Unit, fromX: number, cause: DamageCause, b
 			return blast(w, u);
 		case 'collapse':
 			return collapse(w, u);
+		case 'sink':
+			return sink(w, u, dir);
 	}
+}
+
+/** A boss going down: the world slows to watch, and its magazines go up along its length. */
+function bossDeath(w: World, u: Unit): void {
+	w.events.slowmo(0.3, 1.1);
+	w.fx.flash(1.4);
+	const len = u.def.half[0];
+	for (let i = 0; i < 4; i++) {
+		const along = (i / 3 - 0.5) * 1.4 * len;
+		const x = u.x + Math.cos(u.yaw) * along,
+			z = u.z - Math.sin(u.yaw) * along;
+		w.fx.explosion(x, u.y + u.def.half[1] * w.rng.range(1, 2.2), z, 1.6, false);
+	}
+	w.fx.shake(u.x, u.y, 1);
+	w.events.message(`${u.def.name.toUpperCase()} DESTROYED`, '', 'good');
+}
+
+/** The cruiser: its radar mast topples, fires break out on deck and it starts to settle. */
+function sink(w: World, u: Unit, dir: number): void {
+	turretPop(w, u, dir);
+	const level = w.surface.water(u.x, u.z);
+	for (let i = 0; i < 5; i++) {
+		const along = w.rng.range(-0.9, 0.9) * u.def.half[0];
+		w.fx.water.column(u.x + Math.cos(u.yaw) * along, level, u.z - Math.sin(u.yaw) * along, 1.2);
+	}
+	w.fires.add(u.x + u.def.half[0] * 0.4, u.y + 3.2, u.z, 2, w.rng.range(25, 35), { radius: 3 });
+	w.sound.play('splash', u.x, level, 2);
 }
 
 /** A unit whose footing gave way: it tumbles off whole instead of exploding. */

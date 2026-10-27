@@ -1,6 +1,6 @@
 import { angleDiff, clamp, moveToward, wrapAngle } from '../engine/math';
 import { fx as rnd } from '../engine/rng';
-import { explode } from './combat';
+import { explode, inBattlePlane } from './combat';
 import { WORLD } from './constants';
 import type { BlastSpec } from './defs-bombs';
 import type { AirUnit } from './enemy-air';
@@ -37,6 +37,7 @@ const TURN_RATE = 1.9;
 /** Air defences the wingman hunts on a "hit the SAMs" order, most dangerous first. */
 const AIR_DEFENCE: Partial<Record<UnitKind, number>> = {
 	sam: 0.45,
+	cruiser: 0.5,
 	radar: 0.6,
 	spaag: 0.75,
 	flak: 0.8,
@@ -175,7 +176,7 @@ export class Wingman implements Trackable {
 		let bestScore = Infinity;
 		for (const u of w.units) {
 			const weight = AIR_DEFENCE[u.def.kind];
-			if (!u.alive || weight === undefined) continue;
+			if (!u.alive || weight === undefined || !inBattlePlane(u)) continue;
 			if (u.x < WORLD.arenaMinX || u.x > WORLD.arenaMaxX) continue;
 			const score = Math.abs(u.x - this.x) * weight;
 			if (score < bestScore) {
