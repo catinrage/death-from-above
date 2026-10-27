@@ -1,5 +1,6 @@
 import { AIRCRAFT_ORDER } from '../game/defs-aircraft';
 import { sanitize, type Loadout } from '../game/loadout';
+import { extraPayload, loadProgression } from '../game/progression';
 import type { AircraftId } from '../game/types';
 
 export type QualityLevel = 'low' | 'medium' | 'high';
@@ -67,9 +68,11 @@ export function readBestScore(): number {
 function readLoadouts(raw: unknown): Partial<Record<AircraftId, Loadout>> {
 	if (!raw || typeof raw !== 'object') return {};
 	const out: Partial<Record<AircraftId, Loadout>> = {};
+	// Upgraded racks hold more than stock, so check against what this pilot has bought.
+	const prog = loadProgression();
 	for (const id of AIRCRAFT) {
 		const v = (raw as Record<string, unknown>)[id];
-		if (v !== undefined) out[id] = sanitize(id, v);
+		if (v !== undefined) out[id] = sanitize(id, v, extraPayload(prog, id));
 	}
 	return out;
 }

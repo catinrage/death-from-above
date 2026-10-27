@@ -42,6 +42,31 @@ test('remembers the chosen aircraft and its custom loadout', async ({ page }) =>
 	).toHaveText('9');
 });
 
+test('spends credits in the hangar on an aircraft and an upgrade', async ({ page }) => {
+	await openTitle(page);
+	await page.evaluate(() =>
+		localStorage.setItem(
+			'dfa.progression',
+			JSON.stringify({ credits: 2500, earned: 2500, owned: ['kestrel', 'grizzly'], upgrades: {} })
+		)
+	);
+	await page.reload();
+	await page.getByRole('button', { name: /hangar/i }).click({ timeout: 90_000 });
+	await page.getByRole('button', { name: /a-10c|warthog/i }).click();
+	await expect(page.getByRole('button', { name: 'Take off' })).toHaveCount(0);
+	await page.getByRole('button', { name: /^buy/i }).click();
+	await expect(page.getByRole('button', { name: /take off/i })).toBeVisible();
+	await page.getByRole('button', { name: /buy armour plating/i }).click();
+	await expect(page.getByLabel('Level 1 of 3').first()).toBeVisible();
+	await page.reload();
+	await page.getByRole('button', { name: /hangar/i }).click({ timeout: 90_000 });
+	await expect(page.getByRole('button', { name: /a-10c|warthog/i })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
+	await expect(page.locator('.wallet')).toContainText(String(2500 - 1800 - 300));
+});
+
 test('flies a sortie: HUD, bombing and pause menu', async ({ page }) => {
 	const errors = await openTitle(page);
 	await page.getByRole('button', { name: /sortie/i }).click();

@@ -9,6 +9,8 @@
 		settings: Settings;
 		loadout: Loadout;
 		best: number;
+		/** Credits to spend in the hangar. */
+		credits: number;
 		onSortie: () => void;
 		onHangar: () => void;
 		onQuality: (q: QualityLevel) => void;
@@ -21,6 +23,7 @@
 		settings,
 		loadout,
 		best,
+		credits,
 		onSortie,
 		onHangar,
 		onQuality,
@@ -71,6 +74,7 @@
 		<button class="ride" onclick={onHangar}>
 			<span class="ride-head">
 				<span class="ride-label">Hangar</span>
+				{#if credits > 0}<span class="cr">{credits.toLocaleString()} cr</span>{/if}
 				<small>H</small>
 			</span>
 			<strong>{selected.name}</strong>
@@ -263,6 +267,13 @@
 		letter-spacing: 0.3em;
 		text-transform: uppercase;
 		color: var(--amber);
+	}
+
+	.ride-head .cr {
+		margin-left: auto;
+		margin-right: 12px;
+		letter-spacing: 0.12em;
+		color: var(--good);
 	}
 
 	.ride-head small {

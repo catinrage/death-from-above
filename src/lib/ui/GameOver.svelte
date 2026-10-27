@@ -103,6 +103,21 @@
 				{/if}
 			</div>
 		{/if}
+		{#if stats.credits}
+			<div class="credits">
+				<p class="earned">
+					<strong>+{stats.credits.total.toLocaleString()}</strong> credits
+					<span>· {stats.credits.balance.toLocaleString()} in the hangar</span>
+				</p>
+				{#if stats.credits.lines.length > 1}
+					<ul>
+						{#each stats.credits.lines as l (l.label)}
+							<li><span>{l.label}</span> <b>+{l.amount.toLocaleString()}</b></li>
+						{/each}
+					</ul>
+				{/if}
+			</div>
+		{/if}
 		<dl>
 			<div>
 				<dt>{stats.mode === 'tutorial' ? 'Lessons' : 'Wave reached'}</dt>
@@ -279,6 +294,51 @@
 
 	.score em.dim {
 		color: var(--ink-faint);
+	}
+
+	.credits {
+		display: grid;
+		justify-items: center;
+		gap: 4px;
+		margin-top: 10px;
+	}
+
+	.earned {
+		margin: 0;
+		font-size: 14px;
+		letter-spacing: 0.2em;
+		text-transform: uppercase;
+		color: var(--ink-dim);
+	}
+
+	.earned strong {
+		font-family: var(--display);
+		font-size: 24px;
+		letter-spacing: 0.06em;
+		color: var(--good);
+	}
+
+	.earned span {
+		color: var(--ink-faint);
+	}
+
+	.credits ul {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 4px 18px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		font-size: 12px;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--ink-faint);
+	}
+
+	.credits b {
+		font-weight: 600;
+		color: var(--ink-dim);
 	}
 
 	dl {

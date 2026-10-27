@@ -70,6 +70,10 @@ and losing your aircraft doesn't hand you a fresh one.
   Viper, Su-25 Frogfoot, F-4E Phantom II and B-1B Lancer. Each has its own handling, boost effect
   (afterburner, rocket bottles, stealth plasma or water-injection smoke) and weapons it can mount;
   trade payload points between them in the loadout editor. Choices are saved per aircraft.
+- **Credits and upgrades** — campaign missions (more for later missions and for stars you haven't
+  earned before) and endless runs (score and waves held) pay credits. Spend them in the hangar to
+  buy aircraft (the Kestrel and Grizzly are free) and to upgrade each airframe's armour, engine,
+  payload racks, flares, guns and missile rails, three levels each.
 - **Ordnance** — GP bombs that regenerate, cluster bombs, napalm, a bunker buster, a laser-guided
   bomb, chemical canisters (drifting gas that kills infantry), an EMP airburst (stalls vehicles,
   drops helicopters, blinds missiles), terrain-hugging cruise missiles, a ballistic missile that

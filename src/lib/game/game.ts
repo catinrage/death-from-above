@@ -35,6 +35,7 @@ import { endlessTweaks, planWave, waveBonus, WaveDirector } from './waves';
 import {
 	loadProgress,
 	missionById,
+	MISSIONS,
 	MissionTracker,
 	nextMission,
 	recordMission,
@@ -48,6 +49,15 @@ import { placeRun, readBest, readBoard, saveBoard, writeBest, writeTrained } fro
 import { predictImpact } from './weapons';
 import { simulateWorld } from './simulate';
 import type { Loadout } from './loadout';
+import {
+	endlessCredits,
+	grant,
+	loadOrMigrate,
+	missionCredits,
+	saveProgression,
+	type CreditAward,
+	type UpgradeLevels
+} from './progression';
 import { cockpitAlerts, incomingThreats, lockThreat, missileThreat } from './warnings';
 import { RESOLVE } from './projectiles';
 import { SHOAL } from './river';
@@ -89,6 +99,9 @@ export class Game {
 	/** Airframe and rack actually flown this sortie (training overrides the hangar). */
 	private flying: AircraftId = 'kestrel';
 	private flyingLoadout: Loadout | undefined;
+	/** Hangar upgrades on the chosen aircraft (the trainer flies stock). */
+	private upgrades: UpgradeLevels | undefined;
+	private flyingUpgrades: UpgradeLevels | undefined;
 	private aircraftLost = 0;
 	private wavesScored = 0;
 	private escortsScored = 0;
@@ -365,7 +378,7 @@ export class Game {
 		this.killCam.reset();
 		this.targeting.clear();
 		w.godMode = true;
-		w.player = new Player(this.aircraft, 520, w.ground(520) + 80, 0, this.loadout);
+		w.player = new Player(this.aircraft, 520, w.ground(520) + 80, 0, this.loadout, this.upgrades);
 		w.player.invuln = 0;
 		this.spawnDemoConvoy(760);
 		w.camera.interest = null;
@@ -393,21 +406,28 @@ export class Game {
 	}
 
 	/** Shows the chosen aircraft (and its loadout) flying behind the menus. */
-	preview(aircraft: AircraftId, loadout?: Loadout): void {
+	preview(aircraft: AircraftId, loadout?: Loadout, upgrades?: UpgradeLevels): void {
 		this.aircraft = aircraft;
 		this.loadout = loadout;
+		this.upgrades = upgrades;
 		const p = this.world.player;
 		if (this.phase !== 'title' || !p) return;
-		const np = new Player(aircraft, p.x, p.y, p.angle, loadout);
+		const np = new Player(aircraft, p.x, p.y, p.angle, loadout, upgrades);
 		np.vx = p.vx;
 		np.vy = p.vy;
 		np.invuln = 0;
 		this.world.player = np;
 	}
 
-	newGame(aircraft: AircraftId, loadout?: Loadout, start: ModeStart = { mode: 'endless' }): void {
+	newGame(
+		aircraft: AircraftId,
+		loadout?: Loadout,
+		start: ModeStart = { mode: 'endless' },
+		upgrades?: UpgradeLevels
+	): void {
 		this.aircraft = aircraft;
 		this.loadout = loadout;
+		this.upgrades = upgrades;
 		const flown = start.mode === 'campaign' ? (missionById(start.mission) ?? null) : null;
 		const strike = start.mode === 'campaign' && flown && canStrike(flown.id) ? start.strike : null;
 		const mission = flown && withStrike(flown, strike);
@@ -417,6 +437,7 @@ export class Game {
 		this.tutorial = this.mode === 'tutorial' ? new Tutorial() : null;
 		this.flying = this.mode === 'tutorial' ? TRAINER : aircraft;
 		this.flyingLoadout = this.mode === 'tutorial' ? undefined : loadout;
+		this.flyingUpgrades = this.mode === 'tutorial' ? undefined : upgrades;
 		this.aircraftLost = 0;
 		this.wavesScored = 0;
 		this.escortsScored = 0;
@@ -515,7 +536,14 @@ export class Game {
 		const w = this.world;
 		const x = WORLD.runwayMinX + 40;
 		const lost = w.player;
-		w.player = new Player(this.flying, x, w.ground(x) + 45, 0.08, this.flyingLoadout);
+		w.player = new Player(
+			this.flying,
+			x,
+			w.ground(x) + 45,
+			0.08,
+			this.flyingLoadout,
+			this.flyingUpgrades
+		);
 		// A spent nuke stays spent: a replacement aircraft doesn't bring a new one this wave.
 		if (lost) w.player.ammo.nuke = Math.min(w.player.ammo.nuke, lost.ammo.nuke);
 		w.camera.interest = null;
@@ -799,6 +827,13 @@ export class Game {
 
 	/** Endless scores go on the leaderboard; campaign and training results are saved. */
 	private result(outcome: 'failed' | 'complete', reason: string): GameOverStats {
+		// Read (and migrate) the wallet before campaign progress changes below.
+		const wallet = loadOrMigrate(this.aircraft);
+		const pay = (award: CreditAward): GameOverStats['credits'] => {
+			const next = grant(wallet, award.total);
+			saveProgression(next);
+			return { ...award, balance: next.credits };
+		};
 		const base = {
 			mode: this.mode,
 			outcome,
@@ -825,7 +860,8 @@ export class Game {
 				date: Date.now()
 			});
 			if (rank > 0) saveBoard(board);
-			return { ...base, best: Math.max(best, this.score), newBest, rank };
+			const credits = pay(endlessCredits({ score: this.score, wavesCleared: this.waves.cleared }));
+			return { ...base, best: Math.max(best, this.score), newBest, rank, credits };
 		}
 		if (this.mode === 'tutorial' && outcome === 'complete') writeTrained();
 		const m = this.mission;
@@ -835,9 +871,19 @@ export class Game {
 		const baseFrac = this.world.base.hp / this.world.base.maxHp;
 		const stars = starsFor(baseFrac, this.aircraftLost);
 		const next = nextMission(m.id);
+		const credits = pay(
+			missionCredits({
+				index: MISSIONS.findIndex((x) => x.id === m.id),
+				won: outcome === 'complete',
+				score: this.score,
+				stars,
+				prevStars: progress[m.id]?.stars ?? 0
+			})
+		);
 		if (outcome === 'complete') saveProgress(recordMission(progress, m.id, stars, this.score));
 		return {
 			...base,
+			credits,
 			missionId: m.id,
 			best: Math.max(prevBest, outcome === 'complete' ? this.score : 0),
 			newBest: outcome === 'complete' && this.score > prevBest,
