@@ -76,7 +76,7 @@ describe('mission objectives', () => {
 							m.waves.tweaks?.(wave) ?? {},
 							wave === 1 ? (m.waves.statics ?? []) : []
 						);
-						n += plan.orders.filter((s) => o.kinds.includes(s.kind)).length;
+						n += plan.orders.filter((s) => (o.kinds as string[]).includes(s.kind)).length;
 						n += plan.statics.filter((s) => o.kinds.includes(s.kind)).length;
 					}
 					expect(n, `${m.id}: ${o.label}, seed ${seed}`).toBeGreaterThanOrEqual(o.count);

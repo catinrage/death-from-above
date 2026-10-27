@@ -69,6 +69,7 @@ export class SceneView {
 		this.props(w, nearMin, nearMax);
 		this.base(w, time);
 		this.bridge(w, nearMin, nearMax);
+		this.railway(w, nearMin, nearMax);
 		this.units(w, nearMin - 30, nearMax + 30);
 		this.units(w, nearMin - 30, nearMax + 30, w.allies.list, true);
 		this.troops(w);
@@ -217,6 +218,48 @@ export class SceneView {
 				mat4.scale(m, m, 1, drop, 1);
 				this.models.pontoonTrestle.push(m, style);
 			}
+		}
+	}
+
+	private railway(w: World, minX: number, maxX: number): void {
+		const r = w.railway;
+		if (!r) return;
+		const line = r.line;
+		const m = this.m;
+		const x0 = Math.max(minX - 40, line.start);
+		// Plain track in 4 m lengths, skipping torn-up stretches and the viaduct (its spans carry their own).
+		for (let x = Math.floor(x0 / 4) * 4 + 2; x < maxX + 40; x += 4) {
+			if (x < line.start + 2 || line.onViaduct(x - 2) || line.onViaduct(x + 2)) continue;
+			if (r.cuts.some((c) => x + 2 > c.x0 && x - 2 < c.x1)) continue;
+			mat4.fromTranslation(m, x, line.formation(x), line.z);
+			mat4.rotateZ(m, m, line.slope(x));
+			this.models.railTrack.push(m, this.style());
+		}
+		if (line.start > minX - 60 && line.start < maxX + 60) {
+			mat4.fromTranslation(m, line.start, line.formation(line.start), line.z);
+			this.models.bufferStop.push(m, this.style());
+		}
+		const b = w.railBridge;
+		if (!b || b.east < minX - 200 || b.west > maxX + 200) return;
+		for (const s of b.spans) {
+			if (s.down) continue;
+			mat4.fromTranslation(m, (s.x0 + s.x1) / 2, b.deckY, b.z);
+			const wear = b.wear(s);
+			this.models.railSpan.push(
+				m,
+				this.style(wear * 0.7, s.flash * 0.25, 0, 1, 1, wear > 0.6 ? 0.3 : 0)
+			);
+		}
+		for (const x of b.piers) {
+			mat4.fromTranslation(m, x, b.deckY - 2.6, b.z);
+			this.models.railPier.push(m, this.style());
+		}
+		for (const [x, dir] of [
+			[b.west, -1],
+			[b.east, 1]
+		] as const) {
+			mat4.fromTranslation(m, x + dir * 2.9, b.deckY, b.z);
+			this.models.railAbutment.push(m, this.style());
 		}
 	}
 

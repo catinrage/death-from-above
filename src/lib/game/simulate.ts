@@ -17,6 +17,7 @@ export function simulateWorld(w: World, dt: number, input: PilotInput | null): v
 	w.time += dt;
 	const p = w.player;
 	if (p && input) p.update(dt, input, w);
+	w.railway?.update(w, dt);
 	updateUnits(w, dt);
 	updateAir(w, dt);
 	updateWingman(w, dt);
@@ -30,6 +31,7 @@ export function simulateWorld(w: World, dt: number, input: PilotInput | null): v
 	applyFireDamage(w, dt);
 	w.base.update(w, dt);
 	w.bridge?.update(w, dt);
+	w.railBridge?.update(w, dt);
 	w.debris.update(dt, w.surface, w.fx);
 	w.fires.update(dt);
 	w.props.update(dt);

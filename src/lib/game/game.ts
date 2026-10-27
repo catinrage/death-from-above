@@ -47,6 +47,7 @@ import { canStrike, STRIKES, withStrike } from './campaign-map';
 import { Tutorial } from './tutorial';
 import { placeRun, readBest, readBoard, saveBoard, writeBest, writeTrained } from './records';
 import { predictImpact } from './weapons';
+import { trainConsist } from './railway';
 import { simulateWorld } from './simulate';
 import type { Loadout } from './loadout';
 import { cockpitAlerts, incomingThreats, lockThreat, missileThreat } from './warnings';
@@ -387,6 +388,10 @@ export class Game {
 		let x = startX;
 		for (const o of plan.orders) {
 			if (o.kind === 'fighter' || o.kind === 'heli') continue;
+			if (o.kind === 'train') {
+				w.railway?.spawnTrain(w, trainConsist(4), x + 90);
+				continue;
+			}
 			w.spawnUnit(o.kind, x, o.z, -1);
 			x += rnd.range(10, 30);
 			if (x > WORLD.enemySpawnX - 50) break;

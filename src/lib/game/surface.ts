@@ -1,5 +1,4 @@
 import type { Bridge } from './bridge';
-import { DECK_THICK } from './bridge';
 import type { DebrisGround } from './debris';
 import type { River } from './river';
 import type { Terrain } from './terrain';
@@ -17,8 +16,17 @@ export class Surface implements DebrisGround {
 	constructor(
 		readonly terrain: Terrain,
 		readonly river: River | null,
-		readonly bridge: Bridge | null
+		readonly bridge: Bridge | null,
+		/** The rail viaduct behind the road. */
+		readonly railBridge: Bridge | null = null
 	) {}
+
+	/** The bridge whose intact deck is over (x, z), if any. */
+	private deck(x: number, z: number): Bridge | null {
+		if (this.bridge?.deckAt(x, z) != null) return this.bridge;
+		if (this.railBridge?.deckAt(x, z) != null) return this.railBridge;
+		return null;
+	}
 
 	water(x: number, z: number): number {
 		return this.river ? this.river.waterAt(x, z) : -Infinity;
@@ -32,17 +40,17 @@ export class Surface implements DebrisGround {
 	/** What something at (x, y, z) rests on: terrain, or the deck if it is up there. */
 	support(x: number, y: number, z: number): number {
 		const g = this.terrain.heightAtXZ(x, z);
-		const deck = this.bridge?.deckAt(x, z);
-		return deck != null && y > deck - DECK_THICK ? Math.max(g, deck) : g;
+		const deck = this.deck(x, z);
+		return deck && y > deck.deckY - deck.spec.below ? Math.max(g, deck.deckY) : g;
 	}
 
 	/** Surface a falling point at (x, y, z) would hit; sets `kind`. */
 	under(x: number, y: number, z: number): number {
 		const g = this.terrain.heightAtXZ(x, z);
-		const deck = this.bridge?.deckAt(x, z);
-		if (deck != null && y > deck - DECK_THICK && deck > g) {
+		const deck = this.deck(x, z);
+		if (deck && y > deck.deckY - deck.spec.below && deck.deckY > g) {
 			this.kind = 'deck';
-			return deck;
+			return deck.deckY;
 		}
 		const wl = this.water(x, z);
 		this.kind = wl > g ? 'water' : 'ground';

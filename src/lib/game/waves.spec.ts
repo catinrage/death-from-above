@@ -5,7 +5,7 @@ import type { UnitKind } from './types';
 import { endlessTweaks, planWave, waveBonus, WaveDirector } from './waves';
 
 const ground = (kinds: string[]): UnitKind[] =>
-	kinds.filter((k) => k !== 'fighter' && k !== 'heli') as UnitKind[];
+	kinds.filter((k) => k !== 'fighter' && k !== 'heli' && k !== 'train') as UnitKind[];
 
 describe('planWave', () => {
 	it('only fields units unlocked for the wave', () => {

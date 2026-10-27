@@ -8,9 +8,11 @@ import { UNITS } from './defs-units';
 import { Effects } from './effects';
 import { FireSystem } from './fires';
 import { Props } from './props';
-import { Bridge } from './bridge';
+import { Bridge, roadBridgeSpec } from './bridge';
 import { BIOMES, type Biome, type BiomeId } from './biomes';
 import { Civilians } from './civilians';
+import { RAIL, type RailLine } from './rail';
+import { Railway, railBridgeSpec } from './railway';
 import { RIVER, type River } from './river';
 import { GasClouds } from './gas';
 import type { Strike } from './specials';
@@ -98,7 +100,11 @@ export class World {
 	readonly terrain: Terrain;
 	readonly river: River | null;
 	readonly bridge: Bridge | null;
-	/** Terrain, water and bridge deck combined. */
+	/** The railway behind the road, its viaduct over the river and the trains on it. */
+	readonly rail: RailLine | null;
+	readonly railBridge: Bridge | null;
+	readonly railway: Railway | null;
+	/** Terrain, water and bridge decks combined. */
 	readonly surface: Surface;
 	readonly particles = new ParticleSystem(16000);
 	readonly lights = new LightSystem();
@@ -155,13 +161,17 @@ export class World {
 	constructor(seed = 2024, biome: BiomeId = 'temperate') {
 		this.rng = new Rng(seed);
 		this.biome = BIOMES[biome];
-		this.terrain = new Terrain(seed, undefined, undefined, RIVER, this.biome.shape);
+		this.terrain = new Terrain(seed, undefined, undefined, RIVER, this.biome.shape, RAIL);
 		this.river = this.terrain.river;
-		this.bridge = this.river ? new Bridge(this.river) : null;
-		this.surface = new Surface(this.terrain, this.river, this.bridge);
+		this.bridge = this.river ? new Bridge(roadBridgeSpec(this.river)) : null;
+		this.rail = this.terrain.rail;
+		const viaduct = this.rail && this.river ? railBridgeSpec(this.rail, this.river) : null;
+		this.railBridge = viaduct ? new Bridge(viaduct) : null;
+		this.railway = this.rail ? new Railway(this.rail, this.railBridge) : null;
+		this.surface = new Surface(this.terrain, this.river, this.bridge, this.railBridge);
 		this.fx = new Effects(this.particles, this.lights, this.camera, this.surface);
 		this.fires = new FireSystem(this.fx, this.lights, this.terrain);
-		this.props = new Props(this.terrain, seed + 7, this.river, this.biome.flora);
+		this.props = new Props(this.terrain, seed + 7, this.river, this.biome.flora, this.rail);
 	}
 
 	/**
@@ -247,6 +257,7 @@ export class World {
 		this.clearCombat();
 		this.terrain.reset();
 		this.bridge?.rebuild(this);
+		this.railBridge?.rebuild(this);
 		this.props.reset();
 		this.civilians.populate(this);
 		this.base.reset();
@@ -259,6 +270,7 @@ export class World {
 
 	clearCombat(): void {
 		this.units.length = 0;
+		this.railway?.reset();
 		this.air.length = 0;
 		this.bombs.length = 0;
 		this.bullets.length = 0;

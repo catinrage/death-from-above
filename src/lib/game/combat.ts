@@ -7,18 +7,23 @@ export type DamageCause = 'bullet' | 'blast' | 'fire';
 
 /**
  * Whether a unit reaches the battle line, where bombs and bullets fly. Things
- * far off it (the cruiser still coming down the river) are out of reach.
+ * far off it (the cruiser still coming down the river) are out of reach. The
+ * railway runs well behind the road but combat treats it side-on: trains count.
  */
 export function inBattlePlane(u: Unit): boolean {
-	return Math.abs(u.z) - u.def.half[2] < 20;
+	return !!u.def.rail || Math.abs(u.z) - u.def.half[2] < 20;
 }
 
-/** Distance from a point to a unit's hitbox. Depth (z) is de-emphasised: combat is side-on. */
+/**
+ * Distance from a point to a unit's hitbox. Depth (z) is de-emphasised:
+ * combat is side-on. Trains run on their own line behind the road, where
+ * depth is ignored altogether so a bomb on top of a wagon counts as a hit.
+ */
 export function distToUnit(u: Unit, x: number, y: number, z: number): number {
 	const [hx, hy, hz] = u.def.half;
 	const dx = Math.max(Math.abs(x - u.x) - hx, 0);
 	const dy = Math.max(Math.abs(y - (u.y + hy)) - hy, 0);
-	const dz = Math.max(Math.abs(z - u.z) - hz, 0) * 0.35;
+	const dz = u.def.rail ? 0 : Math.max(Math.abs(z - u.z) - hz, 0) * 0.35;
 	return Math.hypot(dx, dy, dz);
 }
 
@@ -209,6 +214,8 @@ export function explode(
 	w.civilians.blast(w, x, y, z, r, b.damage, by);
 
 	w.bridge?.blast(w, x, y, z, r, b.damage, b.pierce, by);
+	w.railBridge?.blast(w, x, y, z, r, b.damage, b.pierce, by);
+	w.railway?.blast(w, x, y, r, b.damage, b.pierce, by);
 	w.troops.blast(x, y, r, b.damage * 0.6);
 	w.allies.blast(x, y, r, b.damage, b.pierce);
 	w.debris.impulse(x, y, z, r * 1.5, 16 * Math.sqrt(b.size));

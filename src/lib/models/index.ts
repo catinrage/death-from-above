@@ -10,6 +10,7 @@ import * as st from './structures';
 import * as nat from './nature';
 import * as ord from './ordnance';
 import * as br from './bridge';
+import * as rail from './rail';
 import * as real from './aircraft-real';
 import * as sp from './ordnance-special';
 import * as extra from './aircraft-extra';
@@ -134,6 +135,17 @@ const BUILDERS = {
 	pontoonSection: [br.pontoonSection, true],
 	pontoonTrestle: [br.pontoonTrestle, true],
 	pontoonBoat: [br.pontoonBoat, true],
+	railTrack: [() => rail.railTrack(4), true],
+	railPiece: [rail.railPiece, true],
+	railWheel: [rail.railWheel, true],
+	locoBody: [rail.locoBody, true],
+	wagonBody: [rail.wagonBody, true],
+	boxcarBody: [rail.boxcarBody, true],
+	railSpan: [() => rail.railSpan(30), true],
+	railPier: [rail.railPier, true],
+	railAbutment: [rail.railAbutment, true],
+	railDeckHalf: [rail.railDeckHalf, true],
+	bufferStop: [rail.bufferStop, true],
 
 	pine0: [() => nat.pine(1), true],
 	pine1: [() => nat.pine(2), true],
