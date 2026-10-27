@@ -46,6 +46,8 @@ export interface Train {
 	x: number;
 	speed: number;
 	state: 'run' | 'derailed' | 'siege';
+	/** A firing position to pull up at short of the railhead (the railway gun). */
+	halt?: number;
 }
 
 /** The viaduct carrying the line over the river, if it crosses one. */
@@ -239,6 +241,12 @@ export class Railway {
 			const room = nose - brk.at;
 			// Braking curve that stops the nose a couple of metres short.
 			if (room < SIGHT) want = Math.min(want, Math.sqrt(2 * BRAKE * Math.max(0, room - 2)));
+		}
+		// Pulling up at a firing position: no siege, the gun works from there.
+		const halt = t.halt !== undefined && (!brk || brk.at < t.halt) ? t.halt : null;
+		if (halt !== null) {
+			want = Math.min(want, Math.sqrt(2 * BRAKE * Math.max(0, nose - halt)));
+			if (nose - halt < 0.3 && t.speed < 0.3) want = 0;
 		}
 		if (!powered) t.speed = Math.max(0, t.speed - COAST * dt);
 		else if (want > t.speed) t.speed = Math.min(want, t.speed + ACCEL * dt);
