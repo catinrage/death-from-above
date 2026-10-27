@@ -136,7 +136,7 @@ const LESSONS: Lesson[] = [
 	},
 	{
 		title: 'Flares',
-		text: 'A missile trooper is up ahead. Fly toward him and wait for the MISSILE warning, then press F when it reads FLARES NOW. Flares fired too early burn out and the seeker finds you again.',
+		text: 'A missile trooper is up ahead. Fly toward him and wait for the MISSILE warning, then press F when it reads FLARES NOW. Flares fired too early burn out and the seeker finds you again. Out of flares? Break hard across its path just before it reaches you: a nimble jet can make it overshoot.',
 		keys: ['F'],
 		pad: 'B',
 		targets: [['manpads', 20]],
