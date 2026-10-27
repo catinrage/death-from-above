@@ -1,10 +1,16 @@
 /** World layout in metres. +X runs from the friendly airbase toward the enemy, +Z toward the camera. */
 export const WORLD = {
-	terrainMinX: -1000,
-	terrainMaxX: 4700,
+	/**
+	 * Generated landscape. It reaches well past where the aircraft can go so the
+	 * widest camera never sees its edge (the camera sees ~1 km to each side).
+	 */
+	terrainMinX: -1800,
+	terrainMaxX: 5450,
 	/** Area the player may fly in before boundary warnings. */
 	arenaMinX: -260,
 	arenaMaxX: 3880,
+	/** Metres past the arena at which the aircraft turns itself back. */
+	arenaTurnback: 220,
 	/** Friendly airbase occupies [baseMinX, baseMaxX]. */
 	baseMinX: -80,
 	baseMaxX: 495,
