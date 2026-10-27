@@ -28,6 +28,7 @@ export type UnitKind =
 	| 'manpads'
 	| 'jeep'
 	| 'truck'
+	| 'engineer'
 	| 'tank'
 	| 'apc'
 	| 'spaag'

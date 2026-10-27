@@ -236,6 +236,31 @@ export function truck(): Float32Array {
 	return b.build();
 }
 
+/** Bridging truck: cab, flatbed stacked with folded pontoon sections, and a loading crane. */
+export function engineerTruck(): Float32Array {
+	const b = new MeshBuilder();
+	b.box(6.8, 0.3, 1.0, P.armyDark, -0.3, 0.75, 0);
+	b.push().translate(2.3, 0.9, 0).taper(1.9, 2.3, 1.6, 2.2, 1.45, P.army, -0.1).pop();
+	b.box(1.1, 0.78, 1.9, P.army, 3.65, 1.28, 0);
+	b.box(0.05, 0.5, 1.8, P.glass, 3.1, 1.98, 0);
+	b.box(0.08, 0.5, 1.7, P.armyDark, 4.22, 1.2, 0);
+	b.box(4.6, 0.18, 2.4, P.armyDark, -1.3, 1.08, 0);
+	// Folded sections, each a shallow pontoon box with a darker deck plate.
+	for (let k = 0; k < 3; k++) {
+		const y = 1.42 + k * 0.5;
+		b.box(4.2 - k * 0.2, 0.42, 2.3, k % 2 ? P.armyLight : P.army, -1.4, y, 0);
+		b.box(4.0 - k * 0.2, 0.05, 2.0, P.gunMetal, -1.4, y + 0.23, 0);
+	}
+	// Crane post behind the cab with its jib folded back over the load.
+	b.box(0.3, 1.6, 0.3, P.armyDark, 1.1, 2.0, -0.85);
+	b.push().translate(-0.4, 2.85, -0.85).rotateZ(-0.12);
+	b.box(3.2, 0.2, 0.2, P.armyDark);
+	b.pop();
+	b.box(0.22, 0.22, 0.22, P.lamp, 4.22, 1.35, 0.75);
+	b.box(0.22, 0.22, 0.22, P.lamp, 4.22, 1.35, -0.75);
+	return b.build();
+}
+
 export function jeepBody(): Float32Array {
 	const b = new MeshBuilder();
 	b.extrude(
