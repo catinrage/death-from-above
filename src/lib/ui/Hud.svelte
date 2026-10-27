@@ -35,10 +35,12 @@
 
 	<section class="wave">
 		<div class="wave-line">
-			<span class="wn">WAVE {hud.wave}</span>
+			<span class="wn">{hud.waveLabel}</span>
 			<span class="sep"></span>
-			<span class="en">{hud.enemies} hostile{hud.enemies === 1 ? '' : 's'}</span>
-			<span class="sep"></span>
+			{#if hud.mode !== 'tutorial'}
+				<span class="en">{hud.enemies} hostile{hud.enemies === 1 ? '' : 's'}</span>
+				<span class="sep"></span>
+			{/if}
 			<span class="tod">{hud.timeOfDay}</span>
 		</div>
 		<div class="base" class:alert={hud.baseUnderAttack}>
@@ -60,6 +62,52 @@
 		{/each}
 		<span class="fps">{hud.fps} fps</span>
 	</section>
+
+	{#if hud.tutorial}
+		{@const t = hud.tutorial}
+		<section class="coach" class:passed={t.passed} aria-live="polite">
+			<header>
+				<span class="step">Lesson {t.step}/{t.total}</span>
+				<span class="dots">
+					{#each Array.from({ length: t.total }, (_, k) => k) as k (k)}
+						<i
+							class:done={k < t.step - 1 || (k === t.step - 1 && t.passed)}
+							class:now={k === t.step - 1}
+						></i>
+					{/each}
+				</span>
+			</header>
+			{#key t.step}
+				<div class="lesson" in:fly={{ x: 20, duration: 260 }}>
+					<h4>{t.passed ? 'Done' : t.title}</h4>
+					<p>{t.text}</p>
+					<div class="keys">
+						{#each t.keys as k (k)}<kbd>{k}</kbd>{/each}
+						<span class="pad">{t.pad}</span>
+					</div>
+				</div>
+			{/key}
+			{#if t.manual}
+				<div class="next">Press <kbd>Enter</kbd> to continue</div>
+			{:else}
+				<div class="bar"><span style:transform="scaleX({t.progress})"></span></div>
+				<div class="skip">Enter skips this lesson</div>
+			{/if}
+		</section>
+	{:else if hud.objectives.length > 0}
+		<section class="objectives" aria-label="Objectives">
+			<h4>{hud.mission}</h4>
+			<ul>
+				{#each hud.objectives as o, i (i)}
+					<li class:done={o.done} class:failed={o.failed}>
+						<i>{o.failed ? '✕' : o.done ? '✓' : ''}</i>
+						<span>{o.label}</span>
+						{#if o.count}<b>{o.count}</b>{/if}
+					</li>
+				{/each}
+			</ul>
+		</section>
+	{/if}
 
 	<section class="status">
 		<div class="gauge">
@@ -386,6 +434,211 @@
 		font-size: 11px;
 		letter-spacing: 0.15em;
 		color: var(--ink-faint);
+	}
+
+	/* ------------------------------------------------ objectives / training */
+	.objectives,
+	.coach {
+		top: 58px;
+		right: 22px;
+		width: 300px;
+		padding: 12px 14px;
+		background: linear-gradient(225deg, rgba(8, 10, 16, 0.82), rgba(8, 10, 16, 0.55));
+		border-right: 2px solid var(--line);
+		clip-path: polygon(0 0, 100% 0, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+	}
+
+	.objectives h4,
+	.coach h4 {
+		margin: 0 0 8px;
+		font-family: var(--display);
+		font-size: 15px;
+		letter-spacing: 0.24em;
+		text-transform: uppercase;
+		color: var(--amber);
+	}
+
+	.objectives ul {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		gap: 5px;
+		font-size: 15px;
+	}
+
+	.objectives li {
+		display: grid;
+		grid-template-columns: 16px 1fr auto;
+		align-items: center;
+		gap: 8px;
+		color: var(--ink);
+	}
+
+	.objectives li i {
+		width: 14px;
+		height: 14px;
+		display: grid;
+		place-items: center;
+		font-style: normal;
+		font-size: 11px;
+		border: 1px solid var(--ink-faint);
+	}
+
+	.objectives li b {
+		font-family: var(--display);
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+		color: var(--ink-dim);
+	}
+
+	.objectives li.done {
+		color: var(--ink-faint);
+	}
+
+	.objectives li.done i {
+		color: #0b1a0a;
+		background: var(--good);
+		border-color: var(--good);
+	}
+
+	.objectives li.done b {
+		color: var(--good);
+	}
+
+	.objectives li.failed {
+		color: var(--danger);
+	}
+
+	.objectives li.failed i {
+		border-color: var(--danger);
+	}
+
+	.coach {
+		width: 340px;
+		border-right-color: var(--amber);
+		transition: border-color 0.2s;
+	}
+
+	.coach.passed {
+		border-right-color: var(--good);
+	}
+
+	.coach header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 6px;
+	}
+
+	.coach .step {
+		font-size: 12px;
+		letter-spacing: 0.24em;
+		text-transform: uppercase;
+		color: var(--ink-faint);
+	}
+
+	.coach .dots {
+		display: flex;
+		gap: 3px;
+	}
+
+	.coach .dots i {
+		width: 10px;
+		height: 3px;
+		background: rgba(255, 255, 255, 0.15);
+	}
+
+	.coach .dots i.now {
+		background: var(--amber);
+	}
+
+	.coach .dots i.done {
+		background: var(--good);
+	}
+
+	.coach h4 {
+		font-size: 20px;
+		letter-spacing: 0.14em;
+		margin-bottom: 4px;
+	}
+
+	.coach.passed h4 {
+		color: var(--good);
+	}
+
+	.coach p {
+		margin: 0;
+		font-size: 16px;
+		line-height: 1.35;
+		color: var(--ink);
+	}
+
+	.coach .keys {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 5px;
+		margin-top: 10px;
+	}
+
+	.coach kbd {
+		min-width: 26px;
+		padding: 3px 7px;
+		text-align: center;
+		font-family: var(--display);
+		font-size: 13px;
+		color: var(--ink);
+		background: rgba(255, 255, 255, 0.08);
+		border: 1px solid rgba(255, 255, 255, 0.22);
+		border-bottom-width: 3px;
+		border-radius: 3px;
+		text-shadow: none;
+	}
+
+	.coach .pad {
+		margin-left: 6px;
+		font-size: 12px;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--ink-faint);
+	}
+
+	.coach .bar {
+		height: 3px;
+		margin-top: 12px;
+		background: rgba(255, 255, 255, 0.1);
+	}
+
+	.coach .bar span {
+		display: block;
+		height: 100%;
+		background: var(--amber);
+		transform-origin: left;
+		transition: transform 0.2s;
+	}
+
+	.coach.passed .bar span {
+		background: var(--good);
+	}
+
+	.coach .next,
+	.coach .skip {
+		margin-top: 8px;
+		font-size: 12px;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--ink-faint);
+	}
+
+	.coach .next {
+		color: var(--amber);
+		animation: pulse 0.9s ease-in-out infinite alternate;
+	}
+
+	.coach .next kbd {
+		font-size: 11px;
+		padding: 1px 6px;
 	}
 
 	/* ------------------------------------------------ status */
@@ -861,6 +1114,13 @@
 
 		.base {
 			grid-template-columns: auto 160px auto;
+		}
+
+		.objectives,
+		.coach {
+			top: 96px;
+			transform: scale(0.85);
+			transform-origin: right top;
 		}
 	}
 </style>

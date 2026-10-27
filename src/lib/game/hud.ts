@@ -1,4 +1,12 @@
+import type { ObjectiveStatus } from './campaign';
+import type { TutorialCard } from './tutorial';
 import type { AircraftId, BombId } from './types';
+
+/** How a sortie is played: training, a campaign mission, or endless waves. */
+export type GameMode = 'tutorial' | 'campaign' | 'endless';
+
+export type ModeStart =
+	{ mode: 'tutorial' } | { mode: 'endless' } | { mode: 'campaign'; mission: string };
 
 export type GamePhase = 'loading' | 'title' | 'playing' | 'paused' | 'gameover';
 export type Tone = 'info' | 'warn' | 'good';
@@ -41,7 +49,14 @@ export interface HudSnapshot {
 	multiplier: number;
 	comboTime: number;
 	wave: number;
+	/** "WAVE 3", "WAVE 2/4" or "TRAINING". */
+	waveLabel: string;
 	waveState: string;
+	mode: GameMode;
+	/** Campaign mission name. */
+	mission: string;
+	objectives: ObjectiveStatus[];
+	tutorial: TutorialCard | null;
 	enemies: number;
 	baseHp: number;
 	baseMax: number;
@@ -81,6 +96,18 @@ export interface HudSnapshot {
 }
 
 export interface GameOverStats {
+	mode: GameMode;
+	outcome: 'failed' | 'complete';
+	/** Mission name (campaign), or the mode's name. */
+	title: string;
+	missionId?: string;
+	/** Campaign: stars earned, and what each one was for. */
+	stars?: number;
+	starNotes?: { label: string; got: boolean }[];
+	/** Campaign: the mission this win unlocked (or replays into). */
+	nextMission?: string;
+	/** Endless: place on the local leaderboard (0 = off the board). */
+	rank?: number;
 	score: number;
 	wave: number;
 	kills: number;
@@ -107,7 +134,12 @@ export function emptyHud(): HudSnapshot {
 		multiplier: 1,
 		comboTime: 0,
 		wave: 0,
+		waveLabel: '',
 		waveState: 'idle',
+		mode: 'endless',
+		mission: '',
+		objectives: [],
+		tutorial: null,
 		enemies: 0,
 		baseHp: 1,
 		baseMax: 1,

@@ -11,13 +11,33 @@ import { Autopilot } from './autopilot';
 import { WORLD } from './constants';
 import { BOMBS, BOMB_ORDER } from './defs-bombs';
 import { environmentAt, presetName } from './environment';
-import type { GameOverStats, GamePhase, HudFeedItem, HudMessage, HudSnapshot } from './hud';
+import type {
+	GameMode,
+	GameOverStats,
+	GamePhase,
+	HudFeedItem,
+	HudMessage,
+	HudSnapshot,
+	ModeStart
+} from './hud';
 import { Input } from './input';
 import { NO_INPUT, Player, type PilotInput } from './player';
 import { SceneView } from './scene-view';
 import { TerrainView } from './terrain-view';
 import type { AircraftId, Owner } from './types';
-import { planWave, WaveDirector } from './waves';
+import { endlessTweaks, planWave, waveBonus, WaveDirector } from './waves';
+import {
+	loadProgress,
+	missionById,
+	MissionTracker,
+	nextMission,
+	recordMission,
+	saveProgress,
+	starsFor,
+	type Mission
+} from './campaign';
+import { Tutorial } from './tutorial';
+import { placeRun, readBest, readBoard, saveBoard, writeBest, writeTrained } from './records';
 import { predictImpact } from './weapons';
 import { simulateWorld } from './simulate';
 import type { Loadout } from './loadout';
@@ -37,23 +57,10 @@ export interface GameCallbacks {
 const STEP = 1 / 60;
 /** Time-of-day phase for each wave (see environment presets). */
 const ENV_BY_WAVE = [0.9, 0, 0.7, 1.25, 2.1, 3, 3, 3.6, 4.2, 5];
-const BEST_KEY = 'dfa.best';
-
-function readBest(): number {
-	try {
-		return Number(localStorage.getItem(BEST_KEY) ?? 0) || 0;
-	} catch {
-		return 0;
-	}
-}
-
-function writeBest(v: number): void {
-	try {
-		localStorage.setItem(BEST_KEY, String(v));
-	} catch {
-		// Storage may be unavailable (private mode); the best score just won't persist.
-	}
-}
+/** Seconds between a campaign win and the debrief, so the last kills can land. */
+const DEBRIEF_DELAY = 3.5;
+/** Aircraft flown in training: it carries every kind of weapon the lessons use. */
+const TRAINER: AircraftId = 'kestrel';
 
 export class Game {
 	readonly renderer: Renderer;
@@ -63,6 +70,20 @@ export class Game {
 	phase: GamePhase = 'title';
 	aircraft: AircraftId = 'kestrel';
 	private loadout: Loadout | undefined;
+	mode: GameMode = 'endless';
+	private mission: Mission | null = null;
+	private tracker: MissionTracker | null = null;
+	private tutorial: Tutorial | null = null;
+	/** Airframe and rack actually flown this sortie (training overrides the hangar). */
+	private flying: AircraftId = 'kestrel';
+	private flyingLoadout: Loadout | undefined;
+	private aircraftLost = 0;
+	private wavesScored = 0;
+	/** Counts down from a campaign win to the debrief. */
+	private debriefTimer = 0;
+	/** Enter / pad A pressed this frame, consumed by the first sub-step that reads it. */
+	private confirm = false;
+	private skip = false;
 	/** Hangar open: the camera holds a close showcase shot of the aircraft. */
 	showcase = false;
 	popups: PopupLayer | null = null;
@@ -311,9 +332,19 @@ export class Game {
 		this.world.player = np;
 	}
 
-	newGame(aircraft: AircraftId, loadout?: Loadout): void {
+	newGame(aircraft: AircraftId, loadout?: Loadout, start: ModeStart = { mode: 'endless' }): void {
 		this.aircraft = aircraft;
 		this.loadout = loadout;
+		const mission = start.mode === 'campaign' ? (missionById(start.mission) ?? null) : null;
+		this.mode = start.mode === 'campaign' && !mission ? 'endless' : start.mode;
+		this.mission = mission;
+		this.tracker = mission ? new MissionTracker(mission) : null;
+		this.tutorial = this.mode === 'tutorial' ? new Tutorial() : null;
+		this.flying = this.mode === 'tutorial' ? TRAINER : aircraft;
+		this.flyingLoadout = this.mode === 'tutorial' ? undefined : loadout;
+		this.aircraftLost = 0;
+		this.wavesScored = 0;
+		this.debriefTimer = 0;
 		const w = this.world;
 		w.reset();
 		w.godMode = false;
@@ -331,18 +362,44 @@ export class Game {
 		this.focus.reset();
 		this.targeting.clear();
 		this.spawnPlayer();
-		this.waves = new WaveDirector(Math.floor(Math.random() * 1e6));
-		this.envPhase = this.envTarget = ENV_BY_WAVE[1];
+		const seed = Math.floor(Math.random() * 1e6);
+		this.waves = new WaveDirector(
+			seed,
+			mission ? mission.waves : this.mode === 'endless' ? { tweaks: endlessTweaks } : {}
+		);
+		this.envPhase = this.envTarget = this.envFor(1);
 		this.setPhase('playing');
-		this.waves.begin(w, 1);
+		if (this.tutorial) this.tutorial.start(w);
+		else {
+			if (mission)
+				this.cb.message({
+					id: this.msgId++,
+					text: mission.name.toUpperCase(),
+					sub: mission.brief,
+					tone: 'info'
+				});
+			this.waves.begin(w, 1);
+		}
 		void this.audio.unlock();
+	}
+
+	/** Time of day for a wave of the current sortie. */
+	private envFor(wave: number): number {
+		if (this.mode === 'tutorial') return ENV_BY_WAVE[0];
+		if (this.mission) {
+			const env = this.mission.env;
+			return env[Math.min(wave - 1, env.length - 1)];
+		}
+		return wave < ENV_BY_WAVE.length
+			? ENV_BY_WAVE[wave]
+			: 5 + (wave - ENV_BY_WAVE.length + 1) * 0.6;
 	}
 
 	private spawnPlayer(): void {
 		const w = this.world;
 		const x = WORLD.runwayMinX + 40;
 		const lost = w.player;
-		w.player = new Player(this.aircraft, x, w.ground(x) + 45, 0.08, this.loadout);
+		w.player = new Player(this.flying, x, w.ground(x) + 45, 0.08, this.flyingLoadout);
 		// A spent nuke stays spent: a replacement aircraft doesn't bring a new one this wave.
 		if (lost) w.player.ammo.nuke = Math.min(w.player.ammo.nuke, lost.ammo.nuke);
 		w.camera.interest = null;
@@ -400,6 +457,8 @@ export class Game {
 			const dt = raw * scale * this.timeScale;
 			const steps = Math.max(1, Math.ceil(dt / STEP - 0.01));
 			this.pilotFrame = this.phase === 'playing' ? this.input.pilot() : { ...NO_INPUT };
+			this.confirm = this.input.confirmPressed();
+			this.skip = this.input.enterPressed();
 			this.aim(raw);
 			Object.assign(this.pilotSub, this.pilotFrame, {
 				bombPressed: false,
@@ -510,10 +569,17 @@ export class Game {
 		this.comboTimer -= dt;
 		if (this.comboTimer <= 0) this.combo = 0;
 		this.damageFlash = Math.max(0, this.damageFlash - dt * 1.4);
+		const training = this.mode === 'tutorial';
+		if (training) {
+			// Training can't be lost: the airfield holds and the aircraft is hard to kill.
+			w.base.hp = w.base.maxHp;
+			if (p && p.alive && !p.dying) p.hp = Math.max(p.hp, p.def.hp * 0.3);
+		}
 		if (p && p.crashed) {
 			if (this.respawnTimer <= 0) {
-				this.lives--;
-				this.respawnTimer = 3.2;
+				if (!training) this.lives--;
+				this.aircraftLost++;
+				this.respawnTimer = training ? 2 : 3.2;
 			} else {
 				this.respawnTimer -= dt;
 				if (this.respawnTimer <= 0) {
@@ -523,27 +589,107 @@ export class Game {
 			}
 		}
 		if (w.base.hp <= 0) return this.gameOver('The airfield has fallen');
-		const wave = this.waves.wave;
-		this.envTarget =
-			wave < ENV_BY_WAVE.length ? ENV_BY_WAVE[wave] : 5 + (wave - ENV_BY_WAVE.length + 1) * 0.6;
+		if (this.waves.cleared > this.wavesScored) {
+			this.wavesScored = this.waves.cleared;
+			const bonus = waveBonus(this.waves.difficulty(), w.base.hp / w.base.maxHp);
+			this.score += bonus;
+			this.popups?.spawn(
+				`+${bonus.toLocaleString()}`,
+				'wave bonus',
+				w.camera.x,
+				w.camera.y + 25,
+				'big'
+			);
+		}
+		if (this.tutorial) {
+			this.tutorial.update(w, dt, {
+				focus: this.focus.active,
+				confirm: this.confirm,
+				skip: this.skip
+			});
+			// One key press is one step, however many sub-steps this frame runs.
+			this.confirm = this.skip = false;
+			if (this.tutorial.finished) return this.finish();
+		}
+		if (this.tracker) {
+			this.tracker.update(w);
+			if (this.tracker.failed()) return this.gameOver('The airfield was overrun');
+			if (this.debriefTimer > 0) {
+				this.debriefTimer -= dt;
+				if (this.debriefTimer <= 0) return this.finish();
+			} else if (this.tracker.complete(this.waves)) {
+				this.debriefTimer = DEBRIEF_DELAY;
+				w.events.message('MISSION COMPLETE', 'Return to base', 'good');
+				this.audio.play('siren', w.camera.x, w.camera.y, 0.5);
+			}
+		}
+		this.envTarget = this.envFor(Math.max(1, this.waves.wave));
 	}
 
-	private gameOver(reason: string): void {
-		if (this.phase === 'gameover') return;
-		const best = readBest();
-		const newBest = this.score > best;
-		if (newBest) writeBest(this.score);
-		this.setPhase('gameover');
-		this.cb.gameOver({
+	/** Endless scores go on the leaderboard; campaign and training results are saved. */
+	private result(outcome: 'failed' | 'complete', reason: string): GameOverStats {
+		const base = {
+			mode: this.mode,
+			outcome,
+			title: this.mission?.name ?? (this.mode === 'tutorial' ? 'Flight training' : 'Endless'),
 			score: this.score,
 			wave: this.waves.wave,
 			kills: this.kills,
 			bestCombo: this.bestCombo,
 			time: this.playTime,
-			best: Math.max(best, this.score),
-			newBest,
+			best: this.score,
+			newBest: false,
 			reason
-		});
+		};
+		if (this.mode === 'endless') {
+			const best = readBest();
+			const newBest = this.score > best;
+			if (newBest) writeBest(this.score);
+			const { board, rank } = placeRun(readBoard(), {
+				score: this.score,
+				wave: this.waves.wave,
+				kills: this.kills,
+				aircraft: this.flying,
+				date: Date.now()
+			});
+			if (rank > 0) saveBoard(board);
+			return { ...base, best: Math.max(best, this.score), newBest, rank };
+		}
+		if (this.mode === 'tutorial' && outcome === 'complete') writeTrained();
+		const m = this.mission;
+		if (!m) return base;
+		const progress = loadProgress();
+		const prevBest = progress[m.id]?.best ?? 0;
+		const baseFrac = this.world.base.hp / this.world.base.maxHp;
+		const stars = starsFor(baseFrac, this.aircraftLost);
+		const next = nextMission(m.id);
+		if (outcome === 'complete') saveProgress(recordMission(progress, m.id, stars, this.score));
+		return {
+			...base,
+			missionId: m.id,
+			best: Math.max(prevBest, outcome === 'complete' ? this.score : 0),
+			newBest: outcome === 'complete' && this.score > prevBest,
+			stars: outcome === 'complete' ? stars : 0,
+			starNotes: [
+				{ label: 'Mission complete', got: outcome === 'complete' },
+				{ label: 'Airfield above 70%', got: outcome === 'complete' && baseFrac >= 0.7 },
+				{ label: 'No aircraft lost', got: outcome === 'complete' && this.aircraftLost === 0 }
+			],
+			nextMission: next?.id
+		};
+	}
+
+	private finish(): void {
+		if (this.phase === 'gameover') return;
+		const reason = this.mode === 'tutorial' ? 'You are cleared to fly' : 'The sector is secure';
+		this.setPhase('gameover');
+		this.cb.gameOver(this.result('complete', reason));
+	}
+
+	private gameOver(reason: string): void {
+		if (this.phase === 'gameover') return;
+		this.setPhase('gameover');
+		this.cb.gameOver(this.result('failed', reason));
 	}
 
 	// ------------------------------------------------------------ rendering
@@ -719,7 +865,12 @@ export class Game {
 			multiplier: this.multiplier(),
 			comboTime: Math.max(0, this.comboTimer / 3),
 			wave: this.waves.wave,
+			waveLabel: this.mode === 'tutorial' ? 'TRAINING' : this.waves.label,
 			waveState: this.waves.state,
+			mode: this.mode,
+			mission: this.mission?.name ?? '',
+			objectives: this.tracker?.status(this.waves) ?? [],
+			tutorial: this.tutorial?.card() ?? null,
 			enemies: this.waves.remaining(w),
 			baseHp: w.base.hp,
 			baseMax: w.base.maxHp,
@@ -737,7 +888,7 @@ export class Game {
 			landed: !!p?.landed,
 			damageDir: p?.damageDir ?? 0,
 			damageFlash: this.damageFlash,
-			aircraft: this.aircraft,
+			aircraft: this.flying,
 			timeOfDay: presetName(this.envPhase),
 			respawn: p?.crashed && this.lives > 0 ? Math.max(0, this.respawnTimer) : 0,
 			feed: this.feed.slice(),

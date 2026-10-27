@@ -203,6 +203,10 @@ export class Input {
 		return { x, y, active };
 	}
 
+	enterPressed(): boolean {
+		return this.pressed.has('Enter');
+	}
+
 	confirmPressed(): boolean {
 		return this.pressed.has('Enter') || this.padPressed(PAD.a);
 	}

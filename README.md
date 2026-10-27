@@ -70,8 +70,17 @@ and losing your aircraft doesn't hand you a fresh one.
   launchers with radar lock, howitzers, flak batteries, pillboxes, radar stations, fuel depots
   (chain reactions), searchlights at night, interceptors that dogfight you and gunships that rocket
   the airfield.
-- **Campaign** — endless waves with a budget that grows each wave; the sky moves from golden hour
-  through sunset, dusk and night to dawn as you progress.
+- **Three ways to play** — pick one from the Sortie menu:
+  - **Training**: twelve guided lessons, each with its own practice targets, covering steering,
+    guns, bombs, ordnance selection, guided missiles, focus, flares, afterburner and airbrake, and
+    rearming. You can't be shot down for good, and Enter skips a lesson.
+  - **Campaign**: eight missions that get harder as you go, each with its own objectives (drop the
+    bridge, kill the tanks, silence the flak, hunt the SAM sites, clear the sky, hold until dawn).
+    Winning one unlocks the next and earns up to three stars (win, airfield above 70%, no aircraft
+    lost). Progress and best scores are saved in the browser.
+  - **Endless**: waves until you fall, with a budget that grows each wave and more aircraft joining
+    past wave eleven. Clearing a wave pays a bonus; your five best runs are kept on a local
+    leaderboard. The sky moves from golden hour through sunset, dusk and night to dawn.
 - **Physics** — lift/drag/stall flight model, ballistic and guided ordnance, a rigid-body solver for
   wreckage tumbling across deformable terrain, craters and scorch marks that cool from glowing
   embers to charcoal.
