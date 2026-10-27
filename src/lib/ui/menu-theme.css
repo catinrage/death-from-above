@@ -1,0 +1,516 @@
+/*
+ * Menu look: tactical briefing glass. Layered smoked panels with grain and
+ * scanlines, cut corners, bracket corners that snap in on hover, and a
+ * staggered rise on enter. Shared by every menu; HUD styles live elsewhere.
+ */
+
+:root {
+	--m-ease: cubic-bezier(0.16, 1, 0.3, 1);
+	--m-snap: cubic-bezier(0.3, 1.5, 0.5, 1);
+	--m-glass: linear-gradient(165deg, rgba(26, 30, 42, 0.74) 0%, rgba(9, 11, 18, 0.84) 60%);
+	--m-glass-hi: linear-gradient(165deg, rgba(34, 38, 52, 0.82) 0%, rgba(12, 14, 22, 0.9) 60%);
+	--m-edge: rgba(255, 214, 160, 0.13);
+	--m-edge-hot: rgba(255, 186, 100, 0.55);
+	--m-cyan: #8fd9ff;
+	--m-dark: #170c03;
+	/* Fine film grain, tiled. */
+	--m-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+	--m-scan: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 3px);
+	/* Four L-shaped corner brackets in the current colour. */
+	--m-brackets:
+		linear-gradient(currentColor, currentColor) 0 0 / 10px 1.5px no-repeat,
+		linear-gradient(currentColor, currentColor) 0 0 / 1.5px 10px no-repeat,
+		linear-gradient(currentColor, currentColor) 100% 0 / 10px 1.5px no-repeat,
+		linear-gradient(currentColor, currentColor) 100% 0 / 1.5px 10px no-repeat,
+		linear-gradient(currentColor, currentColor) 0 100% / 10px 1.5px no-repeat,
+		linear-gradient(currentColor, currentColor) 0 100% / 1.5px 10px no-repeat,
+		linear-gradient(currentColor, currentColor) 100% 100% / 10px 1.5px no-repeat,
+		linear-gradient(currentColor, currentColor) 100% 100% / 1.5px 10px no-repeat;
+}
+
+/* ---- Panels ------------------------------------------------------------ */
+
+.m-panel {
+	--cut: 18px;
+	position: relative;
+	isolation: isolate;
+	background: var(--m-glass);
+	backdrop-filter: blur(14px) saturate(1.25);
+	-webkit-backdrop-filter: blur(14px) saturate(1.25);
+	box-shadow:
+		inset 0 0 0 1px var(--m-edge),
+		inset 0 1px 0 rgba(255, 255, 255, 0.07),
+		0 24px 60px -20px rgba(0, 0, 0, 0.7);
+	clip-path: polygon(
+		0 0,
+		calc(100% - var(--cut)) 0,
+		100% var(--cut),
+		100% 100%,
+		var(--cut) 100%,
+		0 calc(100% - var(--cut))
+	);
+}
+
+/* Grain and scanlines over the glass. */
+.m-panel::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	background: var(--m-scan), var(--m-grain);
+	opacity: 0.55;
+	mix-blend-mode: overlay;
+}
+
+/* Amber hairline across the top and brackets on the square corners. */
+.m-panel::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	color: var(--m-edge-hot);
+	background:
+		linear-gradient(90deg, var(--amber), rgba(255, 176, 74, 0) 70%) 0 0 / 100% 1px no-repeat,
+		linear-gradient(currentColor, currentColor) 0 0 / 2px 16px no-repeat,
+		linear-gradient(currentColor, currentColor) 100% 100% / 16px 2px no-repeat,
+		linear-gradient(currentColor, currentColor) 100% 100% / 2px 16px no-repeat;
+}
+
+/* Veil behind a modal: dims and desaturates the battlefield. */
+.m-veil {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	place-items: center;
+	padding: 16px;
+	background:
+		radial-gradient(ellipse at 50% 45%, rgba(10, 8, 6, 0.35), rgba(3, 4, 7, 0.82) 75%),
+		var(--m-scan);
+	backdrop-filter: blur(6px) saturate(0.6);
+	-webkit-backdrop-filter: blur(6px) saturate(0.6);
+}
+
+/* ---- Type ------------------------------------------------------------- */
+
+.m-kicker {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin: 0;
+	font-family: var(--display);
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 0.34em;
+	text-transform: uppercase;
+	color: var(--amber);
+}
+
+.m-kicker::before {
+	content: '';
+	width: 7px;
+	height: 7px;
+	flex: none;
+	background: currentColor;
+	box-shadow: 0 0 10px currentColor;
+	animation: m-blink 1.4s steps(2, start) infinite;
+}
+
+.m-label {
+	font-family: var(--display);
+	font-size: 11px;
+	font-weight: 500;
+	letter-spacing: 0.26em;
+	text-transform: uppercase;
+	color: var(--ink-faint);
+}
+
+.m-key {
+	display: inline-grid;
+	place-items: center;
+	min-width: 22px;
+	height: 20px;
+	padding: 0 6px;
+	font-family: var(--display);
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--ink-dim);
+	border: 1px solid rgba(255, 255, 255, 0.16);
+	border-bottom-width: 2px;
+	border-radius: 2px;
+	background: rgba(0, 0, 0, 0.25);
+}
+
+/* ---- Buttons ---------------------------------------------------------- */
+
+.m-btn {
+	--cut: 10px;
+	--accent: var(--amber);
+	position: relative;
+	isolation: isolate;
+	overflow: hidden;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 14px;
+	padding: 12px 18px;
+	cursor: pointer;
+	text-align: left;
+	font-family: var(--display);
+	font-size: 14px;
+	font-weight: 600;
+	letter-spacing: 0.2em;
+	text-transform: uppercase;
+	color: var(--ink);
+	background: rgba(255, 255, 255, 0.035);
+	border: 0;
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+	clip-path: polygon(
+		0 0,
+		100% 0,
+		100% calc(100% - var(--cut)),
+		calc(100% - var(--cut)) 100%,
+		0 100%
+	);
+	transition:
+		color 0.2s,
+		box-shadow 0.25s,
+		transform 0.35s var(--m-ease),
+		opacity 0.2s;
+}
+
+/* The highlight that sweeps in from the left. */
+.m-btn::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	background:
+		linear-gradient(100deg, transparent 55%, rgba(255, 220, 170, 0.18) 75%, transparent 90%),
+		linear-gradient(90deg, rgba(255, 176, 74, 0.22), rgba(255, 176, 74, 0.04));
+	transform: translateX(-101%);
+	transition: transform 0.45s var(--m-ease);
+}
+
+/* Bracket corners that snap in. */
+.m-btn::after {
+	content: '';
+	position: absolute;
+	inset: 3px;
+	pointer-events: none;
+	color: var(--accent);
+	background: var(--m-brackets);
+	opacity: 0;
+	transform: scale(1.14);
+	transition:
+		opacity 0.15s,
+		transform 0.3s var(--m-snap);
+}
+
+.m-btn:focus-visible {
+	outline: none;
+}
+
+.m-btn:hover:not(:disabled),
+.m-btn:focus-visible {
+	color: #fff8ec;
+	box-shadow:
+		inset 0 0 0 1px rgba(255, 196, 120, 0.28),
+		inset 3px 0 0 var(--accent);
+}
+
+.m-btn:hover:not(:disabled)::before,
+.m-btn:focus-visible::before {
+	transform: translateX(0);
+}
+
+.m-btn:hover:not(:disabled)::after,
+.m-btn:focus-visible::after {
+	opacity: 1;
+	transform: scale(1);
+}
+
+.m-btn:active:not(:disabled) {
+	transform: scale(0.985);
+	transition-duration: 0.08s;
+}
+
+.m-btn:disabled {
+	cursor: not-allowed;
+	opacity: 0.38;
+}
+
+/* The one action that matters on a screen: armed, not a slab. */
+.m-btn.m-primary {
+	padding: 16px 20px;
+	font-size: 20px;
+	font-weight: 700;
+	letter-spacing: 0.26em;
+	color: var(--amber);
+	background:
+		linear-gradient(90deg, rgba(255, 150, 60, 0.16), rgba(255, 150, 60, 0.03) 70%),
+		rgba(10, 10, 14, 0.55);
+	box-shadow:
+		inset 0 0 0 1px rgba(255, 176, 74, 0.55),
+		inset 0 0 24px rgba(255, 140, 50, 0.12),
+		0 0 30px -6px rgba(255, 130, 40, 0.45);
+	text-shadow: 0 0 14px rgba(255, 150, 60, 0.55);
+}
+
+.m-btn.m-primary::before {
+	background:
+		linear-gradient(100deg, transparent 40%, rgba(255, 255, 255, 0.5) 50%, transparent 60%) 0 0 /
+			200% 100% no-repeat,
+		linear-gradient(90deg, #ffc56c, #ff8c34 70%, #ff6a24);
+	background-position:
+		150% 0,
+		0 0;
+}
+
+.m-btn.m-primary:hover:not(:disabled),
+.m-btn.m-primary:focus-visible {
+	color: var(--m-dark);
+	text-shadow: none;
+	box-shadow:
+		inset 0 0 0 1px #ffd59a,
+		0 0 44px -4px rgba(255, 130, 40, 0.7);
+}
+
+.m-btn.m-primary:hover:not(:disabled)::before,
+.m-btn.m-primary:focus-visible::before {
+	animation: m-gloss 0.9s 0.25s var(--m-ease) both;
+}
+
+.m-btn.m-primary::after {
+	color: var(--m-dark);
+}
+
+.m-btn.m-primary .m-key {
+	color: inherit;
+	border-color: currentColor;
+	background: transparent;
+	opacity: 0.8;
+}
+
+/* Marching chevrons on primary buttons. */
+.m-chev {
+	display: inline-flex;
+	gap: 2px;
+	margin-left: auto;
+}
+
+.m-chev i {
+	width: 9px;
+	height: 14px;
+	background: currentColor;
+	clip-path: polygon(0 0, 45% 0, 100% 50%, 45% 100%, 0 100%, 55% 50%);
+	animation: m-chev 1.2s ease-in-out infinite;
+}
+
+.m-chev i:nth-child(2) {
+	animation-delay: 0.15s;
+}
+
+.m-chev i:nth-child(3) {
+	animation-delay: 0.3s;
+}
+
+/* Square selectable tile: tabs, radios and choices. */
+.m-tile {
+	--accent: var(--amber);
+	position: relative;
+	isolation: isolate;
+	display: grid;
+	gap: 2px;
+	padding: 10px 12px;
+	cursor: pointer;
+	text-align: left;
+	color: var(--ink);
+	background: rgba(255, 255, 255, 0.03);
+	border: 0;
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+	transition:
+		background 0.2s,
+		box-shadow 0.25s,
+		transform 0.3s var(--m-ease);
+}
+
+.m-tile::after {
+	content: '';
+	position: absolute;
+	inset: -1px;
+	pointer-events: none;
+	color: var(--accent);
+	background: var(--m-brackets);
+	opacity: 0;
+	transform: scale(1.08);
+	transition:
+		opacity 0.15s,
+		transform 0.3s var(--m-snap);
+}
+
+.m-tile:focus-visible {
+	outline: none;
+}
+
+.m-tile:hover:not(:disabled),
+.m-tile:focus-visible {
+	background: rgba(255, 176, 74, 0.07);
+	box-shadow: inset 0 0 0 1px rgba(255, 196, 120, 0.22);
+}
+
+.m-tile:hover:not(:disabled)::after,
+.m-tile:focus-visible::after,
+.m-tile.on::after {
+	opacity: 1;
+	transform: scale(1);
+}
+
+.m-tile.on {
+	background: linear-gradient(180deg, rgba(255, 176, 74, 0.16), rgba(255, 176, 74, 0.05));
+	box-shadow:
+		inset 0 0 0 1px rgba(255, 186, 100, 0.4),
+		inset 0 -2px 0 var(--accent);
+}
+
+.m-tile:disabled {
+	cursor: not-allowed;
+	opacity: 0.4;
+}
+
+/* ---- Range ------------------------------------------------------------ */
+
+.m-range {
+	-webkit-appearance: none;
+	appearance: none;
+	width: 100%;
+	height: 18px;
+	margin: 0;
+	cursor: pointer;
+	background: transparent;
+	--v: 0.5;
+}
+
+.m-range::-webkit-slider-runnable-track {
+	height: 4px;
+	background:
+		linear-gradient(90deg, var(--amber), var(--amber-hot)) 0 0 / calc(var(--v) * 100%) 100%
+			no-repeat,
+		repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.16) 0 2px, transparent 2px 6px);
+}
+
+.m-range::-moz-range-track {
+	height: 4px;
+	background: repeating-linear-gradient(
+		90deg,
+		rgba(255, 255, 255, 0.16) 0 2px,
+		transparent 2px 6px
+	);
+}
+
+.m-range::-moz-range-progress {
+	height: 4px;
+	background: linear-gradient(90deg, var(--amber), var(--amber-hot));
+}
+
+.m-range::-webkit-slider-thumb {
+	-webkit-appearance: none;
+	width: 10px;
+	height: 18px;
+	margin-top: -7px;
+	background: #ffe2b8;
+	clip-path: polygon(50% 0, 100% 30%, 100% 100%, 0 100%, 0 30%);
+	box-shadow: 0 0 10px var(--amber-glow);
+	transition: transform 0.2s var(--m-snap);
+}
+
+.m-range::-moz-range-thumb {
+	width: 10px;
+	height: 18px;
+	border: 0;
+	border-radius: 0;
+	background: #ffe2b8;
+}
+
+.m-range:hover::-webkit-slider-thumb,
+.m-range:focus-visible::-webkit-slider-thumb {
+	transform: scale(1.25);
+}
+
+/* ---- Enter animations --------------------------------------------------- */
+
+/* Rise into place; set --i on each element for the stagger. */
+.m-rise {
+	animation: m-rise 0.7s var(--m-ease) backwards;
+	animation-delay: calc(var(--d, 0ms) + var(--i, 0) * 70ms);
+}
+
+/* Slide in from the left with a wipe. */
+.m-wipe {
+	animation: m-wipe 0.75s var(--m-ease) backwards;
+	animation-delay: calc(var(--d, 0ms) + var(--i, 0) * 70ms);
+}
+
+@keyframes m-rise {
+	from {
+		opacity: 0;
+		transform: translateY(18px);
+		filter: blur(4px);
+	}
+}
+
+@keyframes m-wipe {
+	from {
+		opacity: 0;
+		transform: translateX(-32px);
+	}
+	40% {
+		opacity: 1;
+	}
+}
+
+@keyframes m-blink {
+	to {
+		visibility: hidden;
+	}
+}
+
+@keyframes m-chev {
+	0%,
+	100% {
+		opacity: 0.25;
+		transform: translateX(-2px);
+	}
+	50% {
+		opacity: 1;
+		transform: translateX(1px);
+	}
+}
+
+@keyframes m-gloss {
+	from {
+		background-position:
+			150% 0,
+			0 0;
+	}
+	to {
+		background-position:
+			-50% 0,
+			0 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.m-rise,
+	.m-wipe {
+		animation: none;
+	}
+
+	.m-chev i,
+	.m-kicker::before {
+		animation: none;
+		opacity: 0.8;
+	}
+}

@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { fade, scale } from 'svelte/transition';
+	import { fade } from 'svelte/transition';
+	import Letters from './Letters.svelte';
+	import { menu, powerOn } from './menu-fx';
 
 	interface Props {
 		onResume: () => void;
@@ -11,77 +13,72 @@
 	let { onResume, onRestart, onQuit, onControls }: Props = $props();
 </script>
 
-<div class="veil" transition:fade={{ duration: 160 }}>
-	<div class="panel" transition:scale={{ start: 0.96, duration: 180 }}>
-		<h2>Paused</h2>
-		<button class="primary" onclick={onResume}>Resume <small>Esc</small></button>
-		<button onclick={onRestart}>Restart mission</button>
-		<button onclick={onControls}>Controls</button>
-		<button onclick={onQuit}>Abort mission</button>
+<div class="m-veil" transition:fade={{ duration: 160 }}>
+	<div class="panel m-panel" in:powerOn use:menu={{ nav: true }}>
+		<p class="m-kicker m-wipe" style:--d="120ms">Comms hold · Time stopped</p>
+		<h2><Letters text="Paused" delay={140} stagger={40} /></h2>
+		<div class="items">
+			<button class="m-btn m-primary m-wipe" style:--d="200ms" data-nav onclick={onResume}>
+				<span>Resume</span>
+				<span class="m-chev" aria-hidden="true"><i></i><i></i><i></i></span>
+				<span class="m-key">Esc</span>
+			</button>
+			<button class="m-btn m-wipe" style:--d="200ms" style:--i="1" data-nav onclick={onRestart}
+				>Restart mission</button
+			>
+			<button class="m-btn m-wipe" style:--d="200ms" style:--i="2" data-nav onclick={onControls}
+				>Controls</button
+			>
+			<button
+				class="m-btn abort m-wipe"
+				style:--d="200ms"
+				style:--i="3"
+				data-nav
+				data-back
+				onclick={onQuit}>Abort mission</button
+			>
+		</div>
+		<p class="hint">↑ ↓ select · Enter confirm</p>
 	</div>
 </div>
 
 <style>
-	.veil {
-		position: absolute;
-		inset: 0;
-		display: grid;
-		place-items: center;
-		background: rgba(4, 5, 9, 0.55);
-		backdrop-filter: blur(4px) saturate(0.7);
-	}
-
 	.panel {
 		display: grid;
-		gap: 10px;
-		min-width: 300px;
-		padding: 28px;
-		background: var(--panel-strong);
-		border-top: 2px solid var(--amber);
-		clip-path: polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%);
+		gap: 14px;
+		width: min(360px, calc(100vw - 32px));
+		padding: 26px 26px 20px;
 	}
 
 	h2 {
-		margin: 0 0 10px;
+		margin: 0 0 4px;
 		font-family: var(--display);
-		font-size: 30px;
+		font-size: 40px;
+		font-weight: 700;
+		line-height: 1;
 		letter-spacing: 0.3em;
 		text-transform: uppercase;
+		text-shadow: 0 0 24px rgba(255, 150, 60, 0.3);
 	}
 
-	button {
-		display: flex;
-		justify-content: space-between;
-		align-items: baseline;
-		padding: 12px 16px;
-		cursor: pointer;
-		text-align: left;
-		font-size: 17px;
-		letter-spacing: 0.16em;
-		text-transform: uppercase;
-		background: rgba(255, 255, 255, 0.04);
-		border: 1px solid rgba(255, 255, 255, 0.08);
-		transition: background 0.15s ease;
+	.items {
+		display: grid;
+		gap: 6px;
 	}
 
-	button:hover {
-		background: rgba(255, 176, 74, 0.12);
-		border-color: var(--line);
+	.items .m-primary {
+		font-size: 18px;
 	}
 
-	.primary {
-		background: var(--amber);
-		color: #1a0d04;
-		font-weight: 700;
-		border-color: var(--amber);
+	.abort {
+		--accent: var(--danger);
+		color: #ffb4a8;
 	}
 
-	.primary:hover {
-		background: #ffc06a;
-	}
-
-	small {
+	.hint {
+		margin: 2px 0 0;
 		font-size: 12px;
-		opacity: 0.7;
+		letter-spacing: 0.12em;
+		color: var(--ink-faint);
 	}
 </style>

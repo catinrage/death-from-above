@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { fade } from 'svelte/transition';
+	import { menu, powerOn } from './menu-fx';
 
 	interface Props {
 		onClose: () => void;
@@ -42,12 +43,25 @@
 		'Your wingman picks his own targets; T sends him at whatever you have locked or under the reticle. Order him onto the SAMs before you go in low, and home with Y when he is shot up.'
 	];
 
+	/** Each alternative binding ("Space", "Right mouse", "1 – 9 (your rack)") becomes a keycap. */
+	function bindings(keys: string): string[] {
+		return keys
+			.split(/\s+\/\s+|\s+·\s+/)
+			.map((b) => b.trim())
+			.filter(Boolean);
+	}
+
 	// Runs in the capture phase so the dialog swallows Esc/Enter before the game
 	// (pause toggle) or the title screen (launch) can react to the same key press.
+	/** Set once closed: the dialog stays deaf while it fades out. */
+	let done = false;
+
 	function onKey(e: KeyboardEvent): void {
+		if (done) return;
 		if (e.code === 'Escape' || e.code === 'Enter') {
 			e.stopImmediatePropagation();
 			e.preventDefault();
+			done = true;
 			onClose();
 		}
 	}
@@ -56,104 +70,168 @@
 <svelte:window onkeydowncapture={onKey} />
 
 <div
-	class="veil"
+	class="m-veil"
 	transition:fade={{ duration: 150 }}
 	role="dialog"
 	aria-modal="true"
 	aria-label="Controls"
 >
-	<div class="panel">
+	<div class="panel m-panel" in:powerOn use:menu>
 		<header>
-			<h2>Flight manual</h2>
-			<button class="close" onclick={onClose} aria-label="Close">✕</button>
+			<div>
+				<p class="m-kicker">Pilot's notes · Rev 4</p>
+				<h2>Flight manual</h2>
+			</div>
+			<button class="m-btn close" data-back onclick={onClose} aria-label="Close"
+				><span class="m-key">Esc</span></button
+			>
 		</header>
-		<table>
-			<tbody>
-				{#each ROWS as [what, keys] (what)}
-					<tr><th>{what}</th><td>{keys}</td></tr>
+		<div class="scroll">
+			<dl>
+				{#each ROWS as [what, keys], i (what)}
+					<div class="row m-rise" style:--i={i * 0.4} style:--d="120ms">
+						<dt>{what}</dt>
+						<dd>
+							{#each bindings(keys) as b, k (k)}
+								{#if k > 0}<span class="or" aria-hidden="true">/</span>{/if}
+								<span class="kb">{b}</span>
+							{/each}
+						</dd>
+					</div>
 				{/each}
-			</tbody>
-		</table>
-		<ul>
-			{#each TIPS as t (t)}<li>{t}</li>{/each}
-		</ul>
+			</dl>
+			<p class="m-label tips-h">Field notes</p>
+			<ol>
+				{#each TIPS as t, i (t)}
+					<li><span aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>{t}</li>
+				{/each}
+			</ol>
+		</div>
 	</div>
 </div>
 
 <style>
-	.veil {
-		position: absolute;
-		inset: 0;
-		display: grid;
-		place-items: center;
-		background: rgba(4, 5, 9, 0.6);
-		backdrop-filter: blur(5px);
+	.m-veil {
 		z-index: 5;
 	}
 
 	.panel {
-		width: min(720px, calc(100vw - 32px));
+		display: grid;
+		grid-template-rows: auto minmax(0, 1fr);
+		width: min(800px, calc(100vw - 32px));
 		max-height: calc(100vh - 48px);
-		overflow-y: auto;
-		padding: 26px 30px;
-		background: var(--panel-strong);
-		border-top: 2px solid var(--amber);
+		padding: 24px 0 0 28px;
 	}
 
 	header {
 		display: flex;
 		justify-content: space-between;
-		align-items: center;
+		align-items: flex-start;
+		padding-right: 28px;
+		margin-bottom: 14px;
 	}
 
 	h2 {
-		margin: 0;
+		margin: 8px 0 0;
 		font-family: var(--display);
+		font-size: 30px;
+		line-height: 1;
 		letter-spacing: 0.24em;
 		text-transform: uppercase;
 	}
 
 	.close {
-		cursor: pointer;
-		background: none;
-		border: 1px solid rgba(255, 255, 255, 0.15);
-		width: 34px;
-		height: 34px;
+		padding: 8px 10px;
 	}
 
-	table {
-		width: 100%;
-		margin: 18px 0;
-		border-collapse: collapse;
+	.scroll {
+		min-height: 0;
+		overflow-y: auto;
+		padding: 0 28px 26px 0;
+		scrollbar-width: thin;
+		scrollbar-color: rgba(255, 176, 74, 0.35) transparent;
 	}
 
-	th,
-	td {
-		padding: 9px 0;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-		text-align: left;
+	dl {
+		margin: 0;
+		display: grid;
+	}
+
+	.row {
+		display: grid;
+		grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+		gap: 16px;
+		align-items: center;
+		padding: 6px 8px;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+		transition: background 0.2s;
+	}
+
+	.row:hover {
+		background: linear-gradient(90deg, rgba(255, 176, 74, 0.1), transparent 80%);
+	}
+
+	dt {
 		font-size: 16px;
-	}
-
-	th {
-		font-weight: 500;
 		color: var(--ink-dim);
-		width: 46%;
+		transition: color 0.2s;
 	}
 
-	td {
+	.row:hover dt {
+		color: var(--ink);
+	}
+
+	dd {
+		margin: 0;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 4px 6px;
+	}
+
+	.kb {
+		padding: 2px 7px;
 		font-family: var(--display);
-		font-size: 14px;
+		font-size: 12px;
+		font-weight: 600;
 		letter-spacing: 0.06em;
 		color: var(--amber);
+		background: rgba(0, 0, 0, 0.32);
+		border: 1px solid rgba(255, 176, 74, 0.26);
+		border-bottom-width: 2px;
+		border-radius: 2px;
 	}
 
-	ul {
+	.or {
+		font-size: 11px;
+		color: var(--ink-faint);
+	}
+
+	.tips-h {
+		display: block;
+		margin: 24px 0 10px;
+	}
+
+	ol {
 		margin: 0;
-		padding-left: 18px;
+		padding: 0;
+		list-style: none;
 		display: grid;
-		gap: 6px;
-		color: var(--ink-dim);
+		gap: 8px;
 		font-size: 15px;
+		line-height: 1.4;
+		color: var(--ink-dim);
+	}
+
+	li {
+		display: grid;
+		grid-template-columns: 30px 1fr;
+	}
+
+	li span {
+		font-family: var(--display);
+		font-size: 11px;
+		color: var(--amber);
+		padding-top: 3px;
 	}
 </style>

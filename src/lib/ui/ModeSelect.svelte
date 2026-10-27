@@ -12,9 +12,11 @@
 		type StrikeId
 	} from '$lib/game/campaign-map';
 	import CampaignMap from './CampaignMap.svelte';
-	import { BIOMES, BIOME_ORDER, type BiomeId } from '$lib/game/biomes';
+	import EndlessPane from './EndlessPane.svelte';
+	import { BIOMES, type BiomeId } from '$lib/game/biomes';
 	import type { GameMode, ModeStart } from '$lib/game/hud';
 	import type { EndlessRun } from '$lib/game/records';
+	import { blip, menu, powerOn } from './menu-fx';
 
 	interface Props {
 		progress: CampaignProgress;
@@ -59,13 +61,18 @@
 	const totalStars = $derived(Object.values(progress).reduce((n, r) => n + r.stars, 0));
 	const won = $derived(Object.keys(progress).length);
 
-	const MODES: { id: GameMode; name: string; sub: string }[] = [
-		{ id: 'tutorial', name: 'Training', sub: 'Learn to fly and fight' },
-		{ id: 'campaign', name: 'Campaign', sub: `${MISSIONS.length} missions` },
-		{ id: 'endless', name: 'Endless', sub: 'Waves until you fall' }
+	const MODES: { id: GameMode; name: string; sub: string; code: string }[] = [
+		{ id: 'tutorial', name: 'Training', sub: 'Learn to fly and fight', code: 'TRN' },
+		{ id: 'campaign', name: 'Campaign', sub: `${MISSIONS.length} missions`, code: 'CMP' },
+		{ id: 'endless', name: 'Endless', sub: 'Waves until you fall', code: 'END' }
 	];
+	const tabIndex = $derived(MODES.findIndex((m) => m.id === tab));
+
+	/** Set once the menu has launched or closed: its keys stay deaf while it fades out. */
+	let done = false;
 
 	function launch(): void {
+		done = true;
 		if (tab === 'campaign') onLaunch({ mode: 'campaign', mission: mission.id, strike, coop });
 		else if (tab === 'endless') onLaunch({ mode: 'endless', biome, coop });
 		else onLaunch({ mode: tab });
@@ -86,45 +93,69 @@
 
 	// Capture phase, so the title screen behind doesn't also act on Enter.
 	function onKey(e: KeyboardEvent): void {
+		if (done) return;
 		if (e.code === 'Escape') {
 			e.stopImmediatePropagation();
 			e.preventDefault();
+			blip('back');
+			done = true;
 			onClose();
 		} else if (e.code === 'Enter') {
+			// Enter on an item reached with the arrows presses that item instead.
+			const t = e.target;
+			if (t instanceof HTMLElement && t.matches('[data-nav]:focus-visible')) {
+				e.stopImmediatePropagation();
+				return;
+			}
 			e.stopImmediatePropagation();
 			e.preventDefault();
+			blip('select');
 			launch();
+		} else if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+			// Left and right switch modes.
+			e.stopImmediatePropagation();
+			e.preventDefault();
+			const d = e.code === 'ArrowLeft' ? -1 : 1;
+			tab = MODES[(tabIndex + d + MODES.length) % MODES.length].id;
+			blip('hover');
 		}
-	}
-
-	function dateOf(ms: number): string {
-		return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 	}
 </script>
 
 <svelte:window onkeydowncapture={onKey} />
 
 <div
-	class="veil"
+	class="m-veil"
 	transition:fade={{ duration: 160 }}
 	role="dialog"
 	aria-modal="true"
 	aria-label="Choose a mode"
 >
-	<div class="panel" in:fly={{ y: 16, duration: 260 }}>
+	<div class="panel m-panel" in:powerOn use:menu={{ nav: true }}>
 		<header>
-			<h2>Choose your sortie</h2>
-			<button class="close" onclick={onClose} aria-label="Close">Esc</button>
+			<div>
+				<p class="m-kicker">Operations · Tasking order</p>
+				<h2>Choose your sortie</h2>
+			</div>
+			<button class="m-btn close" data-back onclick={onClose} aria-label="Close"
+				><span class="m-key">Esc</span></button
+			>
 		</header>
 
-		<div class="tabs" role="tablist" aria-label="Game mode">
-			{#each MODES as m (m.id)}
+		<div class="tabs" role="tablist" aria-label="Game mode" style:--t={tabIndex}>
+			<span class="slider" aria-hidden="true"></span>
+			{#each MODES as m, i (m.id)}
 				<button
 					role="tab"
 					aria-selected={tab === m.id}
+					class="tab m-tile m-rise"
 					class:on={tab === m.id}
+					style:--i={i}
+					style:--d="120ms"
+					data-nav
 					onclick={() => (tab = m.id)}
 				>
+					<span class="code" aria-hidden="true">{m.code}</span>
 					<strong>{m.name}</strong>
 					<small>
 						{#if m.id === 'tutorial' && !trained}Recommended first
@@ -138,143 +169,130 @@
 		</div>
 
 		<div class="body" role="tabpanel">
-			{#if tab === 'tutorial'}
-				<div class="detail" in:fade={{ duration: 140 }}>
-					<p class="kicker">Flight training</p>
-					<h3>Learn the ropes</h3>
-					<p class="lead">
-						A guided flight over a quiet stretch of front. Each lesson introduces one control and
-						sets up targets to practise on: steering, guns, bombs, ordnance selection, guided
-						missiles, focus, flares, afterburner and rearming.
-					</p>
-					<ul class="facts">
-						<li><b>12</b> short lessons</li>
-						<li>You can't be shot down for good</li>
-						<li>Flown in the <b>{AIRCRAFT.kestrel.name}</b></li>
-						<li>Enter skips a lesson</li>
-					</ul>
-				</div>
-			{:else if tab === 'campaign'}
-				<div class="campaign" in:fade={{ duration: 140 }}>
-					<CampaignMap {progress} selected={mission.id} {strike} onPick={(id) => (picked = id)} />
-					<div class="split">
+			{#key tab}
+				<div class="pane" in:fly={{ x: 24, duration: 380, opacity: 0 }}>
+					{#if tab === 'tutorial'}
 						<div class="detail">
-							<p class="kicker">
-								Mission {missionIndex + 1} of {MISSIONS.length} · {sectorOf(mission.id)?.name} · {BIOMES[
-									mission.biome
-								].name}
+							<p class="m-label">Flight training</p>
+							<h3>Learn the ropes</h3>
+							<p class="lead">
+								A guided flight over a quiet stretch of front. Each lesson introduces one control
+								and sets up targets to practise on: steering, guns, bombs, ordnance selection,
+								guided missiles, focus, flares, afterburner and rearming.
 							</p>
-							<h3>{mission.name}</h3>
-							<p class="lead">{mission.brief}</p>
-							<p class="sub">Objectives</p>
-							<ul class="objectives">
-								{#each mission.objectives as o, k (k)}
-									<li>{describe(o)}</li>
-								{/each}
-								{#if mission.baseFloor}
-									<li>Keep the airfield above {Math.round(mission.baseFloor * 100)}%</li>
-								{/if}
+							<ul class="facts">
+								<li class="m-rise" style:--i="0" style:--d="150ms"><b>12</b> short lessons</li>
+								<li class="m-rise" style:--i="1" style:--d="150ms">
+									You can't be shot down for good
+								</li>
+								<li class="m-rise" style:--i="2" style:--d="150ms">
+									Flown in the <b>{AIRCRAFT.kestrel.name}</b>
+								</li>
+								<li class="m-rise" style:--i="3" style:--d="150ms">Enter skips a lesson</li>
 							</ul>
-							<p class="hint">
-								★ Win · ★ Airfield above 70% · ★ No aircraft lost
-								{#if progress[mission.id]}
-									<br />Best score {progress[mission.id].best.toLocaleString()}
-								{/if}
-							</p>
 						</div>
-						{#if canStrike(mission.id)}
-							<aside class="strike-col">
-								<p class="sub">Strike ahead of the sortie · {credits.toLocaleString()} cr</p>
-								<div class="strikes" role="radiogroup" aria-label="Strike target">
-									{#each STRIKE_IDS as id (id)}
-										{@const s = STRIKES[id]}
-										{@const short = credits < s.cost}
-										<button
-											role="radio"
-											aria-checked={strike === id}
-											class:on={strike === id}
-											class:short
-											disabled={short && strike !== id}
-											onclick={() => pickStrike(strike === id ? null : id)}
-										>
-											<strong>{s.name} <em>{s.cost} cr</em></strong>
-											<small>{short ? `Needs ${s.cost} credits. ` : ''}{s.effect}</small>
-										</button>
-									{/each}
+					{:else if tab === 'campaign'}
+						<div class="campaign">
+							<CampaignMap
+								{progress}
+								selected={mission.id}
+								{strike}
+								onPick={(id) => (picked = id)}
+							/>
+							<div class="split">
+								<div class="detail">
+									{#key mission.id}
+										<div in:fly={{ y: 10, duration: 320 }}>
+											<p class="m-label">
+												Mission {missionIndex + 1} of {MISSIONS.length} · {sectorOf(mission.id)
+													?.name} · {BIOMES[mission.biome].name}
+											</p>
+											<h3>{mission.name}</h3>
+											<p class="lead">{mission.brief}</p>
+										</div>
+									{/key}
+									<p class="m-label sub">Objectives</p>
+									<ul class="objectives">
+										{#each mission.objectives as o, k (k)}
+											<li>{describe(o)}</li>
+										{/each}
+										{#if mission.baseFloor}
+											<li>Keep the airfield above {Math.round(mission.baseFloor * 100)}%</li>
+										{/if}
+									</ul>
+									<p class="hint">
+										★ Win · ★ Airfield above 70% · ★ No aircraft lost
+										{#if progress[mission.id]}
+											<br />Best score {progress[mission.id].best.toLocaleString()}
+										{/if}
+									</p>
 								</div>
-							</aside>
-						{/if}
-					</div>
-				</div>
-			{:else}
-				<div class="detail" in:fade={{ duration: 140 }}>
-					<p class="kicker">Endless</p>
-					<h3>Hold as long as you can</h3>
-					<p class="lead">
-						Wave after wave, each bigger than the last. Past wave six the columns keep growing, and
-						past wave eleven more interceptors and gunships join every attack. Clearing a wave pays
-						a bonus that grows with the wave and with what is left of the airfield.
-					</p>
-					<p class="sub">Theatre</p>
-					<div class="biomes" role="radiogroup" aria-label="Theatre">
-						{#each BIOME_ORDER as id (id)}
-							<button
-								role="radio"
-								aria-checked={biome === id}
-								class:on={biome === id}
-								class="biome-{id}"
-								onclick={() => (biome = id)}
-								title={BIOMES[id].blurb}
-							>
-								<i aria-hidden="true"></i>
-								<strong>{BIOMES[id].name}</strong>
-							</button>
-						{/each}
-					</div>
-					<p class="hint biome-blurb">{BIOMES[biome].blurb}</p>
-					{#if board.length > 0}
-						<p class="sub">Your best runs</p>
-						<table>
-							<thead>
-								<tr
-									><th>#</th><th>Score</th><th>Wave</th><th>Kills</th><th>Aircraft</th><th></th></tr
-								>
-							</thead>
-							<tbody>
-								{#each board as r, i (r.date)}
-									<tr>
-										<td>{i + 1}</td>
-										<td class="sc">{r.score.toLocaleString()}</td>
-										<td>{r.wave}</td>
-										<td>{r.kills}</td>
-										<td>{AIRCRAFT[r.aircraft]?.name ?? r.aircraft}</td>
-										<td class="dt">{dateOf(r.date)}</td>
-									</tr>
-								{/each}
-							</tbody>
-						</table>
+								{#if canStrike(mission.id)}
+									<aside class="strike-col">
+										<p class="m-label sub">
+											Strike ahead of the sortie · <b>{credits.toLocaleString()} cr</b>
+										</p>
+										<div class="strikes" role="radiogroup" aria-label="Strike target">
+											{#each STRIKE_IDS as id (id)}
+												{@const s = STRIKES[id]}
+												{@const short = credits < s.cost}
+												<button
+													role="radio"
+													aria-checked={strike === id}
+													class="m-tile"
+													class:on={strike === id}
+													class:short
+													disabled={short && strike !== id}
+													data-nav
+													onclick={() => pickStrike(strike === id ? null : id)}
+												>
+													<strong>{s.name} <em>{s.cost} cr</em></strong>
+													<small>{short ? `Needs ${s.cost} credits. ` : ''}{s.effect}</small>
+												</button>
+											{/each}
+										</div>
+									</aside>
+								{/if}
+							</div>
+						</div>
 					{:else}
-						<p class="hint">No runs yet. Your five best will be listed here.</p>
+						<EndlessPane {biome} {board} onBiome={(id) => (biome = id)} />
 					{/if}
 				</div>
-			{/if}
+			{/key}
 		</div>
 
 		<footer>
 			{#if tab !== 'tutorial'}
 				<div class="players" role="radiogroup" aria-label="Players">
-					<button role="radio" aria-checked={!coop} class:on={!coop} onclick={() => (coop = false)}>
+					<button
+						role="radio"
+						aria-checked={!coop}
+						class="m-tile"
+						class:on={!coop}
+						data-nav
+						onclick={() => (coop = false)}
+					>
 						<strong>1P</strong><small>Solo</small>
 					</button>
-					<button role="radio" aria-checked={coop} class:on={coop} onclick={() => (coop = true)}>
+					<button
+						role="radio"
+						aria-checked={coop}
+						class="m-tile"
+						class:on={coop}
+						data-nav
+						onclick={() => (coop = true)}
+					>
 						<strong>2P</strong><small>Co-op</small>
 					</button>
 					{#if coop}
-						<p class="hint">P1 keyboard and mouse · P2 gamepad. Six aircraft shared, one score.</p>
+						<p class="hint" transition:fade={{ duration: 150 }}>
+							P1 keyboard and mouse · P2 gamepad. Six aircraft shared, one score.
+						</p>
 					{/if}
 				</div>
 			{/if}
-			<button class="launch" onclick={launch}>
+			<button class="m-btn m-primary launch" data-nav onclick={launch}>
 				<span>
 					{tab === 'tutorial'
 						? 'Start training'
@@ -282,115 +300,122 @@
 							? `Fly ${mission.name}`
 							: 'Start endless'}
 				</span>
-				<small>Enter</small>
+				<span class="m-chev" aria-hidden="true"><i></i><i></i><i></i></span>
+				<span class="m-key">Enter</span>
 			</button>
 		</footer>
 	</div>
 </div>
 
 <style>
-	.veil {
-		position: absolute;
-		inset: 0;
-		display: grid;
-		place-items: center;
-		padding: 16px;
-		background: rgba(4, 5, 9, 0.6);
-		backdrop-filter: blur(5px) saturate(0.7);
-	}
-
 	.panel {
 		display: grid;
-		grid-template-rows: auto auto 1fr auto;
-		width: min(920px, 100%);
+		grid-template-rows: auto auto minmax(0, 1fr) auto;
+		width: min(960px, 100%);
 		max-height: calc(100vh - 32px);
-		background: var(--panel-strong);
-		border-top: 2px solid var(--amber);
-		clip-path: polygon(0 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%);
+		--cut: 22px;
 	}
 
 	header {
 		display: flex;
 		justify-content: space-between;
-		align-items: center;
-		padding: 16px 24px 10px;
+		align-items: flex-start;
+		padding: 20px 26px 14px;
 	}
 
 	h2 {
-		margin: 0;
+		margin: 8px 0 0;
 		font-family: var(--display);
-		font-size: 26px;
-		letter-spacing: 0.24em;
+		font-size: 28px;
+		line-height: 1;
+		letter-spacing: 0.22em;
 		text-transform: uppercase;
 	}
 
 	.close {
-		cursor: pointer;
-		padding: 6px 10px;
-		font-size: 12px;
-		letter-spacing: 0.2em;
-		background: transparent;
-		border: 1px solid rgba(255, 255, 255, 0.12);
-		color: var(--ink-dim);
+		padding: 8px 10px;
 	}
 
-	.close:hover {
-		color: var(--ink);
-		border-color: var(--line);
-	}
+	/* ---- Tabs, with a bar that slides to the active one ---- */
 
 	.tabs {
+		position: relative;
 		display: grid;
 		grid-template-columns: repeat(3, 1fr);
 		gap: 8px;
-		padding: 0 24px;
+		margin: 0 26px;
+		padding-bottom: 6px;
 	}
 
-	.tabs button {
-		display: grid;
-		gap: 2px;
-		padding: 12px 14px;
-		text-align: left;
-		cursor: pointer;
-		background: rgba(255, 255, 255, 0.04);
-		border: 1px solid rgba(255, 255, 255, 0.08);
-		border-bottom: 2px solid transparent;
+	.slider {
+		position: absolute;
+		left: 0;
+		bottom: 0;
+		width: calc((100% - 16px) / 3);
+		height: 2px;
+		background: var(--amber);
+		box-shadow: 0 0 12px var(--amber-glow);
+		transform: translateX(calc(var(--t) * (100% + 8px)));
+		transition: transform 0.45s var(--m-ease);
+	}
+
+	.tab {
+		position: relative;
+		overflow: hidden;
+		padding: 12px 16px 12px;
+	}
+
+	.tab.on {
+		box-shadow: inset 0 0 0 1px rgba(255, 186, 100, 0.35);
+	}
+
+	.code {
+		position: absolute;
+		right: 10px;
+		top: 4px;
+		font-family: var(--display);
+		font-size: 34px;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		color: rgba(255, 255, 255, 0.04);
 		transition:
-			background 0.15s,
-			border-color 0.15s;
+			color 0.3s,
+			transform 0.5s var(--m-ease);
 	}
 
-	.tabs button:hover {
-		background: rgba(255, 176, 74, 0.08);
+	.tab:hover .code,
+	.tab.on .code {
+		color: rgba(255, 176, 74, 0.12);
+		transform: translateX(-6px);
 	}
 
-	.tabs button.on {
-		background: rgba(255, 176, 74, 0.12);
-		border-color: var(--line);
-		border-bottom-color: var(--amber);
-	}
-
-	.tabs strong {
+	.tab strong {
 		font-family: var(--display);
 		font-size: 20px;
-		letter-spacing: 0.16em;
+		letter-spacing: 0.18em;
 		text-transform: uppercase;
+		transition: color 0.2s;
 	}
 
-	.tabs button.on strong {
+	.tab.on strong {
 		color: var(--amber);
 	}
 
-	.tabs small {
+	.tab small {
 		font-size: 13px;
 		letter-spacing: 0.08em;
 		color: var(--ink-dim);
 	}
 
+	/* ---- Body ---- */
+
 	.body {
 		min-height: 0;
 		overflow-y: auto;
-		padding: 14px 24px;
+		overflow-x: hidden;
+		padding: 18px 26px 10px;
+		scrollbar-width: thin;
+		scrollbar-color: rgba(255, 176, 74, 0.35) transparent;
 	}
 
 	.campaign {
@@ -401,12 +426,88 @@
 	.split {
 		display: grid;
 		grid-template-columns: 1fr minmax(240px, 300px);
-		gap: 22px;
+		gap: 24px;
+	}
+
+	.detail {
+		min-width: 0;
+	}
+
+	h3 {
+		margin: 6px 0 10px;
+		font-family: var(--display);
+		font-size: 34px;
+		line-height: 1.05;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+
+	.lead {
+		margin: 0;
+		max-width: 560px;
+		font-size: 17px;
+		line-height: 1.4;
+		color: var(--ink-dim);
+	}
+
+	.sub {
+		display: block;
+		margin: 18px 0 8px;
+	}
+
+	.sub b {
+		font-weight: 600;
+		color: var(--good);
 	}
 
 	.strike-col .sub {
 		margin-top: 0;
 	}
+
+	.objectives,
+	.facts {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		display: grid;
+		gap: 5px;
+		font-size: 16px;
+	}
+
+	.objectives li {
+		display: flex;
+		gap: 10px;
+		align-items: baseline;
+	}
+
+	.objectives li::before {
+		content: '';
+		width: 6px;
+		height: 6px;
+		flex: none;
+		border: 1.5px solid var(--amber);
+		transform: rotate(45deg) translateY(-2px);
+	}
+
+	.facts {
+		margin-top: 18px;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 8px;
+		max-width: 620px;
+	}
+
+	.facts li {
+		padding: 10px 12px;
+		background: rgba(255, 255, 255, 0.035);
+		box-shadow: inset 2px 0 0 var(--amber);
+		color: var(--ink-dim);
+	}
+
+	.facts b {
+		color: var(--ink);
+	}
+
+	/* ---- Strikes ---- */
 
 	.strikes {
 		display: grid;
@@ -414,41 +515,23 @@
 	}
 
 	.strikes button {
-		display: grid;
-		gap: 2px;
 		align-content: start;
-		padding: 8px 10px;
-		text-align: left;
-		cursor: pointer;
-		background: rgba(255, 255, 255, 0.04);
-		border: 1px solid rgba(255, 255, 255, 0.08);
-		border-left: 2px solid transparent;
-	}
-
-	.strikes button:hover:not(:disabled) {
-		background: rgba(255, 176, 74, 0.08);
-	}
-
-	.strikes button.on {
-		background: rgba(255, 176, 74, 0.12);
-		border-color: var(--line);
-		border-left-color: var(--amber);
+		padding: 9px 12px;
 	}
 
 	.strikes strong {
 		font-family: var(--display);
-		font-size: 15px;
-		letter-spacing: 0.08em;
+		font-size: 14px;
+		letter-spacing: 0.1em;
 		text-transform: uppercase;
 	}
 
-	.strikes button:disabled {
-		cursor: not-allowed;
-		opacity: 0.45;
+	.strikes button.on strong {
+		color: var(--amber);
 	}
 
 	.strikes button.on.short {
-		border-left-color: var(--danger);
+		--accent: var(--danger);
 	}
 
 	.strikes em {
@@ -458,149 +541,10 @@
 		color: var(--ink-dim);
 	}
 
-	.strikes button.on strong {
-		color: var(--amber);
-	}
-
 	.strikes small {
 		font-size: 13px;
 		line-height: 1.3;
 		color: var(--ink-dim);
-	}
-
-	.detail {
-		min-width: 0;
-	}
-
-	.kicker {
-		margin: 0;
-		font-size: 13px;
-		letter-spacing: 0.32em;
-		text-transform: uppercase;
-		color: var(--amber);
-	}
-
-	h3 {
-		margin: 6px 0 10px;
-		font-family: var(--display);
-		font-size: 32px;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-	}
-
-	.lead {
-		margin: 0;
-		font-size: 17px;
-		line-height: 1.4;
-		color: var(--ink-dim);
-		max-width: 560px;
-	}
-
-	.sub {
-		margin: 18px 0 6px;
-		font-size: 12px;
-		letter-spacing: 0.3em;
-		text-transform: uppercase;
-		color: var(--ink-faint);
-	}
-
-	.objectives,
-	.facts {
-		margin: 0;
-		padding: 0;
-		list-style: none;
-		display: grid;
-		gap: 4px;
-		font-size: 16px;
-	}
-
-	.objectives li::before {
-		content: '▸ ';
-		color: var(--amber);
-	}
-
-	.facts {
-		margin-top: 16px;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 8px;
-	}
-
-	.facts li {
-		padding: 8px 10px;
-		background: rgba(255, 255, 255, 0.04);
-		border-left: 2px solid var(--line);
-		color: var(--ink-dim);
-	}
-
-	.facts b {
-		color: var(--ink);
-	}
-
-	.biomes {
-		display: grid;
-		grid-template-columns: repeat(5, minmax(0, 1fr));
-		gap: 6px;
-		max-width: 620px;
-	}
-
-	.biomes button {
-		display: grid;
-		gap: 6px;
-		padding: 6px 6px 8px;
-		cursor: pointer;
-		text-align: left;
-		background: rgba(255, 255, 255, 0.04);
-		border: 1px solid rgba(255, 255, 255, 0.08);
-		border-bottom: 2px solid transparent;
-	}
-
-	.biomes button:hover {
-		background: rgba(255, 176, 74, 0.08);
-	}
-
-	.biomes button.on {
-		border-color: var(--line);
-		border-bottom-color: var(--amber);
-		background: rgba(255, 176, 74, 0.12);
-	}
-
-	.biomes i {
-		display: block;
-		height: 26px;
-	}
-
-	.biomes strong {
-		font-size: 13px;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-	}
-
-	.biomes button.on strong {
-		color: var(--amber);
-	}
-
-	.biome-temperate i {
-		background: linear-gradient(#8fa4b8 0 45%, #4f5f2c 45% 70%, #6b5a34 70%);
-	}
-
-	.biome-desert i {
-		background: linear-gradient(#d9c39a 0 45%, #c49a5c 45% 70%, #a57844 70%);
-	}
-
-	.biome-snow i {
-		background: linear-gradient(#b8c4d4 0 45%, #e6eaf2 45% 70%, #3e5246 70%);
-	}
-
-	.biome-jungle i {
-		background: linear-gradient(#9fb0a0 0 45%, #2f5326 45% 70%, #5a3a22 70%);
-	}
-
-	.biome-city i {
-		background: linear-gradient(#8e96a2 0 30%, #585c64 30% 70%, #2b2c2e 70%);
-	}
-
-	.biome-blurb {
-		margin-top: 8px;
 	}
 
 	.hint {
@@ -610,44 +554,15 @@
 		color: var(--ink-faint);
 	}
 
-	table {
-		width: 100%;
-		max-width: 620px;
-		border-collapse: collapse;
-		font-size: 15px;
-		font-variant-numeric: tabular-nums;
-	}
-
-	th {
-		text-align: left;
-		font-weight: 400;
-		font-size: 12px;
-		letter-spacing: 0.2em;
-		text-transform: uppercase;
-		color: var(--ink-faint);
-		padding: 4px 8px;
-	}
-
-	td {
-		padding: 6px 8px;
-		border-top: 1px solid rgba(255, 255, 255, 0.06);
-	}
-
-	td.sc {
-		font-family: var(--display);
-		color: var(--amber);
-	}
-
-	td.dt {
-		color: var(--ink-faint);
-	}
+	/* ---- Footer ---- */
 
 	footer {
 		display: flex;
 		justify-content: flex-end;
 		align-items: center;
 		gap: 16px;
-		padding: 10px 24px 20px;
+		padding: 14px 26px 22px;
+		border-top: 1px solid rgba(255, 255, 255, 0.05);
 	}
 
 	.players {
@@ -658,21 +573,8 @@
 	}
 
 	.players button {
-		display: grid;
-		gap: 1px;
-		padding: 8px 14px;
-		cursor: pointer;
-		text-align: left;
-		background: rgba(255, 255, 255, 0.04);
-		border: 1px solid rgba(255, 255, 255, 0.08);
-		border-bottom: 2px solid transparent;
-		color: var(--ink);
-	}
-
-	.players button.on {
-		background: rgba(255, 176, 74, 0.12);
-		border-color: var(--line);
-		border-bottom-color: var(--amber);
+		gap: 0;
+		padding: 7px 16px;
 	}
 
 	.players strong {
@@ -700,32 +602,12 @@
 	}
 
 	.launch {
-		display: flex;
-		align-items: center;
-		gap: 24px;
-		padding: 14px 22px;
-		cursor: pointer;
-		border: none;
-		background: linear-gradient(100deg, #ffb04a, #ff6a24);
-		color: #1a0d04;
-		font-family: var(--display);
-		font-size: 20px;
-		font-weight: 700;
-		letter-spacing: 0.16em;
-		text-transform: uppercase;
-		clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
-		box-shadow: 0 0 30px rgba(255, 120, 40, 0.3);
+		min-width: 300px;
+		gap: 18px;
 	}
 
-	.launch:hover {
-		filter: brightness(1.1);
-	}
-
-	.launch small {
-		font-family: var(--body);
-		font-size: 12px;
-		letter-spacing: 0.2em;
-		opacity: 0.7;
+	.launch .m-chev {
+		margin-left: auto;
 	}
 
 	@media (max-width: 720px) {
@@ -733,11 +615,7 @@
 			grid-template-columns: 1fr;
 		}
 
-		.biomes {
-			grid-template-columns: repeat(3, minmax(0, 1fr));
-		}
-
-		.tabs strong {
+		.tab strong {
 			font-size: 16px;
 		}
 
@@ -751,6 +629,11 @@
 
 		footer {
 			flex-wrap: wrap;
+		}
+
+		.launch {
+			min-width: 0;
+			flex: 1;
 		}
 
 		.players .hint {

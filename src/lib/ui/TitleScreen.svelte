@@ -1,9 +1,12 @@
 <script lang="ts">
 	import { assets } from '$app/paths';
+	import { onMount } from 'svelte';
 	import { AIRCRAFT } from '$lib/game/defs-aircraft';
 	import { BOMBS } from '$lib/game/defs-bombs';
 	import { carriedOf, type Loadout } from '$lib/game/loadout';
 	import type { QualityLevel, Settings } from './settings';
+	import Letters from './Letters.svelte';
+	import { menu, parallax } from './menu-fx';
 
 	interface Props {
 		settings: Settings;
@@ -32,7 +35,22 @@
 
 	const selected = $derived(AIRCRAFT[settings.aircraft]);
 
+	/** Zulu time in the status strip. */
+	let clock = $state('');
+	onMount(() => {
+		const tick = (): void => {
+			clock = new Date().toISOString().slice(11, 19) + 'Z';
+		};
+		tick();
+		const id = setInterval(tick, 1000);
+		return () => clearInterval(id);
+	});
+
 	function onKey(e: KeyboardEvent): void {
+		if (e.defaultPrevented) return;
+		// Enter on an item reached with the arrows presses that item instead.
+		const t = e.target;
+		if (t instanceof HTMLElement && t.matches('[data-nav]:focus-visible')) return;
 		if (e.code === 'Enter') {
 			e.preventDefault();
 			onSortie();
@@ -44,65 +62,107 @@
 
 <svelte:window onkeydown={onKey} />
 
-<div class="title">
-	<header class="brand">
-		<img class="emblem" src="{assets}/brand/logo-512.png" alt="" width="96" height="96" />
-		<div class="eyebrow"><span class="dot"></span> Close air support · Dusk theatre</div>
+<div class="title" use:menu={{ nav: true }}>
+	<div class="frame" aria-hidden="true">
+		<i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
+		<div class="strip">
+			<span>DFA <b>//</b> TAC-NET</span>
+			<span class="link"><i></i> Secure link</span>
+			<span class="clock">{clock}</span>
+		</div>
+	</div>
+
+	<header class="brand" use:parallax={14}>
+		<img
+			class="emblem m-rise"
+			src="{assets}/brand/logo-512.png"
+			alt=""
+			width="88"
+			height="88"
+			style:--i="0"
+		/>
+		<p class="m-kicker m-wipe" style:--d="250ms">Close air support · Dusk theatre</p>
 		<h1>
-			<span class="death">DEATH</span>
-			<span class="from">FROM ABOVE</span>
+			<span class="death"><Letters text="DEATH" delay={350} stagger={70} /></span>
+			<span class="from"><Letters text="FROM ABOVE" delay={800} stagger={32} /></span>
 		</h1>
-		<p class="tag">
+		<p class="tag m-rise" style:--d="1150ms">
 			Hold the airfield. Break the column. Every bomb you carry is someone's bad day.
 		</p>
 	</header>
 
-	{#if best > 0}
-		<div class="best">
-			<span>Best</span>
-			<strong>{best.toLocaleString()}</strong>
-		</div>
-	{/if}
-
-	<aside class="actions">
-		<button class="sortie" onclick={onSortie}>
-			<span>Sortie</span>
-			<small>Enter</small>
-		</button>
-		<button class="ride" onclick={onHangar}>
-			<span class="ride-head">
-				<span class="ride-label">Hangar</span>
-				{#if credits > 0}<span class="cr">{credits.toLocaleString()} cr</span>{/if}
-				<small>H</small>
-			</span>
-			<strong>{selected.name}</strong>
-			<span class="ride-sub">{selected.real ?? selected.role}</span>
-			<span class="chips">
-				{#each carriedOf(loadout) as b (b)}
-					<span style:--c={BOMBS[b].color}>{BOMBS[b].short} ×{loadout[b]}</span>
-				{/each}
-			</span>
-		</button>
-		<div class="row">
-			<button class="ghost" onclick={onControls}>Controls</button>
-			<div class="seg" role="group" aria-label="Graphics quality">
-				{#each ['low', 'medium', 'high'] as const as q (q)}
-					<button class:on={settings.quality === q} onclick={() => onQuality(q)}>{q}</button>
-				{/each}
+	<aside class="readouts" use:parallax={6}>
+		{#if best > 0}
+			<div class="readout m-rise" style:--d="900ms">
+				<span class="m-label">Best score</span>
+				<strong>{best.toLocaleString()}</strong>
 			</div>
+		{/if}
+		<div class="readout m-rise" style:--d="1000ms">
+			<span class="m-label">Credits</span>
+			<strong class="cr">{credits.toLocaleString()}<small>cr</small></strong>
+		</div>
+	</aside>
+
+	<nav class="menu" aria-label="Main menu" use:parallax={8}>
+		<button class="m-btn m-primary sortie m-wipe" style:--d="600ms" data-nav onclick={onSortie}>
+			<span class="idx" aria-hidden="true">01</span>
+			<span class="lbl">Sortie</span>
+			<span class="m-chev" aria-hidden="true"><i></i><i></i><i></i></span>
+			<span class="m-key">Enter</span>
+		</button>
+		<button class="m-btn ride m-wipe" style:--d="600ms" style:--i="1" data-nav onclick={onHangar}>
+			<span class="idx" aria-hidden="true">02</span>
+			<span class="ride-body">
+				<span class="ride-head">
+					<span class="lbl">Hangar</span>
+					<span class="m-key">H</span>
+				</span>
+				<strong>{selected.name}</strong>
+				<span class="ride-sub">{selected.real ?? selected.role}</span>
+				<span class="chips">
+					{#each carriedOf(loadout) as b (b)}
+						<span style:--c={BOMBS[b].color}><i></i>{BOMBS[b].short}<b>×{loadout[b]}</b></span>
+					{/each}
+				</span>
+			</span>
+		</button>
+		<button
+			class="m-btn plain m-wipe"
+			style:--d="600ms"
+			style:--i="2"
+			data-nav
+			onclick={onControls}
+		>
+			<span class="idx" aria-hidden="true">03</span>
+			<span class="lbl">Controls</span>
+		</button>
+	</nav>
+
+	<section class="sys m-panel m-rise" style:--d="1100ms" aria-label="Settings" use:parallax={5}>
+		<span class="m-label">Graphics</span>
+		<div class="seg" role="group" aria-label="Graphics quality">
+			{#each ['low', 'medium', 'high'] as const as q (q)}
+				<button class="m-tile" class:on={settings.quality === q} onclick={() => onQuality(q)}
+					>{q}</button
+				>
+			{/each}
 		</div>
 		<label class="vol">
-			<span>Volume</span>
+			<span class="m-label">Volume <b>{Math.round(settings.volume * 100)}</b></span>
 			<input
+				class="m-range"
 				type="range"
 				min="0"
 				max="1"
 				step="0.05"
 				value={settings.volume}
+				style:--v={settings.volume}
 				oninput={(e) => onVolume(Number((e.currentTarget as HTMLInputElement).value))}
 			/>
 		</label>
-	</aside>
+		<p class="hint">↑ ↓ select · Enter fly · H hangar</p>
+	</section>
 </div>
 
 <style>
@@ -110,18 +170,16 @@
 		position: absolute;
 		inset: 0;
 		display: grid;
-		grid-template-columns: 1fr auto;
+		grid-template-columns: minmax(0, 1fr) auto;
 		grid-template-rows: auto 1fr auto;
-		padding: clamp(20px, 4vw, 56px);
+		gap: 16px 24px;
+		padding: clamp(40px, 5vh, 64px) clamp(28px, 4vw, 64px) clamp(28px, 4.5vh, 52px);
 		background:
-			linear-gradient(
-				90deg,
-				rgba(6, 7, 11, 0.78) 0%,
-				rgba(6, 7, 11, 0.25) 42%,
-				rgba(6, 7, 11, 0) 65%
-			),
-			linear-gradient(0deg, rgba(6, 7, 11, 0.85) 0%, rgba(6, 7, 11, 0) 38%);
+			radial-gradient(ellipse 80% 70% at 62% 42%, transparent 40%, rgba(4, 5, 9, 0.7) 100%),
+			linear-gradient(90deg, rgba(6, 7, 11, 0.82) 0%, rgba(6, 7, 11, 0.3) 38%, transparent 60%),
+			linear-gradient(0deg, rgba(6, 7, 11, 0.85) 0%, transparent 42%);
 		animation: fade 0.9s ease-out;
+		overflow: hidden;
 	}
 
 	@keyframes fade {
@@ -130,152 +188,280 @@
 		}
 	}
 
+	/* Screen-edge brackets and the status strip: the menu is a sight picture. */
+	.frame {
+		position: absolute;
+		inset: 14px;
+		pointer-events: none;
+	}
+
+	.c {
+		position: absolute;
+		width: 34px;
+		height: 34px;
+		border: 0 solid rgba(255, 214, 160, 0.4);
+		animation: corner 0.9s var(--m-ease) 0.1s backwards;
+	}
+
+	.tl {
+		left: 0;
+		top: 0;
+		border-width: 1.5px 0 0 1.5px;
+		--fx: 24px;
+		--fy: 24px;
+	}
+
+	.tr {
+		right: 0;
+		top: 0;
+		border-width: 1.5px 1.5px 0 0;
+		--fx: -24px;
+		--fy: 24px;
+	}
+
+	.bl {
+		left: 0;
+		bottom: 0;
+		border-width: 0 0 1.5px 1.5px;
+		--fx: 24px;
+		--fy: -24px;
+	}
+
+	.br {
+		right: 0;
+		bottom: 0;
+		border-width: 0 1.5px 1.5px 0;
+		--fx: -24px;
+		--fy: -24px;
+	}
+
+	@keyframes corner {
+		from {
+			opacity: 0;
+			transform: translate(var(--fx), var(--fy));
+		}
+	}
+
+	.strip {
+		position: absolute;
+		left: 50px;
+		right: 50px;
+		top: 6px;
+		display: flex;
+		justify-content: space-between;
+		font-family: var(--display);
+		font-size: 11px;
+		letter-spacing: 0.3em;
+		text-transform: uppercase;
+		color: var(--ink-faint);
+		animation: fade 1s ease-out 0.4s backwards;
+	}
+
+	.strip b {
+		color: var(--amber);
+		font-weight: 500;
+	}
+
+	.link {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.link i {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--good);
+		box-shadow: 0 0 8px var(--good);
+		animation: pulse 2s ease-in-out infinite;
+	}
+
+	@keyframes pulse {
+		50% {
+			opacity: 0.3;
+		}
+	}
+
+	.clock {
+		font-variant-numeric: tabular-nums;
+	}
+
+	/* ---- Brand ---- */
+
 	.brand {
 		grid-column: 1;
-		max-width: 620px;
+		grid-row: 1;
+		max-width: 680px;
 	}
 
 	.emblem {
 		display: block;
-		width: clamp(64px, 7vw, 96px);
+		width: clamp(56px, 9vh, 88px);
 		height: auto;
-		margin-bottom: 10px;
-		filter: drop-shadow(0 0 18px rgba(255, 130, 40, 0.35));
-	}
-
-	.eyebrow {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		font-size: 14px;
-		letter-spacing: 0.32em;
-		text-transform: uppercase;
-		color: var(--amber);
-	}
-
-	.dot {
-		width: 8px;
-		height: 8px;
-		background: var(--amber-hot);
-		box-shadow: 0 0 12px var(--amber-hot);
-		animation: blink 1.6s steps(2, start) infinite;
-	}
-
-	@keyframes blink {
-		to {
-			visibility: hidden;
-		}
+		margin-bottom: 12px;
+		filter: drop-shadow(0 0 18px rgba(255, 130, 40, 0.4));
 	}
 
 	h1 {
 		margin: 14px 0 0;
 		font-family: var(--display);
-		line-height: 0.82;
-		text-shadow: 0 6px 40px rgba(0, 0, 0, 0.6);
+		line-height: 0.84;
 	}
 
 	.death {
 		display: block;
-		font-size: clamp(64px, 11vw, 168px);
+		font-size: clamp(72px, min(11vw, 20vh), 176px);
 		font-weight: 700;
-		letter-spacing: -0.01em;
-		background: linear-gradient(180deg, #fff6e6 0%, #ffd29a 55%, #ff8a3c 100%);
+		letter-spacing: 0.01em;
+		filter: drop-shadow(0 0 30px rgba(255, 120, 40, 0.35))
+			drop-shadow(0 6px 30px rgba(0, 0, 0, 0.6));
+	}
+
+	.death :global(.ch) {
+		background: linear-gradient(180deg, #fff8ea 0%, #ffd8a2 50%, #ff8a3c 100%);
 		-webkit-background-clip: text;
 		background-clip: text;
 		color: transparent;
-		filter: drop-shadow(0 0 28px rgba(255, 130, 40, 0.35));
 	}
 
 	.from {
 		display: block;
-		margin-top: 12px;
-		font-size: clamp(22px, 3.2vw, 46px);
+		margin-top: 0.3em;
+		font-size: clamp(20px, min(3.1vw, 5.4vh), 46px);
 		font-weight: 600;
-		letter-spacing: 0.42em;
+		letter-spacing: 0.5em;
 		color: var(--ink);
+		text-shadow: 0 2px 20px rgba(0, 0, 0, 0.7);
 	}
 
 	.tag {
 		margin: 22px 0 0;
+		padding-left: 14px;
 		max-width: 440px;
 		font-size: 18px;
 		line-height: 1.35;
 		color: var(--ink-dim);
+		border-left: 2px solid var(--line);
 	}
 
-	.best {
+	/* ---- Readouts ---- */
+
+	.readouts {
 		grid-column: 2;
 		grid-row: 1;
-		justify-self: end;
+		align-self: start;
+		display: grid;
+		gap: 14px;
+		justify-items: end;
 		text-align: right;
-		font-family: var(--display);
 	}
 
-	.best span {
-		display: block;
-		font-size: 12px;
-		letter-spacing: 0.3em;
-		text-transform: uppercase;
+	.readout {
+		display: grid;
+		padding-right: 14px;
+		border-right: 2px solid var(--amber);
+	}
+
+	.readout strong {
+		font-family: var(--display);
+		font-size: 34px;
+		line-height: 1.1;
+		color: var(--amber);
+		font-variant-numeric: tabular-nums;
+		text-shadow: 0 0 20px var(--amber-glow);
+	}
+
+	.readout .cr {
+		color: var(--good);
+		text-shadow: 0 0 20px rgba(143, 227, 136, 0.35);
+	}
+
+	.cr small {
+		margin-left: 4px;
+		font-size: 14px;
 		color: var(--ink-faint);
 	}
 
-	.best strong {
-		font-size: 34px;
-		color: var(--amber);
+	/* ---- Main menu ---- */
+
+	.menu {
+		grid-column: 1;
+		grid-row: 3;
+		align-self: end;
+		display: grid;
+		gap: 8px;
+		width: min(clamp(380px, 25vw, 520px), 100%);
+	}
+
+	.idx {
+		font-family: var(--display);
+		font-size: 11px;
+		font-weight: 500;
+		letter-spacing: 0.1em;
+		opacity: 0.55;
+		align-self: flex-start;
+		padding-top: 4px;
+	}
+
+	.sortie {
+		justify-content: flex-start;
+		gap: 16px;
+		padding: 18px 20px;
+		font-size: 26px;
+	}
+
+	.sortie .idx {
+		padding-top: 2px;
+	}
+
+	.sortie .m-chev {
+		margin-right: 4px;
 	}
 
 	.ride {
-		display: grid;
-		gap: 2px;
-		padding: 14px 16px;
-		text-align: left;
-		cursor: pointer;
-		color: var(--ink);
-		background: var(--panel);
-		border: 1px solid rgba(255, 255, 255, 0.08);
-		border-left: 3px solid var(--amber-hot);
-		backdrop-filter: blur(6px);
-		transition:
-			border-color 0.15s,
-			background 0.15s,
-			transform 0.15s;
+		justify-content: flex-start;
+		align-items: flex-start;
+		gap: 16px;
+		background: var(--m-glass);
+		backdrop-filter: blur(10px);
+		-webkit-backdrop-filter: blur(10px);
 	}
 
-	.ride:hover {
-		background: var(--panel-strong);
-		border-color: var(--line);
-		transform: translateX(3px);
+	.ride-body {
+		display: grid;
+		gap: 2px;
+		flex: 1;
+		min-width: 0;
 	}
 
 	.ride-head {
 		display: flex;
 		justify-content: space-between;
-		font-size: 12px;
-		letter-spacing: 0.3em;
-		text-transform: uppercase;
+		align-items: center;
 		color: var(--amber);
-	}
-
-	.ride-head .cr {
-		margin-left: auto;
-		margin-right: 12px;
-		letter-spacing: 0.12em;
-		color: var(--good);
-	}
-
-	.ride-head small {
-		color: var(--ink-faint);
-		letter-spacing: 0.2em;
+		font-size: 12px;
+		letter-spacing: 0.32em;
 	}
 
 	.ride strong {
-		font-family: var(--display);
-		font-size: 26px;
-		letter-spacing: 0.12em;
+		font-size: 24px;
+		letter-spacing: 0.14em;
+		line-height: 1.15;
+		transition: transform 0.35s var(--m-ease);
+	}
+
+	.ride:hover strong,
+	.ride:focus-visible strong {
+		transform: translateX(4px);
 	}
 
 	.ride-sub {
+		font-family: var(--body);
 		font-size: 14px;
+		font-weight: 500;
+		letter-spacing: 0.06em;
+		text-transform: none;
 		color: var(--ink-dim);
 	}
 
@@ -287,135 +473,151 @@
 	}
 
 	.chips span {
-		font-family: var(--display);
-		font-size: 11px;
-		letter-spacing: 0.08em;
-		padding: 2px 6px;
-		color: var(--c);
-		border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
-	}
-
-	.actions {
-		grid-column: 1;
-		grid-row: 3;
-		align-self: end;
-		display: grid;
-		gap: 12px;
-		width: min(380px, 100%);
-	}
-
-	.sortie {
-		display: flex;
+		display: inline-flex;
 		align-items: center;
-		justify-content: space-between;
-		padding: 18px 22px;
-		cursor: pointer;
-		border: none;
-		background: linear-gradient(100deg, #ffb04a, #ff6a24);
-		color: #1a0d04;
-		font-family: var(--display);
-		font-size: 26px;
-		font-weight: 700;
-		letter-spacing: 0.18em;
-		text-transform: uppercase;
-		clip-path: polygon(0 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%);
-		box-shadow: 0 0 40px rgba(255, 120, 40, 0.35);
-		transition:
-			filter 0.15s ease,
-			transform 0.15s ease;
+		gap: 5px;
+		padding: 3px 7px 3px 5px;
+		font-size: 10px;
+		letter-spacing: 0.1em;
+		color: var(--ink);
+		background: rgba(0, 0, 0, 0.3);
+		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 35%, transparent);
 	}
 
-	.sortie:hover {
-		filter: brightness(1.1);
-		transform: translateY(-2px);
+	.chips i {
+		width: 3px;
+		height: 10px;
+		background: var(--c);
+		box-shadow: 0 0 6px var(--c);
 	}
 
-	.sortie:active {
-		transform: translateY(1px);
+	.chips b {
+		font-weight: 500;
+		color: var(--c);
 	}
 
-	.sortie small {
-		font-family: var(--body);
-		font-size: 12px;
-		letter-spacing: 0.2em;
-		opacity: 0.7;
-	}
-
-	.row {
-		display: flex;
-		gap: 8px;
-	}
-
-	.ghost,
-	.seg button {
-		cursor: pointer;
-		padding: 8px 12px;
-		font-size: 13px;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		background: var(--panel);
-		border: 1px solid rgba(255, 255, 255, 0.1);
+	.plain {
+		justify-content: flex-start;
+		gap: 16px;
+		padding: 11px 20px;
 		color: var(--ink-dim);
 	}
 
-	.ghost:hover,
-	.seg button:hover {
-		color: var(--ink);
-		border-color: var(--line);
+	/* ---- Settings ---- */
+
+	.sys {
+		grid-column: 2;
+		grid-row: 3;
+		align-self: end;
+		display: grid;
+		gap: 8px;
+		width: 260px;
+		padding: 16px 18px 14px;
+		--cut: 12px;
 	}
 
 	.seg {
-		display: flex;
-		flex: 1;
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 4px;
+		margin-bottom: 6px;
 	}
 
 	.seg button {
-		flex: 1;
-		padding: 8px 6px;
+		padding: 7px 4px;
+		justify-items: center;
+		font-family: var(--display);
+		font-size: 12px;
+		font-weight: 600;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--ink-dim);
 	}
 
 	.seg button.on {
-		color: #1a0d04;
-		background: var(--amber);
-		border-color: var(--amber);
+		color: var(--amber);
 	}
 
 	.vol {
 		display: grid;
-		grid-template-columns: auto 1fr;
-		align-items: center;
-		gap: 12px;
-		font-size: 13px;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
+		gap: 4px;
+	}
+
+	.vol b {
+		float: right;
+		font-weight: 600;
 		color: var(--ink-dim);
 	}
 
-	.vol input {
-		accent-color: var(--amber);
+	.hint {
+		margin: 4px 0 0;
+		font-size: 12px;
+		letter-spacing: 0.1em;
+		color: var(--ink-faint);
+	}
+
+	@media (max-height: 700px) {
+		.tag {
+			display: none;
+		}
+
+		.emblem {
+			margin-bottom: 4px;
+		}
+	}
+
+	@media (max-height: 560px) {
+		.emblem,
+		.frame {
+			display: none;
+		}
+
+		.title {
+			padding-top: 24px;
+		}
+
+		.chips {
+			display: none;
+		}
 	}
 
 	@media (max-width: 980px) {
 		.title {
 			grid-template-columns: 1fr;
-			grid-template-rows: auto 1fr auto auto;
+			grid-template-rows: auto auto 1fr auto auto;
 			overflow-y: auto;
 		}
 
-		.best,
-		.actions {
+		.readouts,
+		.menu,
+		.sys {
 			grid-column: 1;
 		}
 
-		.best {
+		.readouts {
 			grid-row: 2;
-			justify-self: start;
+			justify-items: start;
 			text-align: left;
+			grid-auto-flow: column;
 		}
 
-		.actions {
+		.readout {
+			padding: 0 0 0 12px;
+			border-right: 0;
+			border-left: 2px solid var(--amber);
+		}
+
+		.menu {
 			grid-row: 4;
-			margin-top: 16px;
+		}
+
+		.sys {
+			grid-row: 5;
+			width: min(420px, 100%);
+		}
+
+		.strip {
+			display: none;
 		}
 	}
 </style>

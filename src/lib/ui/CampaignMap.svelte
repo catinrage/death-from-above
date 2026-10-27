@@ -64,11 +64,22 @@
 			<stop offset="0" stop-color="#ff4b3a" stop-opacity="0.06" />
 			<stop offset="1" stop-color="#ff4b3a" stop-opacity="0.18" />
 		</linearGradient>
+		<linearGradient id="sweep" x1="0" x2="1">
+			<stop offset="0" stop-color="#ffd59a" stop-opacity="0" />
+			<stop offset="0.85" stop-color="#ffd59a" stop-opacity="0.04" />
+			<stop offset="1" stop-color="#ffd59a" stop-opacity="0.16" />
+		</linearGradient>
+		<pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse">
+			<path d="M25,0 L0,0 L0,25" fill="none" stroke="rgba(255,255,255,0.035)" />
+		</pattern>
 	</defs>
 
-	<!-- Territory either side of the front. -->
-	<rect x="0" y="0" width={front} height={H} fill="url(#held)" />
-	<rect x={front} y="0" width={W - front} height={H} fill="url(#enemy)" />
+	<!-- Territory either side of the front, on a plotting grid. -->
+	<rect x="0" y="0" width={W} height={H} fill="url(#grid)" />
+	<rect class="terr" x="0" y="0" width={front} height={H} fill="url(#held)" />
+	<rect class="terr" x={front} y="0" width={W - front} height={H} fill="url(#enemy)" />
+	<!-- A recon sweep crossing the map. -->
+	<rect class="sweep" x="-120" y="0" width="120" height={H} fill="url(#sweep)" />
 
 	<!-- Sectors. -->
 	{#each SECTORS as s, i (s.id)}
@@ -146,6 +157,13 @@
 		>
 			<line class="stem" x1="0" x2="0" y1="10" y2={GROUND - y} />
 			<circle r="14" class="hit" />
+			{#if m.id === selected}
+				<circle class="ping" r="12" />
+				<path
+					class="lock"
+					d="M-19,-11 L-19,-19 L-11,-19 M11,-19 L19,-19 L19,-11 M19,11 L19,19 L11,19 M-11,19 L-19,19 L-19,11"
+				/>
+			{/if}
 			<path class="pin" d="M0,-10 L10,0 L0,10 L-10,0 Z" />
 			<text class="num" y="4" text-anchor="middle">{i + 1}</text>
 			<text class="name" y={i % 2 ? 28 : -18} text-anchor="middle">{m.name.toUpperCase()}</text>
@@ -163,9 +181,78 @@
 		display: block;
 		width: 100%;
 		height: auto;
-		background: rgba(255, 255, 255, 0.025);
-		border: 1px solid rgba(255, 255, 255, 0.06);
+		background: rgba(0, 0, 0, 0.22);
+		box-shadow:
+			inset 0 0 0 1px rgba(255, 214, 160, 0.1),
+			inset 0 0 40px rgba(0, 0, 0, 0.5);
 		font-family: var(--display);
+	}
+
+	.terr {
+		animation: terr 1s ease-out backwards;
+	}
+
+	@keyframes terr {
+		from {
+			opacity: 0;
+		}
+	}
+
+	.sweep {
+		pointer-events: none;
+		animation: sweep 6s linear infinite;
+	}
+
+	@keyframes sweep {
+		from {
+			transform: translateX(0);
+		}
+		to {
+			transform: translateX(1120px);
+		}
+	}
+
+	.ping {
+		fill: none;
+		stroke: var(--amber);
+		stroke-width: 1.5;
+		transform-box: fill-box;
+		transform-origin: center;
+		animation: ping 1.8s ease-out infinite;
+		pointer-events: none;
+	}
+
+	@keyframes ping {
+		from {
+			opacity: 0.9;
+			transform: scale(0.8);
+		}
+		to {
+			opacity: 0;
+			transform: scale(2.4);
+		}
+	}
+
+	.lock {
+		fill: none;
+		stroke: #ffe2b8;
+		stroke-width: 1.5;
+		pointer-events: none;
+		animation: lock 0.35s cubic-bezier(0.3, 1.5, 0.5, 1) backwards;
+	}
+
+	@keyframes lock {
+		from {
+			opacity: 0;
+			transform: scale(1.8);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.sweep,
+		.ping {
+			display: none;
+		}
 	}
 
 	.border {
