@@ -70,7 +70,11 @@ export const MISSIONS: readonly Mission[] = [
 		waves: {
 			last: 2,
 			offset: 2,
-			tweaks: () => ({ lead: { tank: 3, apc: 1.5, truck: 0.5, jeep: 0.5 } }),
+			// Three tanks a wave so the six-tank goal can always be met.
+			tweaks: () => ({
+				lead: { tank: 3, apc: 1.5, truck: 0.5, jeep: 0.5 },
+				units: ['tank', 'tank', 'tank']
+			}),
 			briefings: [
 				'Tanks leading the column. Hit them from above',
 				'Second armoured group with AA escort. Watch the tracers'
@@ -134,7 +138,7 @@ export const MISSIONS: readonly Mission[] = [
 			last: 2,
 			offset: 4,
 			statics: ['radar', 'radar'],
-			tweaks: () => ({ lead: { sam: 3.5, spaag: 1.5 } }),
+			tweaks: () => ({ lead: { sam: 3.5, spaag: 1.5 }, units: ['sam', 'sam'] }),
 			briefings: [
 				'SAM launchers moving up with radar cover. Flares ready',
 				'More launchers inbound. Clear the sky'
@@ -221,19 +225,28 @@ export class MissionTracker {
 	/** Lowest the airfield has been, as a fraction. */
 	baseLow = 1;
 	private readonly seen = new Set<number>();
+	/** Ground units last seen alive, so ones cleared away in the same step they died still count. */
+	private living = new Map<number, Target>();
 
 	constructor(readonly mission: Mission) {}
 
+	private tally(id: number, kind: Target): void {
+		if (this.seen.has(id)) return;
+		this.seen.add(id);
+		this.destroyed[kind] = (this.destroyed[kind] ?? 0) + 1;
+	}
+
 	update(w: World): void {
+		const living = new Map<number, Target>();
 		for (const u of w.units) {
-			if (u.alive || this.seen.has(u.id)) continue;
-			this.seen.add(u.id);
-			this.destroyed[u.def.kind] = (this.destroyed[u.def.kind] ?? 0) + 1;
+			if (u.alive) living.set(u.id, u.def.kind);
+			else this.tally(u.id, u.def.kind);
 		}
+		// Gone from the field without us seeing the wreck (e.g. dropped off a broken bridge).
+		for (const [id, kind] of this.living) if (!living.has(id)) this.tally(id, kind);
+		this.living = living;
 		for (const a of w.air) {
-			if ((a.alive && !a.dying) || this.seen.has(a.id)) continue;
-			this.seen.add(a.id);
-			this.destroyed[a.kind] = (this.destroyed[a.kind] ?? 0) + 1;
+			if (!a.alive || a.dying) this.tally(a.id, a.kind);
 		}
 		if (w.bridge && w.bridge.downCount > 0) this.bridgeDown = true;
 		this.baseLow = Math.min(this.baseLow, w.base.hp / w.base.maxHp);

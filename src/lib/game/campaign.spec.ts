@@ -14,7 +14,7 @@ import {
 import { AirUnit } from './enemy-air';
 import { testWorld } from './test-world';
 import { UNITS } from './defs-units';
-import { WaveDirector } from './waves';
+import { planWave, WaveDirector } from './waves';
 
 function memoryStorage(): Storage {
 	const data = new Map<string, string>();
@@ -59,6 +59,33 @@ describe('missions', () => {
 	});
 });
 
+describe('mission objectives', () => {
+	it('always fields enough targets to meet every destroy goal', () => {
+		for (const m of MISSIONS) {
+			for (const o of m.objectives) {
+				if (o.type !== 'destroy') continue;
+				for (let seed = 1; seed <= 200; seed++) {
+					let n = 0;
+					for (let wave = 1; wave <= m.waves.last; wave++) {
+						// A field already full of emplacements: only guaranteed ones get dug in.
+						const plan = planWave(
+							wave + (m.waves.offset ?? 0),
+							seed,
+							99,
+							null,
+							m.waves.tweaks?.(wave) ?? {},
+							wave === 1 ? (m.waves.statics ?? []) : []
+						);
+						n += plan.orders.filter((s) => o.kinds.includes(s.kind)).length;
+						n += plan.statics.filter((s) => o.kinds.includes(s.kind)).length;
+					}
+					expect(n, `${m.id}: ${o.label}, seed ${seed}`).toBeGreaterThanOrEqual(o.count);
+				}
+			}
+		}
+	});
+});
+
 describe('MissionTracker', () => {
 	it('counts destroyed enemies by kind, whatever killed them', () => {
 		const w = testWorld();
@@ -76,6 +103,18 @@ describe('MissionTracker', () => {
 		const status = t.status(waves);
 		expect(status[0]).toMatchObject({ label: 'Destroy tanks', count: '2/6', done: false });
 		expect(t.complete(waves)).toBe(false);
+	});
+
+	it('counts a unit that was cleared away in the same step it died', () => {
+		const w = testWorld();
+		const t = new MissionTracker(MISSIONS.find((x) => x.id === 'iron-column')!);
+		const tank = w.spawnUnit('tank', 1200, 0);
+		t.update(w);
+		tank.alive = false;
+		w.units.splice(w.units.indexOf(tank), 1);
+		t.update(w);
+		t.update(w);
+		expect(t.count(['tank'])).toBe(1);
 	});
 
 	it('counts downed aircraft and a dropped bridge span', () => {
