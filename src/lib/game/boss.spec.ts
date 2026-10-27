@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { bossStatus, CRUISER_ENTRY, CRUISER_STATION, riverPoint, spawnBoss } from './boss';
 import { MissionTracker, missionById } from './campaign';
 import { inBattlePlane } from './combat';
+import { isEmitting } from './arm';
 import { BOMBS } from './defs-bombs';
 import { BOSS_KINDS, MOBILE_KINDS, UNITS } from './defs-units';
 import { Player } from './player';
@@ -169,6 +170,14 @@ describe('river cruiser', () => {
 		expect(locked).toBe(true);
 		expect(launches).toBeGreaterThanOrEqual(2);
 		expect(w.shells.some((s) => s.kind === 'flak') || w.bullets.length > 0).toBe(true);
+	});
+
+	it('lights up for anti-radiation missiles only while its SAMs lock on', () => {
+		const w = testWorld();
+		const u = spawnBoss(w, 'cruiser');
+		expect(isEmitting(u)).toBe(false);
+		u.aux!.lock = 0.5;
+		expect(isEmitting(u)).toBe(true);
 	});
 
 	it("can't be bombed on its way in", () => {

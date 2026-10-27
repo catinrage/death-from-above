@@ -11,7 +11,7 @@ const SEEKER_COS = Math.cos(1.0);
 /** Can this unit ever radiate? */
 export function isEmitterKind(u: Unit): boolean {
 	const k = u.def.kind;
-	return k === 'radar' || k === 'sam' || k === 'spaag';
+	return k === 'radar' || k === 'sam' || k === 'spaag' || k === 'cruiser';
 }
 
 /**
@@ -22,12 +22,14 @@ export function isEmitterKind(u: Unit): boolean {
 export function isEmitting(u: Unit): boolean {
 	if (!u.alive || u.stun > 0 || !isEmitterKind(u)) return false;
 	if (u.def.kind === 'radar') return true;
+	// The cruiser's fire-control radar is up while its SAM battery locks on.
+	if (u.def.kind === 'cruiser') return (u.aux?.lock ?? 0) > 0;
 	return u.lock > 0;
 }
 
 /** How much the seeker wants this emitter: a launcher locking us beats a search radar. */
 function priority(u: Unit): number {
-	if (u.def.kind === 'sam') return 2.2;
+	if (u.def.kind === 'sam' || u.def.kind === 'cruiser') return 2.2;
 	if (u.def.kind === 'radar') return 1.4;
 	return 1;
 }

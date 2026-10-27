@@ -1,6 +1,6 @@
 import { damp, dampAngle } from '../engine/math';
 import { fx as rnd } from '../engine/rng';
-import { segmentVsUnit } from './combat';
+import { inBattlePlane, segmentVsUnit } from './combat';
 import { WORLD } from './constants';
 import { killUnit } from './deaths';
 import { UNITS } from './defs-units';
@@ -209,7 +209,8 @@ export class Allies {
 		let foe: Unit | null = null;
 		let best = Infinity;
 		for (const o of w.units) {
-			if (!o.alive) continue;
+			// The cruiser lies off the road and never stands in the column's way.
+			if (!o.alive || o.def.kind === 'cruiser') continue;
 			const d = o.x - u.x;
 			if (d > -15 && d < best) {
 				best = d;
@@ -260,7 +261,7 @@ export class Allies {
 		let foe: Unit | null = null;
 		let best = gun.range;
 		for (const o of w.units) {
-			if (!o.alive) continue;
+			if (!o.alive || !inBattlePlane(o)) continue;
 			// Facing the enemy: things already behind count for more distance.
 			const d = Math.abs(o.x - u.x) * (o.x < u.x ? 1.6 : 1);
 			if (d < best) {
