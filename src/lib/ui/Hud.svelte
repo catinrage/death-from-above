@@ -18,7 +18,7 @@
 	const systemsHit = $derived(SYSTEM_TAGS.some((s) => hud.systems[s.id] > 0));
 	const baseFrac = $derived(Math.max(0, hud.baseHp / hud.baseMax));
 	const heatFrac = $derived(Math.min(1, hud.heat / 100));
-	const ORDER_TAG = { cover: 'CVR', attack: 'ATK', sams: 'SAM' } as const;
+	const ORDER_TAG = { cover: 'CVR', attack: 'ATK', sams: 'SAM', rearm: 'RTB' } as const;
 </script>
 
 <div class="hud" class:critical={hpFrac < 0.3 && hud.hp > 0}>
@@ -194,16 +194,15 @@
 			{@const wing = hud.wingman}
 			<div
 				class="gauge wing"
-				class:down={wing.down > 0}
-				title="Wingman: T attack · G cover · H SAMs"
+				class:down={wing.down}
+				title="Wingman: T attack · G cover · H SAMs · Y rearm"
 			>
 				<span class="lbl">WING</span>
 				<span class="track"
 					><span class="fill wing" class:low={wing.hp < 0.3} style:transform="scaleX({wing.hp})"
 					></span></span
 				>
-				<span class="val">{wing.down > 0 ? `${Math.ceil(wing.down)}s` : ORDER_TAG[wing.order]}</span
-				>
+				<span class="val">{wing.down ? 'OUT' : ORDER_TAG[wing.order]}</span>
 			</div>
 		{/if}
 		<div class="readout">

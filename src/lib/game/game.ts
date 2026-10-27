@@ -1,5 +1,5 @@
 import { AudioEngine } from '../audio/audio';
-import { RadioWatch } from '../audio/radio';
+import { RadioWatch, type RadioCue } from '../audio/radio';
 import { clamp, damp, lerp } from '../engine/math';
 import { fx as rnd } from '../engine/rng';
 import { Renderer, type PostFrame, type Quality } from '../engine/renderer';
@@ -77,7 +77,7 @@ import { cockpitAlerts, incomingThreats, lockThreat, missileThreat } from './war
 import { RESOLVE } from './projectiles';
 import { SHOAL } from './river';
 import { World } from './world';
-import { Wingman, WING_HP } from './wingman';
+import { Wingman, WING_HP, type WingOrder } from './wingman';
 import { zoneAt } from './no-fire';
 import { AirBase } from './base';
 import { radioState } from './battle-audio';
@@ -96,6 +96,13 @@ const ENV_BY_WAVE = [0.9, 0, 0.7, 1.25, 2.1, 3, 3, 3.6, 4.2, 5];
 const DEBRIEF_DELAY = 3.5;
 /** Radius (CSS px) of the ring of threat chevrons around the aircraft. */
 const THREAT_RING = 74;
+/** The radio acknowledgement for each wingman order. */
+const ORDER_CUE: Record<WingOrder, RadioCue> = {
+	attack: 'wingAttack',
+	cover: 'wingCover',
+	sams: 'wingSams',
+	rearm: 'wingRearm'
+};
 /** Aircraft flown in training: it carries every kind of weapon the lessons use. */
 const TRAINER: AircraftId = 'kestrel';
 
@@ -777,10 +784,7 @@ export class Game {
 		const pick = order === 'attack' && p && p.alive ? this.targeting.primary(w, p) : null;
 		const ok = wing.command(w, order, pick ? { unit: pick.unit, air: pick.air } : null);
 		this.audio.play(ok ? 'select' : 'empty', w.camera.x, w.camera.y, 0.6);
-		if (ok)
-			this.audio.radio([
-				order === 'attack' ? 'wingAttack' : order === 'sams' ? 'wingSams' : 'wingCover'
-			]);
+		if (ok) this.audio.radio([ORDER_CUE[order]]);
 	}
 
 	/** Player two's missiles go to the best target ahead of its nose. */
@@ -1360,7 +1364,7 @@ export class Game {
 				? {
 						order: w.wingman.order,
 						hp: Math.max(0, w.wingman.hp / WING_HP),
-						down: w.wingman.alive ? 0 : Math.max(0, w.wingman.respawn)
+						down: !w.wingman.active
 					}
 				: null,
 			noFire: zoneAt(this.sightX)?.name ?? ''
