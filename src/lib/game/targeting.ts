@@ -1,3 +1,4 @@
+import { inBattlePlane } from './combat';
 import type { CameraRig } from './camera';
 import type { AirUnit } from './enemy-air';
 import type { Player } from './player';
@@ -231,7 +232,8 @@ export class Targeting {
 	private candidates(w: World): Lock[] {
 		const out: Lock[] = [];
 		for (const u of w.units) {
-			if (u.alive) out.push({ key: u, unit: u, air: null, track: trackUnit(u), age: 0 });
+			if (u.alive && inBattlePlane(u))
+				out.push({ key: u, unit: u, air: null, track: trackUnit(u), age: 0 });
 		}
 		for (const a of w.air) {
 			if (a.alive && !a.dying) out.push({ key: a, unit: null, air: a, track: a, age: 0 });

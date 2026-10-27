@@ -11,6 +11,7 @@ import { Focus } from './focus';
 import { KillCam } from './killcam';
 import { Targeting } from './targeting';
 import { Autopilot } from './autopilot';
+import { bossStatus } from './boss';
 import { WORLD } from './constants';
 import { BOMBS, BOMB_ORDER, ROCKET_SPEED } from './defs-bombs';
 import { environmentAt, presetName } from './environment';
@@ -1118,6 +1119,7 @@ export class Game {
 			mode: this.mode,
 			mission: this.mission?.name ?? '',
 			objectives: this.tracker?.status(this.waves) ?? [],
+			boss: bossStatus(w),
 			tutorial: this.tutorial?.card() ?? null,
 			enemies: this.waves.remaining(w),
 			column: columnStatus(w),

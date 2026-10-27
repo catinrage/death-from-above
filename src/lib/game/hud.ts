@@ -67,6 +67,8 @@ export interface HudSnapshot {
 	/** Campaign mission name. */
 	mission: string;
 	objectives: ObjectiveStatus[];
+	/** The boss on the field and how much of it is left. */
+	boss: { name: string; frac: number } | null;
 	tutorial: TutorialCard | null;
 	enemies: number;
 	/** Friendly column on the road and its distance to go, or empty. */
@@ -169,6 +171,7 @@ export function emptyHud(): HudSnapshot {
 		mode: 'endless',
 		mission: '',
 		objectives: [],
+		boss: null,
 		tutorial: null,
 		enemies: 0,
 		column: '',

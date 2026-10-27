@@ -343,8 +343,68 @@ export const UNITS: Record<UnitKind, UnitDef> = {
 		death: 'collapse',
 		boom: 0.4,
 		siege: 0
+	},
+	superTank: {
+		kind: 'superTank',
+		name: 'Behemoth',
+		hp: 950,
+		armor: 0.9,
+		speed: 4.5,
+		half: [7.8, 2.3, 3.6],
+		score: 1500,
+		cost: 0,
+		minWave: 99,
+		isStatic: false,
+		category: 'armor',
+		weapon: 'cannon',
+		range: 540,
+		parts: [
+			{ mesh: 'superTankHull', at: [0, 0, 0] },
+			{ mesh: 'superTankTurret', at: [-0.6, 2.8, 0], drive: 'yaw', detach: true },
+			{ mesh: 'superTankBarrel', parent: 1, at: [3.0, 0.95, 0], drive: 'pitch', detach: true },
+			{ mesh: 'superTankAA', at: [-5.4, 2.8, 0], drive: 'auxYaw' },
+			{ mesh: 'superTankAAGuns', parent: 3, at: [0.2, 1.3, 0], drive: 'auxPitch' }
+		],
+		death: 'turretPop',
+		boom: 2.2,
+		siege: 20,
+		boss: true
+	},
+	cruiser: {
+		kind: 'cruiser',
+		name: 'River Cruiser',
+		hp: 850,
+		armor: 0.75,
+		speed: 5,
+		// Anchored broadside across the river, bow toward the airfield.
+		half: [19.4, 5, 4.4],
+		score: 2000,
+		cost: 0,
+		minWave: 99,
+		isStatic: false,
+		category: 'aa',
+		weapon: 'flak',
+		range: 1100,
+		parts: [
+			{ mesh: 'cruiserHull', at: [0, 0, 0] },
+			{ mesh: 'radarDishBig', at: [-0.5, 18.4, 0], drive: 'spin', detach: true },
+			{ mesh: 'cruiserCiws', at: [5.8, 9.0, 0], drive: 'auxYaw' },
+			{ mesh: 'cruiserCiwsGuns', parent: 2, at: [0, 1.5, 0], drive: 'auxPitch' },
+			{ mesh: 'cruiserSam', at: [-8.2, 3.0, 0], drive: 'auxYaw' },
+			{ mesh: 'cruiserTurret', at: [11.2, 3.5, 0], drive: 'yaw' },
+			{ mesh: 'cruiserGuns', parent: 5, at: [0.2, 1.9, 0], drive: 'pitch' },
+			{ mesh: 'cruiserTurret', at: [-12, 3.5, 0], drive: 'yaw' },
+			{ mesh: 'cruiserGuns', parent: 7, at: [0.2, 1.9, 0], drive: 'pitch' }
+		],
+		death: 'sink',
+		boom: 2.6,
+		siege: 0,
+		boss: true
 	}
 };
+
+/** One-off heavy units that lead a campaign act's last wave. */
+export const BOSS_KINDS: UnitKind[] = ['superTank', 'cruiser'];
 
 export interface EnemyWeapon {
 	/** Seconds between bursts. */

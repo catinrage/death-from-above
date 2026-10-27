@@ -5,6 +5,14 @@ import type { World } from './world';
 
 export type DamageCause = 'bullet' | 'blast' | 'fire';
 
+/**
+ * Whether a unit reaches the battle line, where bombs and bullets fly. Things
+ * far off it (the cruiser still coming down the river) are out of reach.
+ */
+export function inBattlePlane(u: Unit): boolean {
+	return Math.abs(u.z) - u.def.half[2] < 20;
+}
+
 /** Distance from a point to a unit's hitbox. Depth (z) is de-emphasised: combat is side-on. */
 export function distToUnit(u: Unit, x: number, y: number, z: number): number {
 	const [hx, hy, hz] = u.def.half;

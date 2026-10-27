@@ -1,5 +1,5 @@
 import { mat4, type Mat4 } from '../engine/math';
-import type { PartDrive, Unit } from './types';
+import type { PartDrive, Unit, UnitKind } from './types';
 
 const MAX_PARTS = 16;
 /** Scratch matrices for posing a single unit; reuse, do not keep references. */
@@ -29,6 +29,12 @@ function drive(m: Mat4, u: Unit, d: PartDrive | undefined, ragdoll: boolean): vo
 		case 'aim':
 			mat4.rotateY(m, m, u.aimYaw);
 			mat4.rotateZ(m, m, u.aimPitch);
+			break;
+		case 'auxYaw':
+			mat4.rotateY(m, m, u.aux?.yaw ?? 0);
+			break;
+		case 'auxPitch':
+			mat4.rotateZ(m, m, u.aux?.pitch ?? 0);
 			break;
 		case 'wheel':
 			mat4.rotateZ(m, m, -u.anim);
@@ -76,6 +82,15 @@ export function poseParts(u: Unit, root: Mat4, out: Mat4[] = poseScratch, ragdol
 	return out;
 }
 
+/** Barrel length past the pitching part's pivot, by unit kind. */
+const MUZZLE: Partial<Record<UnitKind, number>> = {
+	tank: 5.4,
+	flak: 6.2,
+	sam: 5.2,
+	superTank: 8.6,
+	cruiser: 5.4
+};
+
 /** World-space muzzle position for a unit's weapon (tip of the aimed barrel). */
 export function muzzlePoint(u: Unit, out: [number, number, number]): [number, number, number] {
 	const parts = u.def.parts;
@@ -95,8 +110,7 @@ export function muzzlePoint(u: Unit, out: [number, number, number]): [number, nu
 	}
 	const root = rootMatrix(muzzleRoot, u);
 	const mats = poseParts(u, root, muzzleParts);
-	const len =
-		u.def.kind === 'tank' ? 5.4 : u.def.kind === 'flak' ? 6.2 : u.def.kind === 'sam' ? 5.2 : 2.5;
+	const len = MUZZLE[u.def.kind] ?? 2.5;
 	const m = mats[idx];
 	out[0] = m[12] + m[0] * len;
 	out[1] = m[13] + m[1] * len + (u.def.kind === 'sam' ? m[5] * 0.8 : 0);

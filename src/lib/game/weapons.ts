@@ -1,6 +1,6 @@
 import { angleDiff, clamp } from '../engine/math';
 import { fx as rnd } from '../engine/rng';
-import { explode } from './combat';
+import { explode, inBattlePlane } from './combat';
 import { killUnit } from './deaths';
 import { WORLD } from './constants';
 import { BOMBLET_BLAST, BOMBS, type BombDef } from './defs-bombs';
@@ -74,7 +74,7 @@ function pickGuidedTarget(w: World, x: number, y: number, vx: number): Unit | nu
 	let bestScore = Infinity;
 	const dir = Math.sign(vx) || 1;
 	for (const u of w.units) {
-		if (!u.alive) continue;
+		if (!u.alive || !inBattlePlane(u)) continue;
 		const dx = (u.x - x) * dir;
 		const drop = y - u.y;
 		if (dx < -20 || dx > drop * 2.2 + 120) continue;
@@ -179,9 +179,11 @@ export function updateBombs(w: World, dt: number): void {
 		let hit = b.y <= g;
 		if (!hit) {
 			for (const u of w.units) {
-				if (!u.alive || Math.abs(u.x - b.x) > u.def.half[0] + 0.5) continue;
+				if (!u.alive || Math.abs(u.x - b.x) > u.def.half[0] + 0.5 || !inBattlePlane(u)) continue;
 				if (b.y < u.y + u.def.half[1] * 2 + 0.3 && b.y > u.y - 1) {
 					hit = true;
+					// A boss off the road line (the cruiser) takes the hit where it lies.
+					if (u.def.boss) b.z = u.z;
 					break;
 				}
 			}
@@ -314,7 +316,7 @@ export function applyFireDamage(w: World, dt: number): void {
 	for (const f of w.fires.list) {
 		if (f.dps <= 0) continue;
 		for (const u of w.units) {
-			if (!u.alive || Math.abs(u.x - f.x) > f.radius + u.def.half[0]) continue;
+			if (!u.alive || Math.abs(u.x - f.x) > f.radius + u.def.half[0] || !inBattlePlane(u)) continue;
 			u.hp -= f.dps * dt * (1 - u.def.armor * 0.6);
 			u.char = Math.min(0.8, u.char + dt * 0.3);
 			if (u.def.category === 'infantry') u.panic = 2;
