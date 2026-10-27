@@ -25,6 +25,7 @@ export function radioState(
 		lock: alive ? p!.lockProgress : 0,
 		enemyAir,
 		lives,
-		wingman: !!w.wingman && w.wingman.active
+		wingman: !!w.wingman && w.wingman.active,
+		wingRejoins: w.wingman?.rejoins ?? 0
 	};
 }

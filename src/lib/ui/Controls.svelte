@@ -21,6 +21,7 @@
 		['Wingman: attack my target', 'T  /  D-pad right'],
 		['Wingman: cover me', 'G  /  D-pad up'],
 		['Wingman: hit the SAMs', 'H  /  D-pad down'],
+		['Wingman: return to base & rearm', 'Y  /  D-pad left'],
 		['Pause', 'Esc  /  P  /  Start']
 	];
 
@@ -36,7 +37,7 @@
 		'Thunderclap levels everything nearby, including you if you are low.',
 		'Flares only work between you and the missile: drop them as it closes from behind, not when it launches.',
 		'The nuke comes back once per wave. The airfield will not rearm it.',
-		'Your wingman attacks whatever you have locked or under the reticle. Order it onto the SAMs before you go in low.'
+		'Your wingman picks his own targets; T sends him at whatever you have locked or under the reticle. Order him onto the SAMs before you go in low, and home with Y when he is shot up.'
 	];
 
 	// Runs in the capture phase so the dialog swallows Esc/Enter before the game

@@ -151,8 +151,8 @@ export interface HudSnapshot {
 	lockDir: number;
 	/** Range inside which a flare can fool it. */
 	flareWindow: number;
-	/** The AI wingman: current order, armour 0..1, and seconds until a replacement while down. */
-	wingman: { order: WingOrder; hp: number; down: number } | null;
+	/** The AI wingman: current order, armour 0..1, and whether it is down (until the next wave). */
+	wingman: { order: WingOrder; hp: number; down: boolean } | null;
 	/** Name of the no-fire zone under the bomb sight ('' = clear to drop). */
 	noFire: string;
 }

@@ -35,6 +35,7 @@ strongly recommended; quality presets (LOW / MEDIUM / HIGH) are on the title scr
 | Wingman: attack my target         | `T`                                     | D-pad right |
 | Wingman: cover me                 | `G`                                     | D-pad up    |
 | Wingman: hit the SAMs             | `H`                                     | D-pad down  |
+| Wingman: return to base and rearm | `Y`                                     | D-pad left  |
 | Pause                             | `Esc` or `P`                            | Start       |
 
 Steering is directional: press the way you want to fly. Asking for the opposite heading loops you
@@ -54,12 +55,15 @@ sits between the missile and you, so drop them as the missile closes from behind
 early burn out, and the seeker picks you up again. Head-on shots and radar-guided SAMs are much
 harder to fool, and your afterburner makes you a brighter target.
 
-**Your wingman** (callsign Two) flies an F-16 on your wing in campaign and endless sorties. Press
-`T` to send it after your target (your first lock, whatever is under the reticle, or the best target
-ahead), `H` to have it hunt the air defences (SAM sites and radars first, then AA guns), and `G` to
-call it back. While covering it chases interceptors that come after you. Enemies shoot at whichever
-of you is closer, its kills count toward your score, and if it is shot down a replacement takes off
-from the airfield 25 seconds later.
+**Your wingman** (callsign Two) flies an F-16 with you in campaign and endless sorties. It starts
+on the attack, picking its own targets: bandits coming after you first, then the most dangerous
+thing on the ground nearby. Press `T` to send it after your target (your first lock, whatever is
+under the reticle, or the best target ahead), `H` to have it hunt the air defences (SAM sites and
+radars first, then AA guns), `G` to call it back to cover you, and `Y` to send it home: it makes a
+low, slow pass along the runway to repair and refill its missiles, then rejoins the attack by
+itself. Enemies shoot at whichever of you is closer and its kills count toward your score. If it is
+shot down you hear its mayday, and it stays down for the rest of the wave; a replacement climbs out
+from the airfield as the next wave starts.
 
 **Local co-op.** Pick **2P** in the Sortie menu (campaign or endless) to fly with a friend on one
 screen. Player one keeps the keyboard and mouse (and a second gamepad, if one is plugged in); player

@@ -161,7 +161,7 @@ const LESSONS: Lesson[] = [
 	},
 	{
 		title: 'Wingman',
-		text: 'Two, your wingman, joins you. Lock a target or put the reticle on it and press T to send him in. Then press G to call him back to cover you. H sends him after the air defences.',
+		text: 'Two, your wingman, joins you and picks his own targets. Lock a target or put the reticle on it and press T to send him in. Then press G to call him back to cover you. H sends him after the air defences, and Y sends him home to repair and rearm.',
 		keys: ['T', 'G', 'H'],
 		pad: 'D-pad → ↑ ↓',
 		targets: [
@@ -211,8 +211,8 @@ export class Tutorial {
 	/** Missiles that have locked on to us during this lesson. */
 	private readonly chasers = new WeakSet<object>();
 	private progressNow = 0;
-	/** The wingman's order when last checked: a change means the pilot gave one. */
-	private lastOrder: string | null = null;
+	/** Orders the wingman had taken when last checked: a rise means the pilot gave one. */
+	private lastCommands = 0;
 
 	get total(): number {
 		return LESSONS.length;
@@ -245,16 +245,16 @@ export class Tutorial {
 			const p = w.player;
 			w.wingman = new Wingman(p.x - 40, p.y + 12);
 		}
-		this.lastOrder = w.wingman?.order ?? null;
+		this.lastCommands = w.wingman?.commands ?? 0;
 		w.events.message(this.lesson.title.toUpperCase(), '', 'info');
 	}
 
 	update(w: World, dt: number, inp: TutorialInput): void {
 		if (this.finished) return;
-		const order = w.wingman?.order ?? null;
-		if (order && order !== this.lastOrder) {
-			this.flags.add(`wing-${order}`);
-			this.lastOrder = order;
+		const wing = w.wingman;
+		if (wing && wing.commands !== this.lastCommands) {
+			this.flags.add(`wing-${wing.order}`);
+			this.lastCommands = wing.commands;
 		}
 		const p = w.player;
 		// Targets stand their ground instead of driving on the airfield.

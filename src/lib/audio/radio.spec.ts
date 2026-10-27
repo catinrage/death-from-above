@@ -12,7 +12,8 @@ const calm: RadioState = {
 	lock: 0,
 	enemyAir: 0,
 	lives: 3,
-	wingman: true
+	wingman: true,
+	wingRejoins: 0
 };
 
 /** Runs the desk for `seconds`, returning every call it put on the air. */
@@ -76,11 +77,25 @@ describe('radio watch', () => {
 		expect(w.update({ ...calm, alive: false, lives: 1 })).toEqual(['playerDown', 'lastAircraft']);
 	});
 
-	it('reports the wingman going down', () => {
+	it("puts out the wingman's mayday when he goes down, and his call when a replacement joins", () => {
 		const w = new RadioWatch();
 		w.update(calm);
 		expect(w.update({ ...calm, wingman: false })).toEqual(['wingmanDown']);
-		expect(w.update({ ...calm, wingman: true })).toEqual([]);
+		expect(w.update({ ...calm, wingman: false })).toEqual([]);
+		expect(w.update({ ...calm, wingman: true, wingRejoins: 1 })).toEqual(['wingBack']);
+		expect(RADIO.wingmanDown.speaker).toBe('wingman');
+		expect(RADIO.wingmanDown.lines.every((l) => /mayday/i.test(l.text))).toBe(true);
+	});
+
+	it('does not welcome back the first wingman of a sortie', () => {
+		const w = new RadioWatch();
+		w.update({ ...calm, wingman: false });
+		expect(w.update(calm)).toEqual([]);
+	});
+
+	it('acknowledges the rearm order with clips that are not on disk yet, read by the speech voice', () => {
+		expect(RADIO.wingRearm.lines.length).toBe(2);
+		for (const l of RADIO.wingRearm.lines) expect(RECORDED.has(l.file)).toBe(false);
 	});
 
 	it('says nothing on the first frame of a sortie', () => {

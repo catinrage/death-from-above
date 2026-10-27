@@ -249,6 +249,8 @@ export class WaveDirector {
 			w.railBridge?.rebuild(w);
 			w.railway?.repair();
 			for (const p of w.pilots()) p.restockWave();
+			// A wingman lost last wave is replaced as the next one starts.
+			w.wingman?.reinforce(w);
 		}
 		this.timer = 3.5;
 		const note = this.opts.briefings?.[wave - 1] ?? briefing(this.difficulty(wave));

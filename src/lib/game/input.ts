@@ -21,7 +21,8 @@ const FOCUS = ['KeyR', 'KeyI'];
 const ORDERS: [WingOrder, string[]][] = [
 	['attack', ['KeyT']],
 	['cover', ['KeyG']],
-	['sams', ['KeyH']]
+	['sams', ['KeyH']],
+	['rearm', ['KeyY']]
 ];
 /** Scroll distance (pixels) that counts as one weapon switch. */
 const WHEEL_NOTCH = 60;
@@ -45,6 +46,7 @@ const PAD = {
 	l3: 10,
 	up: 12,
 	down: 13,
+	left: 14,
 	right: 15
 } as const;
 
@@ -239,12 +241,13 @@ export class Input {
 		);
 	}
 
-	/** Wingman order given this frame (T / G / H, or the d-pad: right, up, down). */
+	/** Wingman order given this frame (T / G / H / Y, or the d-pad: right, up, down, left). */
 	orderPressed(): WingOrder | null {
 		for (const [order, keys] of ORDERS) if (this.anyPressed(keys)) return order;
 		if (this.own.pressed(PAD.right)) return 'attack';
 		if (this.own.pressed(PAD.up)) return 'cover';
 		if (this.own.pressed(PAD.down)) return 'sams';
+		if (this.own.pressed(PAD.left)) return 'rearm';
 		return null;
 	}
 
