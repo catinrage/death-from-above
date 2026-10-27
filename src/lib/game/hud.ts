@@ -11,11 +11,15 @@ import type { WingOrder } from './wingman';
 /** How a sortie is played: training, a campaign mission, or endless waves. */
 export type GameMode = 'tutorial' | 'campaign' | 'endless';
 
-export type ModeStart =
+export type ModeStart = (
 	| { mode: 'tutorial' }
 	| { mode: 'endless'; biome?: BiomeId }
 	/** A campaign mission, softened by the strike flown ahead of it. */
-	| { mode: 'campaign'; mission: string; strike?: StrikeId | null };
+	| { mode: 'campaign'; mission: string; strike?: StrikeId | null }
+) & {
+	/** Local two-player co-op: a second aircraft flown from a gamepad (not in training). */
+	coop?: boolean;
+};
 
 export type GamePhase = 'loading' | 'title' | 'playing' | 'paused' | 'gameover';
 export type Tone = 'info' | 'warn' | 'good';
@@ -43,6 +47,29 @@ export interface HudMessage {
 	text: string;
 	sub: string;
 	tone: Tone;
+}
+
+/** Player two's compact panel. */
+export interface Player2Hud {
+	hp: number;
+	hpMax: number;
+	boost: number;
+	flares: number;
+	flaresMax: number;
+	missiles: number;
+	missilesMax: number;
+	/** Selected ordnance. */
+	weapon: string;
+	weaponCount: number;
+	weaponColor: string;
+	/** Seconds until the next airframe (0 = flying or none left). */
+	respawn: number;
+	/** Shot down with no aircraft left to fly. */
+	out: boolean;
+	/** A missile is chasing player two, or a launcher is locking it. */
+	threat: boolean;
+	/** No gamepad is connected to fly it. */
+	noPad: boolean;
 }
 
 /** Everything the HUD shows, refreshed ~15 times a second. */
@@ -80,6 +107,10 @@ export interface HudSnapshot {
 	altitude: number;
 	speed: number;
 	lives: number;
+	/** Aircraft the sortie started with (3 solo, 6 shared in co-op). */
+	livesMax: number;
+	/** Player two, or null flying solo. */
+	player2: Player2Hud | null;
 	lock: number;
 	inbound: boolean;
 	stall: boolean;
@@ -184,6 +215,8 @@ export function emptyHud(): HudSnapshot {
 		altitude: 0,
 		speed: 0,
 		lives: 3,
+		livesMax: 3,
+		player2: null,
 		lock: 0,
 		inbound: false,
 		stall: false,

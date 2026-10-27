@@ -48,19 +48,79 @@ const PAD = {
 	right: 15
 } as const;
 
-/** Keyboard, mouse and gamepad state with per-frame edge detection. */
+/** One gamepad's buttons and sticks, with edge detection. */
+class Pad {
+	prev: boolean[] = [];
+	now: boolean[] = [];
+	axes: number[] = [0, 0, 0, 0];
+
+	read(gp: Gamepad | undefined): void {
+		this.prev = this.now;
+		if (!gp) {
+			this.now = [];
+			this.axes = [0, 0, 0, 0];
+			return;
+		}
+		this.now = gp.buttons.map((b) => b.pressed || b.value > 0.5);
+		this.axes = [gp.axes[0] ?? 0, gp.axes[1] ?? 0, gp.axes[2] ?? 0, gp.axes[3] ?? 0];
+	}
+
+	held(i: number): boolean {
+		return !!this.now[i];
+	}
+
+	pressed(i: number): boolean {
+		return !!this.now[i] && !this.prev[i];
+	}
+
+	active(): boolean {
+		return this.now.some(Boolean) || Math.hypot(this.axes[0], this.axes[1]) > 0.3;
+	}
+
+	/** Flight controls from this pad alone (no selection or targeting). */
+	pilot(): PilotInput {
+		const [ax, ay] = this.axes;
+		const steer = Math.hypot(ax, ay) > 0.3;
+		return {
+			steerX: steer ? ax : 0,
+			steerY: steer ? -ay : 0,
+			boost: this.held(PAD.x) || this.held(PAD.l3),
+			brake: this.held(PAD.view),
+			fire: this.held(PAD.rt),
+			bomb: this.held(PAD.a),
+			bombPressed: this.pressed(PAD.a),
+			flare: this.pressed(PAD.b),
+			cycle: this.pressed(PAD.lb) ? -1 : this.pressed(PAD.rb) ? 1 : 0,
+			select: null,
+			missiles: null,
+			designate: null
+		};
+	}
+}
+
+/**
+ * Keyboard, mouse and gamepad state with per-frame edge detection.
+ *
+ * Solo, the keyboard, mouse and first gamepad all fly the one aircraft. In
+ * local co-op (`coop`) the first gamepad flies player two instead, and the
+ * player keeps the keyboard and mouse (plus a second gamepad, if one is
+ * plugged in).
+ */
 export class Input {
 	private readonly down = new Set<string>();
 	private readonly pressed = new Set<string>();
-	private padPrev: boolean[] = [];
-	private padNow: boolean[] = [];
-	private padAxes: number[] = [0, 0, 0, 0];
+	/** First connected gamepad: the solo pilot's, or player two's in co-op. */
+	private readonly pad = new Pad();
+	/** Second connected gamepad: the player's in co-op. */
+	private readonly pad2 = new Pad();
 	private mouseX = -1;
 	private mouseY = -1;
 	private pointerTime = -Infinity;
 	private stickX = -1;
 	private stickY = -1;
 	usingPad = false;
+	/** Local two-player co-op: the first gamepad belongs to player two. */
+	coop = false;
 	/** True while flying: game keys suppress the browser's default scrolling/focus moves. */
 	capture = false;
 
@@ -144,46 +204,47 @@ export class Input {
 		return codes.some((c) => this.pressed.has(c));
 	}
 
-	private pad(i: number): boolean {
-		return !!this.padNow[i];
+	/** The gamepad that flies the player's aircraft: the first one solo, the second in co-op. */
+	private get own(): Pad {
+		return this.coop ? this.pad2 : this.pad;
 	}
 
-	private padPressed(i: number): boolean {
-		return !!this.padNow[i] && !this.padPrev[i];
-	}
-
-	/** Polls the first connected gamepad (standard mapping). */
+	/** Polls the first two connected gamepads (standard mapping). */
 	poll(): void {
-		this.padPrev = this.padNow;
-		this.padNow = [];
 		const pads =
 			typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
-		const gp = Array.from(pads ?? []).find((p) => p && p.connected);
-		if (!gp) {
-			this.padAxes = [0, 0, 0, 0];
-			return;
-		}
-		this.padNow = gp.buttons.map((b) => b.pressed || b.value > 0.5);
-		this.padAxes = [gp.axes[0] ?? 0, gp.axes[1] ?? 0, gp.axes[2] ?? 0, gp.axes[3] ?? 0];
-		if (this.padNow.some(Boolean) || Math.hypot(this.padAxes[0], this.padAxes[1]) > 0.3)
-			this.usingPad = true;
+		const connected = Array.from(pads ?? []).filter((p): p is Gamepad => !!p && p.connected);
+		this.pad.read(connected[0]);
+		this.pad2.read(connected[1]);
+		if (this.own.active()) this.usingPad = true;
+	}
+
+	/** A gamepad is connected to fly player two. */
+	p2Ready(): boolean {
+		return (
+			typeof navigator !== 'undefined' &&
+			!!navigator.getGamepads &&
+			Array.from(navigator.getGamepads() ?? []).some((p) => p && p.connected)
+		);
 	}
 
 	pausePressed(): boolean {
-		return this.anyPressed(PAUSE) || this.padPressed(PAD.start);
+		return this.anyPressed(PAUSE) || this.pad.pressed(PAD.start) || this.pad2.pressed(PAD.start);
 	}
 
-	/** Toggle focus (slow motion). */
+	/** Toggle focus (slow motion). Either co-op pilot can call it: it slows the whole battle. */
 	focusPressed(): boolean {
-		return this.anyPressed(FOCUS) || this.padPressed(PAD.lt);
+		return (
+			this.anyPressed(FOCUS) || this.pad.pressed(PAD.lt) || (this.coop && this.pad2.pressed(PAD.lt))
+		);
 	}
 
 	/** Wingman order given this frame (T / G / H, or the d-pad: right, up, down). */
 	orderPressed(): WingOrder | null {
 		for (const [order, keys] of ORDERS) if (this.anyPressed(keys)) return order;
-		if (this.padPressed(PAD.right)) return 'attack';
-		if (this.padPressed(PAD.up)) return 'cover';
-		if (this.padPressed(PAD.down)) return 'sams';
+		if (this.own.pressed(PAD.right)) return 'attack';
+		if (this.own.pressed(PAD.up)) return 'cover';
+		if (this.own.pressed(PAD.down)) return 'sams';
 		return null;
 	}
 
@@ -195,7 +256,17 @@ export class Input {
 
 	/** Launch guided missiles. */
 	missilePressed(): boolean {
-		return this.anyPressed(MISSILE) || this.padPressed(PAD.y);
+		return this.anyPressed(MISSILE) || this.own.pressed(PAD.y);
+	}
+
+	/** Player two's flight controls, from the first gamepad. */
+	p2Pilot(): PilotInput {
+		return this.pad.pilot();
+	}
+
+	/** Player two launches guided missiles. */
+	p2MissilePressed(): boolean {
+		return this.pad.pressed(PAD.y);
 	}
 
 	/**
@@ -204,8 +275,8 @@ export class Input {
 	 * keyboard-only pilots fall back to automatic targeting.
 	 */
 	cursor(dtReal: number, cssW: number, cssH: number): { x: number; y: number; active: boolean } {
-		const rx = this.padAxes[2],
-			ry = this.padAxes[3];
+		const rx = this.own.axes[2],
+			ry = this.own.axes[3];
 		if (Math.hypot(rx, ry) > 0.2) {
 			if (this.stickX < 0) {
 				this.stickX = this.mouseX >= 0 ? this.mouseX : cssW * 0.6;
@@ -227,7 +298,7 @@ export class Input {
 	}
 
 	confirmPressed(): boolean {
-		return this.pressed.has('Enter') || this.padPressed(PAD.a);
+		return this.pressed.has('Enter') || this.pad.pressed(PAD.a);
 	}
 
 	pilot(): PilotInput {
@@ -237,15 +308,15 @@ export class Input {
 		if (this.any(STEER.left)) sx -= 1;
 		if (this.any(STEER.up)) sy += 1;
 		if (this.any(STEER.down)) sy -= 1;
-		const [ax, ay] = this.padAxes;
-		if (Math.hypot(ax, ay) > 0.3) {
-			sx = ax;
-			sy = -ay;
+		const pad = this.own.pilot();
+		if (pad.steerX !== 0 || pad.steerY !== 0) {
+			sx = pad.steerX;
+			sy = pad.steerY;
 		}
 		const select: PilotInput['select'] = null;
 		let cycle = 0;
-		if (this.anyPressed(NEXT) || this.padPressed(PAD.rb)) cycle = 1;
-		if (this.anyPressed(PREV) || this.padPressed(PAD.lb)) cycle = -1;
+		if (this.anyPressed(NEXT) || pad.cycle > 0) cycle = 1;
+		if (this.anyPressed(PREV) || pad.cycle < 0) cycle = -1;
 		// Mouse wheel: down is the next weapon, up the previous one, one slot per frame.
 		if (cycle === 0 && this.wheelSteps !== 0) {
 			cycle = Math.sign(this.wheelSteps);
@@ -254,12 +325,12 @@ export class Input {
 		return {
 			steerX: sx,
 			steerY: sy,
-			boost: this.any(BOOST) || this.pad(PAD.x) || this.pad(PAD.l3),
-			brake: this.any(BRAKE) || this.pad(PAD.view),
-			fire: this.any(FIRE) || this.pad(PAD.rt),
-			bomb: this.any(BOMB) || this.pad(PAD.a),
-			bombPressed: this.anyPressed(BOMB) || this.padPressed(PAD.a),
-			flare: this.anyPressed(FLARE) || this.padPressed(PAD.b),
+			boost: this.any(BOOST) || pad.boost,
+			brake: this.any(BRAKE) || pad.brake,
+			fire: this.any(FIRE) || pad.fire,
+			bomb: this.any(BOMB) || pad.bomb,
+			bombPressed: this.anyPressed(BOMB) || pad.bombPressed,
+			flare: this.anyPressed(FLARE) || pad.flare,
 			cycle,
 			select,
 			missiles: null,

@@ -61,6 +61,13 @@ call it back. While covering it chases interceptors that come after you. Enemies
 of you is closer, its kills count toward your score, and if it is shot down a replacement takes off
 from the airfield 25 seconds later.
 
+**Local co-op.** Pick **2P** in the Sortie menu (campaign or endless) to fly with a friend on one
+screen. Player one keeps the keyboard and mouse (and a second gamepad, if one is plugged in); player
+two flies a second aircraft from the gamepad, with a green beacon and a P2 tag, in place of the AI wingman. The camera frames
+both, enemies go after whichever aircraft is closer, and the two of you share one score and a pool of
+six aircraft. Player two's missiles pick the best target ahead of the nose, and either pilot can
+trigger focus. The sortie ends when both are down with no aircraft left.
+
 **The tactical nuke** comes back once per wave. The airfield and supply pickups never restock it,
 and losing your aircraft doesn't hand you a fresh one.
 

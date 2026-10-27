@@ -248,7 +248,7 @@ export class WaveDirector {
 			w.bridge?.rebuild(w);
 			w.railBridge?.rebuild(w);
 			w.railway?.repair();
-			w.player?.restockWave();
+			for (const p of w.pilots()) p.restockWave();
 		}
 		this.timer = 3.5;
 		const note = this.opts.briefings?.[wave - 1] ?? briefing(this.difficulty(wave));

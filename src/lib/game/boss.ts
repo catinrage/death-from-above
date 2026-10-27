@@ -3,6 +3,7 @@ import { fx as rnd } from '../engine/rng';
 import { WORLD } from './constants';
 import { ENEMY_WEAPONS, UNITS } from './defs-units';
 import { launchMissile, spawnBullet } from './projectiles';
+import type { Player } from './player';
 import type { River } from './river';
 import type { AuxMount, Unit, UnitKind } from './types';
 import { muzzlePoint, poseParts, rootMatrix } from './unit-pose';
@@ -167,9 +168,10 @@ export function bossWeapons(w: World, u: Unit, dt: number): void {
 	a.second -= dt;
 	a.salvo -= dt;
 	if (u.def.kind === 'railGun') bombard(w, u, a, dt);
-	const p = w.player;
 	const ox = u.x,
 		oy = u.y + u.def.half[1] * 2;
+	// In co-op, whichever human pilot is closer.
+	const p = w.nearestPilot(ox, oy, false);
 	const live = p && p.alive && !w.godMode && !p.landed;
 	const dist = live ? Math.hypot(p.x - ox, p.y - oy) : Infinity;
 	const elev = live ? Math.atan2(p.y - oy, Math.abs(p.x - ox)) : 0;
@@ -218,7 +220,7 @@ export function bossWeapons(w: World, u: Unit, dt: number): void {
 		w.fx.gunSmoke(m[0], m[1], m[2], 2.5);
 		w.sound.play('flak', m[0], m[1], 0.7);
 	}
-	samBattery(w, u, a, dt, dist);
+	samBattery(w, u, a, dt, dist, p);
 }
 
 function autocannon(w: World, u: Unit, a: AuxMount, dt: number, tx: number, ty: number): void {
@@ -257,9 +259,7 @@ function autocannon(w: World, u: Unit, a: AuxMount, dt: number, tx: number, ty: 
 }
 
 /** The cruiser's radar SAMs: a lock the player can see building, then a pair of missiles. */
-function samBattery(w: World, u: Unit, a: AuxMount, dt: number, dist: number): void {
-	const p = w.player;
-	if (!p) return;
+function samBattery(w: World, u: Unit, a: AuxMount, dt: number, dist: number, p: Player): void {
 	if (dist > 1300) {
 		a.lock = Math.max(0, a.lock - dt);
 		return;

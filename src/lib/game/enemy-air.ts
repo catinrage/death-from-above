@@ -127,7 +127,7 @@ export class AirUnit implements Trackable {
 						owner: 'enemy',
 						seeker: 'heat'
 					});
-					if (p === w.player) w.events.message('MISSILE LAUNCH', '', 'warn');
+					if (p !== w.wingman) w.events.message('MISSILE LAUNCH', '', 'warn');
 				}
 				if (dist < 110) {
 					this.state = 'extend';

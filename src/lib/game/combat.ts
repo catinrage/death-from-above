@@ -170,8 +170,8 @@ export function explode(
 		const d = Math.hypot(a.x - x, a.y - y) - a.radius;
 		if (d < r) a.damage(w, b.damage * (1 - Math.max(d, 0) / r) * 0.8, by);
 	}
-	const p = w.player;
-	if (p && p.alive) {
+	for (const p of w.pilots()) {
+		if (!p.alive) continue;
 		const d = Math.max(0, Math.hypot(p.x - x, p.y - y) - p.def.radius * 0.5);
 		if (d < r) {
 			const k = 1 - d / r;

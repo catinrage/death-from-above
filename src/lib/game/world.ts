@@ -138,6 +138,8 @@ export class World {
 	player: Player | null = null;
 	/** The player's AI wingman (absent in training and the attract demo). */
 	wingman: Wingman | null = null;
+	/** Second aircraft in local co-op, flown from a gamepad. */
+	player2: Player | null = null;
 	base!: AirBase;
 	sound: SoundSink = silentSound;
 	events: WorldEvents = silentEvents;
@@ -244,6 +246,32 @@ export class World {
 		return this.nextId++;
 	}
 
+	/** Every aircraft on our side: the player and, in co-op, player two. */
+	pilots(): Player[] {
+		const out: Player[] = [];
+		if (this.player) out.push(this.player);
+		if (this.player2) out.push(this.player2);
+		return out;
+	}
+
+	/**
+	 * The aircraft the enemy should go after from (x, y): the closest one still
+	 * flying (and airborne, unless `landed` is allowed). Null when none is.
+	 */
+	nearestPilot(x: number, y: number, landed = true): Player | null {
+		let best: Player | null = null;
+		let bestD = Infinity;
+		for (const p of this.pilots()) {
+			if (!p.alive || (!landed && p.landed)) continue;
+			const d = Math.hypot(p.x - x, p.y - y);
+			if (d < bestD) {
+				bestD = d;
+				best = p;
+			}
+		}
+		return best;
+	}
+
 	/** Mobile hostiles still fighting (wave completion counts these). */
 	hostilesAlive(): number {
 		let n = 0;
@@ -263,6 +291,7 @@ export class World {
 		this.base.reset();
 		this.player = null;
 		this.wingman = null;
+		this.player2 = null;
 		this.designator = null;
 		this.time = 0;
 		this.weather.set(CLEAR, true);
