@@ -66,7 +66,8 @@ export type SfxId =
 	| 'caution'
 	| 'masterWarning'
 	| 'stallHorn'
-	| 'airbrake';
+	| 'airbrake'
+	| 'burnerLight';
 
 export interface SoundSink {
 	play(id: SfxId, x: number, y: number, volume?: number, pitch?: number): void;

@@ -24,6 +24,18 @@ interface Whistle {
 	seen: number;
 }
 
+/** Longest the radio waits for its recordings before falling back to speech. */
+const RADIO_LOAD_WAIT = 4;
+
+interface JetNodes {
+	roarFilter: BiquadFilterNode;
+	roarGain: GainNode;
+	rumbleGain: GainNode;
+	whines: OscillatorNode[];
+	whineGain: GainNode;
+	burnerGain: GainNode;
+}
+
 /** Interface sounds keep their pitch when the world slows down. */
 const UI_SOUNDS = new Set<SfxId>([
 	'select',
@@ -88,7 +100,10 @@ export class AudioEngine implements SoundSink {
 		siren: OscillatorNode;
 		sirenGain: GainNode;
 		chop: GainNode;
+		jet: JetNodes;
 	} | null = null;
+	/** Was the burner lit last frame (for the light-off thump). */
+	private burnerLit = false;
 	private listenerX = 0;
 	private listenerY = 0;
 	private warnTimer = 0;
@@ -99,6 +114,9 @@ export class AudioEngine implements SoundSink {
 	private readonly radioDesk = new RadioDesk();
 	/** Recorded radio calls by clip file; anything missing falls back to the speech voice. */
 	private readonly radioClips = new Map<string, AudioBuffer>();
+	/** Recorded radio clips still downloading, and when loading began (audio clock). */
+	private radioLoading = 0;
+	private radioLoadStart = 0;
 	private radioBus!: GainNode;
 	private ambienceTimer = 3;
 	private voices = 0;
@@ -200,6 +218,8 @@ export class AudioEngine implements SoundSink {
 				if (!RECORDED.has(line.file)) continue;
 				const url = new URL(`audio/radio/${line.file}.mp3`, document.baseURI);
 				if (typeof fetch === 'undefined') return;
+				if (this.radioLoading === 0) this.radioLoadStart = ctx.currentTime;
+				this.radioLoading++;
 				fetch(url)
 					.then((r) => (r.ok ? r.arrayBuffer() : null))
 					.then((data) => (data ? ctx.decodeAudioData(data) : null))
@@ -207,7 +227,8 @@ export class AudioEngine implements SoundSink {
 						if (buf) this.radioClips.set(line.file, buf);
 					})
 					// No clip yet: the call is read by the speech voice instead.
-					.catch(() => this.radioClips.delete(line.file));
+					.catch(() => this.radioClips.delete(line.file))
+					.finally(() => this.radioLoading--);
 			}
 	}
 
@@ -256,6 +277,10 @@ export class AudioEngine implements SoundSink {
 			this.radioDesk.reset();
 			return;
 		}
+		// The opening call fires as the sortie starts, often before the recordings have
+		// arrived: hold the channel briefly rather than read it with the robotic speech voice.
+		const ctx = this.ctx as AudioContext;
+		if (this.radioLoading > 0 && ctx.currentTime - this.radioLoadStart < RADIO_LOAD_WAIT) return;
 		const tx = this.radioDesk.update(dt, this.announcer.speaking);
 		if (tx) this.transmit(tx);
 	}
@@ -653,6 +678,12 @@ export class AudioEngine implements SoundSink {
 					this.noise(v, at, 0.12, 'bandpass', (700 + Math.random() * 2400) * p, 400, 0.2, 3);
 				}
 				break;
+			case 'burnerLight':
+				// Afterburner light-off: a deep whoomp as the reheat catches.
+				dur = 0.8;
+				this.tone(v, t, 0.35, 'sine', 70 * p, 38, 0.5, 0.01);
+				this.noise(v, t, 0.6, 'lowpass', 900 * p, 140, 0.55, 0.7, true);
+				break;
 			case 'airbrake':
 				// Speed brakes biting into the airflow: a rising rush and a low rumble.
 				dur = 0.9;
@@ -723,6 +754,91 @@ export class AudioEngine implements SoundSink {
 		w.pan.pan.value = Math.max(-0.9, Math.min(0.9, dx / 260));
 	}
 
+	/**
+	 * Jet engine voice: broadband intake/exhaust roar, a two-tone turbine whine that
+	 * spools with throttle, and an afterburner rumble that flickers with combustion.
+	 */
+	private startJet(ctx: AudioContext): JetNodes {
+		const loop = (buf: AudioBuffer): AudioBufferSourceNode => {
+			const s = ctx.createBufferSource();
+			s.buffer = buf;
+			s.loop = true;
+			s.start(0, Math.random() * buf.duration);
+			return s;
+		};
+		// Roar: white noise shaped into the hollow "whoosh" of the exhaust.
+		const roarFilter = ctx.createBiquadFilter();
+		roarFilter.type = 'lowpass';
+		roarFilter.frequency.value = 1400;
+		roarFilter.Q.value = 0.5;
+		const roarGain = ctx.createGain();
+		roarGain.gain.value = 0;
+		loop(this.white).connect(roarFilter);
+		roarFilter.connect(roarGain);
+		roarGain.connect(this.bus);
+		// Low rumble under it.
+		const rumbleFilter = ctx.createBiquadFilter();
+		rumbleFilter.type = 'lowpass';
+		rumbleFilter.frequency.value = 160;
+		const rumbleGain = ctx.createGain();
+		rumbleGain.gain.value = 0;
+		loop(this.brown).connect(rumbleFilter);
+		rumbleFilter.connect(rumbleGain);
+		rumbleGain.connect(this.bus);
+		// Turbine whine: two slightly detuned tones beating against each other.
+		const whineGain = ctx.createGain();
+		whineGain.gain.value = 0;
+		const whines = [1, 1.013].map((k) => {
+			const o = ctx.createOscillator();
+			o.type = 'triangle';
+			o.frequency.value = 2400 * k;
+			o.connect(whineGain);
+			o.start();
+			return o;
+		});
+		const whineFilter = ctx.createBiquadFilter();
+		whineFilter.type = 'bandpass';
+		whineFilter.frequency.value = 3000;
+		whineFilter.Q.value = 1.2;
+		whineGain.connect(whineFilter);
+		whineFilter.connect(this.bus);
+		// Afterburner: deep, ragged combustion roar, amplitude-flickered by two LFOs.
+		const burnerFilter = ctx.createBiquadFilter();
+		burnerFilter.type = 'lowpass';
+		burnerFilter.frequency.value = 520;
+		const burnerGain = ctx.createGain();
+		burnerGain.gain.value = 0;
+		loop(this.brown).connect(burnerFilter);
+		const crackleSrc = loop(this.white);
+		const crackleFilter = ctx.createBiquadFilter();
+		crackleFilter.type = 'bandpass';
+		crackleFilter.frequency.value = 900;
+		crackleFilter.Q.value = 0.8;
+		crackleSrc.connect(crackleFilter);
+		const crackleGain = ctx.createGain();
+		crackleGain.gain.value = 0.35;
+		crackleFilter.connect(crackleGain);
+		crackleGain.connect(burnerFilter);
+		const flicker = ctx.createGain();
+		flicker.gain.value = 1;
+		burnerFilter.connect(flicker);
+		flicker.connect(burnerGain);
+		burnerGain.connect(this.bus);
+		for (const [f, depth] of [
+			[17, 0.35],
+			[31, 0.22]
+		]) {
+			const lfo = ctx.createOscillator();
+			lfo.frequency.value = f;
+			const d = ctx.createGain();
+			d.gain.value = depth;
+			lfo.connect(d);
+			d.connect(flicker.gain);
+			lfo.start();
+		}
+		return { roarFilter, roarGain, rumbleGain, whines, whineGain, burnerGain };
+	}
+
 	private startEngine(): void {
 		const ctx = this.ctx as AudioContext;
 		const saw = ctx.createOscillator();
@@ -785,7 +901,9 @@ export class AudioEngine implements SoundSink {
 		wsrc.start();
 		siren.start();
 		chopLfo.start();
+		const jet = this.startJet(ctx);
 		this.engineNodes = {
+			jet,
 			saw,
 			sawGain,
 			noiseFilter,
@@ -896,6 +1014,27 @@ export class AudioEngine implements SoundSink {
 		}, delay * 1000);
 	}
 
+	private jetVoice(
+		j: JetNodes,
+		t: number,
+		on: number,
+		throttle: number,
+		speed: number,
+		burner: boolean
+	): void {
+		const spool = 0.55 + throttle * 0.45;
+		j.roarFilter.frequency.setTargetAtTime(700 + throttle * 1100 + (burner ? 500 : 0), t, 0.2);
+		j.roarGain.gain.setTargetAtTime(on * (0.05 + throttle * 0.06), t, 0.25);
+		j.rumbleGain.gain.setTargetAtTime(on * (0.1 + throttle * 0.08), t, 0.3);
+		// The whine spools up and down slowly, like a real turbine.
+		for (const [i, o] of j.whines.entries())
+			o.frequency.setTargetAtTime((1700 + spool * 1500 + speed * 2) * (i ? 1.013 : 1), t, 0.6);
+		j.whineGain.gain.setTargetAtTime(on * (0.006 + throttle * 0.01), t, 0.5);
+		j.burnerGain.gain.setTargetAtTime(on * (burner ? 0.42 : 0), t, burner ? 0.12 : 0.35);
+		if (on && burner && !this.burnerLit)
+			this.play('burnerLight', this.listenerX, this.listenerY, 1);
+	}
+
 	/** Called every frame with the player's flight state. */
 	update(
 		dt: number,
@@ -931,20 +1070,15 @@ export class AudioEngine implements SoundSink {
 			e.saw.frequency.setTargetAtTime(48 + s.throttle * 30 + s.speed * 0.15, t, 0.1);
 			e.sawGain.gain.setTargetAtTime(on * (0.07 + s.throttle * 0.05), t, 0.1);
 			e.noiseGain.gain.setTargetAtTime(on * 0.03, t, 0.1);
-		} else {
-			e.saw.frequency.setTargetAtTime(70 + s.speed * 1.1, t, 0.1);
-			e.sawGain.gain.setTargetAtTime(on * (0.025 + s.throttle * 0.02), t, 0.1);
-			e.noiseFilter.frequency.setTargetAtTime(
-				500 + s.throttle * 700 + (s.boosting ? 900 : 0),
-				t,
-				0.1
-			);
-			e.noiseGain.gain.setTargetAtTime(
-				on * (0.07 + s.throttle * 0.05 + (s.boosting ? 0.12 : 0)),
-				t,
-				0.1
-			);
 		}
+		// Jets: no buzzing piston tone, just turbine and exhaust.
+		const jet = !s.rotor && !s.prop ? on : 0;
+		if (jet) {
+			e.sawGain.gain.setTargetAtTime(0, t, 0.1);
+			e.noiseGain.gain.setTargetAtTime(0, t, 0.1);
+		}
+		this.jetVoice(e.jet, t, jet, s.throttle, s.speed, s.boosting);
+		this.burnerLit = !!(jet && s.boosting);
 		e.windFilter.frequency.setTargetAtTime(180 + s.speed * 6, t, 0.2);
 		e.wind.gain.setTargetAtTime(on * Math.min(0.2, s.speed / 600), t, 0.2);
 

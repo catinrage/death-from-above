@@ -492,9 +492,16 @@ export class Game {
 		this.spawnPlayer();
 		// Player two takes the AI wingman's place in co-op.
 		if (this.coop) this.spawnPlayer2();
-		else if (this.mode !== 'tutorial') {
+		else if (this.mode !== 'tutorial' && !mission?.solo) {
 			const x = WORLD.runwayMinX + 10;
 			w.wingman = new Wingman(x, w.ground(x) + 70);
+			// The first campaign mission is flown alone; Two's arrival is worth a word.
+			if (mission && MISSIONS.findIndex((m) => m.solo) === MISSIONS.indexOf(mission) - 1)
+				w.events.message(
+					'TWO JOINS THE FLIGHT',
+					'Your wingman: T attack · G cover · H air defences',
+					'good'
+				);
 		}
 		this.radioWatch.reset();
 		this.audio.radio(['sortie']);

@@ -30,12 +30,15 @@ export interface Mission {
 	objectives: Objective[];
 	/** The airfield must stay above this fraction of its strength. */
 	baseFloor?: number;
+	/** Flown without a wingman (the opening mission, before Two joins the squadron). */
+	solo?: boolean;
 }
 
 /** Campaign missions in order. Each unlocks the next. */
 export const MISSIONS: readonly Mission[] = [
 	{
 		id: 'first-light',
+		solo: true,
 		name: 'First Light',
 		tagline: 'Infantry and trucks on the road',
 		brief:
