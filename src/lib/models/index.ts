@@ -12,6 +12,7 @@ import * as ord from './ordnance';
 import * as br from './bridge';
 import * as real from './aircraft-real';
 import * as sp from './ordnance-special';
+import * as extra from './aircraft-extra';
 
 /** City blocks, shared by the building and its lit-window mesh so the panes line up. */
 const BLOCKS = {
@@ -32,6 +33,12 @@ const BUILDERS = {
 	su25: [real.su25, true],
 	f4: [real.f4, true],
 	b1: [real.b1, true],
+	ac130: [extra.ac130, true],
+	apache: [extra.apache, true],
+	mq9: [extra.mq9, true],
+	stuka: [extra.stuka, true],
+	a1: [extra.a1, true],
+	tu95: [extra.tu95, true],
 	propeller: [() => air.propeller(2.1), true],
 	enemyFighter: [air.enemyFighter, true],
 	heliBody: [air.helicopterBody, true],

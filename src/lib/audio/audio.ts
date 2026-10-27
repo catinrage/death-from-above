@@ -87,6 +87,9 @@ export class AudioEngine implements SoundSink {
 		noiseGain: GainNode;
 		wind: GainNode;
 		windFilter: BiquadFilterNode;
+		siren: OscillatorNode;
+		sirenGain: GainNode;
+		chop: GainNode;
 	} | null = null;
 	private listenerX = 0;
 	private listenerY = 0;
@@ -794,10 +797,43 @@ export class AudioEngine implements SoundSink {
 		wsrc.connect(windFilter);
 		windFilter.connect(wind);
 		wind.connect(this.bus);
+		// Dive siren: a wind-driven trumpet whose wail climbs with the airspeed.
+		const siren = ctx.createOscillator();
+		siren.type = 'sawtooth';
+		siren.frequency.value = 280;
+		const sirenFilter = ctx.createBiquadFilter();
+		sirenFilter.type = 'bandpass';
+		sirenFilter.Q.value = 2.5;
+		sirenFilter.frequency.value = 900;
+		const sirenGain = ctx.createGain();
+		sirenGain.gain.value = 0;
+		siren.connect(sirenFilter);
+		sirenFilter.connect(sirenGain);
+		sirenGain.connect(this.bus);
+		// Rotor blade slap: the engine noise pulsed by a slow square wave.
+		const chopLfo = ctx.createOscillator();
+		chopLfo.type = 'square';
+		chopLfo.frequency.value = 18;
+		const chop = ctx.createGain();
+		chop.gain.value = 0;
+		chopLfo.connect(chop);
+		chop.connect(noiseGain.gain);
 		saw.start();
 		src.start();
 		wsrc.start();
-		this.engineNodes = { saw, sawGain, noiseFilter, noiseGain, wind, windFilter };
+		siren.start();
+		chopLfo.start();
+		this.engineNodes = {
+			saw,
+			sawGain,
+			noiseFilter,
+			noiseGain,
+			wind,
+			windFilter,
+			siren,
+			sirenGain,
+			chop
+		};
 	}
 
 	private startAmbience(): void {
@@ -907,6 +943,9 @@ export class AudioEngine implements SoundSink {
 			speed: number;
 			boosting: boolean;
 			prop: boolean;
+			rotor?: boolean;
+			/** Dive siren level 0..1. */
+			siren?: number;
 			lock: number;
 			inbound: boolean;
 			active: boolean;
@@ -917,7 +956,16 @@ export class AudioEngine implements SoundSink {
 		if (!ctx || !e || ctx.state !== 'running') return;
 		const t = ctx.currentTime;
 		const on = s.alive && s.active ? 1 : 0;
-		if (s.prop) {
+		const siren = on * (s.siren ?? 0);
+		e.siren.frequency.setTargetAtTime(260 + siren * 520, t, 0.15);
+		e.sirenGain.gain.setTargetAtTime(siren * 0.13, t, 0.1);
+		e.chop.gain.setTargetAtTime(s.rotor ? on * 0.05 : 0, t, 0.1);
+		if (s.rotor) {
+			e.saw.frequency.setTargetAtTime(30 + s.throttle * 14, t, 0.1);
+			e.sawGain.gain.setTargetAtTime(on * (0.05 + s.throttle * 0.04), t, 0.1);
+			e.noiseFilter.frequency.setTargetAtTime(380 + s.throttle * 260, t, 0.1);
+			e.noiseGain.gain.setTargetAtTime(on * 0.06, t, 0.1);
+		} else if (s.prop) {
 			e.saw.frequency.setTargetAtTime(48 + s.throttle * 30 + s.speed * 0.15, t, 0.1);
 			e.sawGain.gain.setTargetAtTime(on * (0.07 + s.throttle * 0.05), t, 0.1);
 			e.noiseGain.gain.setTargetAtTime(on * 0.03, t, 0.1);

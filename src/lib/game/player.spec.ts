@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WORLD } from './constants';
-import { AIRCRAFT_ORDER } from './defs-aircraft';
+import { AIRCRAFT, AIRCRAFT_ORDER } from './defs-aircraft';
 import { NO_INPUT, Player, type PilotInput } from './player';
 import { testWorld } from './test-world';
 
@@ -101,7 +101,8 @@ describe('Player flight model', () => {
 		expect(p.hp).toBeGreaterThan(40);
 	});
 	it('turns itself back before reaching the edge of the landscape', () => {
-		for (const id of AIRCRAFT_ORDER) {
+		// The gunship's orbit is clamped inside the arena instead (see aircraft.spec).
+		for (const id of AIRCRAFT_ORDER.filter((a) => AIRCRAFT[a].flight !== 'orbit')) {
 			for (const side of [1, -1]) {
 				const w = testWorld();
 				w.godMode = true;

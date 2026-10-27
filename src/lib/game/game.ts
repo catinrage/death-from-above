@@ -925,6 +925,8 @@ export class Game {
 			speed: p?.speed ?? 0,
 			boosting: !!p?.boosting,
 			prop: p?.def.engine === 'prop',
+			rotor: p?.def.engine === 'rotor',
+			siren: p?.alive ? p.siren : 0,
 			lock: this.phase === 'playing' && p ? p.lockProgress : 0,
 			inbound: this.phase === 'playing' && !!p && w.missiles.some((m) => m.target === p),
 			active: this.phase === 'playing'
@@ -990,12 +992,13 @@ export class Game {
 		const def = BOMBS[id];
 		// Rockets leave the rails at speed and fall like a bomb thrown forward.
 		const boost = id === 'rockets' ? ROCKET_SPEED : 0;
+		const [svx, svy] = p.bombVelocity(w, def, p.x, p.y - 1.2, this.pilotFrame.designate);
 		const hit = predictImpact(
 			w,
 			p.x,
 			p.y - 1.2,
-			p.vx + Math.cos(p.angle) * boost,
-			p.vy + Math.sin(p.angle) * boost,
+			svx + Math.cos(p.angle) * boost,
+			svy + Math.sin(p.angle) * boost,
 			def.drag,
 			this.sightPts
 		);

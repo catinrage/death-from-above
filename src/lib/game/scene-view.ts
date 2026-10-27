@@ -409,6 +409,7 @@ export class SceneView {
 		const m = this.m;
 		const sc = p.def.scale;
 		mat4.fromTranslation(m, p.x, p.y, p.z);
+		if (p.yaw !== 0) mat4.rotateY(m, m, p.yaw);
 		mat4.rotateZ(m, m, p.angle);
 		mat4.rotateX(m, m, p.roll + p.bank);
 		mat4.scale(m, m, sc, sc, sc);
@@ -422,10 +423,22 @@ export class SceneView {
 			p.dying ? 1 : 0
 		);
 		this.mesh(p.def.mesh).push(m, st);
-		for (const prop of p.def.props) {
+		p.def.props.forEach((prop, i) => {
 			mat4.translate(this.m2, m, prop[0], prop[1], prop[2]);
-			mat4.rotateX(this.m2, this.m2, p.propSpin);
+			// Contra-rotating hubs: every second propeller turns the other way.
+			mat4.rotateX(this.m2, this.m2, p.def.contra && i % 2 === 1 ? -p.propSpin : p.propSpin);
 			this.models.propeller.push(this.m2, st);
+		});
+		const rotor = p.def.rotor;
+		if (rotor) {
+			const k = rotor.size;
+			mat4.translate(this.m2, m, rotor.main[0], rotor.main[1], rotor.main[2]);
+			mat4.rotateY(this.m2, this.m2, p.propSpin * 0.9);
+			mat4.scale(this.m2, this.m2, k, 1, k);
+			this.models.heliRotor.push(this.m2, st);
+			mat4.translate(this.m2, m, rotor.tail[0], rotor.tail[1], rotor.tail[2]);
+			mat4.rotateZ(this.m2, this.m2, p.propSpin * 1.6);
+			this.models.heliTailRotor.push(this.m2, st);
 		}
 		const sel = p.ammo[p.selected] > 0 ? p.selected : 'gp';
 		const shown = Math.min(p.ammo[sel], p.def.hardpoints.length);
