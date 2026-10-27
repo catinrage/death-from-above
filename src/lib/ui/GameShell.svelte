@@ -16,6 +16,7 @@
 	import type { AircraftId } from '$lib/game/types';
 	import { PopupLayer } from './popups';
 	import { TargetingLayer } from './targeting-layer';
+	import { EdgeLayer } from './edge-layer';
 	import {
 		loadSettings,
 		readBestScore,
@@ -96,6 +97,7 @@
 				);
 				game.popups = new PopupLayer(popupRoot);
 				game.targetingLayer = new TargetingLayer(targetRoot);
+				game.edgeLayer = new EdgeLayer(targetRoot);
 				if (new URLSearchParams(location.search).has('debug')) {
 					(window as unknown as { __dfa: Game }).__dfa = game;
 				}
@@ -459,6 +461,39 @@
 		font-size: 12px;
 		color: #ffd0c2;
 		text-shadow: 0 0 6px rgba(255, 60, 30, 0.9);
+	}
+
+	/* Faint chevrons on the screen edge, pointing at enemies out of shot. */
+	.targeting :global(.tl-edge) {
+		position: absolute;
+		left: -7px;
+		top: -7px;
+		width: 14px;
+		height: 14px;
+		--c: #ffe2b8;
+		/* A dark rim keeps them legible over a bright sky (the clip sits on the child). */
+		filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 2px rgba(0, 0, 0, 0.5));
+		will-change: transform, opacity;
+	}
+
+	.targeting :global(.tl-edge i) {
+		position: absolute;
+		inset: 0;
+		background: var(--c);
+		clip-path: polygon(0 0, 100% 50%, 0 100%, 34% 50%);
+	}
+
+	/* Aircraft: an open chevron in a cooler tint. */
+	.targeting :global(.tl-edge.air) {
+		--c: #bfe8ff;
+	}
+
+	.targeting :global(.tl-edge.air i) {
+		clip-path: polygon(0 0, 100% 50%, 0 100%, 0 76%, 62% 50%, 0 24%);
+	}
+
+	.targeting :global(.tl-edge.boss) {
+		--c: #ff9a6a;
 	}
 
 	/* Chevrons ringing the aircraft, pointing at whatever is hunting it. */
