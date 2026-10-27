@@ -84,6 +84,9 @@ export interface HudSnapshot {
 	damageFlash: number;
 	aircraft: AircraftId;
 	timeOfDay: string;
+	/** Weather name and mean wind (m/s, + blows toward +x). */
+	weather: string;
+	wind: number;
 	respawn: number;
 	feed: HudFeedItem[];
 	fps: number;
@@ -171,6 +174,8 @@ export function emptyHud(): HudSnapshot {
 		damageFlash: 0,
 		aircraft: 'kestrel',
 		timeOfDay: '',
+		weather: 'Clear',
+		wind: 0,
 		respawn: 0,
 		feed: [],
 		fps: 0,

@@ -107,7 +107,7 @@ export class AirUnit implements Trackable {
 				target = aim;
 				const err = Math.abs(angleDiff(this.angle, aim));
 				if (err < 0.13 && dist < 430) this.guns(w);
-				if (err < 0.45 && dist > 260 && dist < 720 && this.missileCd <= 0) {
+				if (err < 0.45 && dist > 260 && dist < 720 * w.weather.irScale() && this.missileCd <= 0) {
 					this.missileCd = rnd.range(11, 16);
 					launchMissile(w, {
 						kind: 'air',

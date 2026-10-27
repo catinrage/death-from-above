@@ -100,9 +100,11 @@ export function predictImpact(
 	const dt = 1 / 30;
 	let t = 0;
 	if (out) out.length = 0;
+	const wind = w.weather.baseWind;
 	for (let i = 0; i < 360; i++) {
-		const sp = Math.hypot(vx, vy);
-		vx -= vx * sp * drag * dt;
+		const ax = vx - wind;
+		const sp = Math.hypot(ax, vy);
+		vx -= ax * sp * drag * dt;
 		vy -= (vy * sp * drag + WORLD.gravity) * dt;
 		x += vx * dt;
 		y += vy * dt;
@@ -126,8 +128,10 @@ export function updateBombs(w: World, dt: number): void {
 			updateDig(w, b, dt);
 			continue;
 		}
-		const sp = Math.hypot(b.vx, b.vy);
-		b.vx -= b.vx * sp * b.def.drag * dt;
+		// Drag acts on airspeed, so the wind carries bombs (and the sight allows for it).
+		const ax = b.vx - w.weather.wind;
+		const sp = Math.hypot(ax, b.vy);
+		b.vx -= ax * sp * b.def.drag * dt;
 		b.vy -= (b.vy * sp * b.def.drag + WORLD.gravity) * dt;
 		if (b.def.id === 'guided' && b.age > 0.35) steerGuided(w, b, dt);
 		b.x += b.vx * dt;

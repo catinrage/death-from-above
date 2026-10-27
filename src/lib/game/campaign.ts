@@ -1,6 +1,7 @@
 import type { AirKind } from './enemy-air';
 import type { UnitKind } from './types';
 import type { WaveDirector, WaveOptions } from './waves';
+import type { WeatherSpec } from './weather';
 import type { World } from './world';
 
 export type Target = UnitKind | AirKind;
@@ -18,6 +19,8 @@ export interface Mission {
 	brief: string;
 	/** Time of day (environment phase) for each wave; the last entry holds for the rest. */
 	env: number[];
+	/** Weather for each wave, like `env`; omitted = clear with a light breeze. */
+	weather?: WeatherSpec[];
 	waves: WaveOptions & { last: number };
 	objectives: Objective[];
 	/** The airfield must stay above this fraction of its strength. */
@@ -67,6 +70,7 @@ export const MISSIONS: readonly Mission[] = [
 		brief:
 			'An armoured spearhead with mobile AA in tow. Tanks shrug off guns: use bombs, the bunker buster or missiles on their tops.',
 		env: [1.1],
+		weather: [{ kind: 'rain', wind: -6 }],
 		waves: {
 			last: 2,
 			offset: 2,
@@ -114,6 +118,10 @@ export const MISSIONS: readonly Mission[] = [
 		brief:
 			'Three waves under cover of darkness. Searchlights will hunt you and the guns shoot straighter when they find you. The airfield must not fall below half strength.',
 		env: [2.6, 3, 3.6],
+		weather: [
+			{ kind: 'clear', wind: 3 },
+			{ kind: 'storm', wind: 10 }
+		],
 		waves: {
 			last: 3,
 			offset: 3,
@@ -134,6 +142,7 @@ export const MISSIONS: readonly Mission[] = [
 		brief:
 			'SAM launchers and their radars are shutting down the sky. Destroy them. Flare when the seeker closes, and kill the radar first to slow their locks.',
 		env: [4.1],
+		weather: [{ kind: 'snow', wind: -5 }],
 		waves: {
 			last: 2,
 			offset: 4,
