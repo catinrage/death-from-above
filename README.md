@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/brand/logo.png" alt="Death From Above logo" width="240" /></p>
+
 # Death From Above
 
 A side-view 3D bomber. You fly a strike aircraft over a living battlefield, break enemy columns

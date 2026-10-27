@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { assets } from '$app/paths';
 	import { AIRCRAFT } from '$lib/game/defs-aircraft';
 	import { BOMBS } from '$lib/game/defs-bombs';
 	import { carriedOf, type Loadout } from '$lib/game/loadout';
@@ -34,6 +35,7 @@
 
 <div class="title">
 	<header class="brand">
+		<img class="emblem" src="{assets}/brand/logo-512.png" alt="" width="96" height="96" />
 		<div class="eyebrow"><span class="dot"></span> Close air support · Dusk theatre</div>
 		<h1>
 			<span class="death">DEATH</span>
@@ -119,6 +121,14 @@
 	.brand {
 		grid-column: 1;
 		max-width: 620px;
+	}
+
+	.emblem {
+		display: block;
+		width: clamp(64px, 7vw, 96px);
+		height: auto;
+		margin-bottom: 10px;
+		filter: drop-shadow(0 0 18px rgba(255, 130, 40, 0.35));
 	}
 
 	.eyebrow {
