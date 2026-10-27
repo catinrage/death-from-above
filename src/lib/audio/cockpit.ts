@@ -70,6 +70,11 @@ export class Announcer {
 	private readonly was = noAlerts();
 	private busy = 0;
 
+	/** True while a callout is being spoken. */
+	get speaking(): boolean {
+		return this.busy > 0;
+	}
+
 	/** Advances time; returns the alert to speak now, if any. */
 	update(dt: number, s: AlertState, voiceLength = 1.3): Alert | null {
 		this.busy -= dt;

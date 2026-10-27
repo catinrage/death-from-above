@@ -1,6 +1,18 @@
 import type { SfxId, SoundSink } from '../game/world';
 import { softClipCurve, synthBoom, type BoomContext } from './boom';
 import { ALERTS, ALERT_ORDER, Announcer, type Alert, type AlertState } from './cockpit';
+import { MusicDirector } from './music';
+import {
+	RADIO,
+	RADIO_CUES,
+	RECORDED,
+	RadioDesk,
+	estimateLength,
+	type RadioCue,
+	type Speaker,
+	type Transmission
+} from './radio';
+import { Score } from './score';
 
 interface Voice {
 	gain: GainNode;
@@ -83,9 +95,19 @@ export class AudioEngine implements SoundSink {
 	private readonly announcer = new Announcer();
 	/** Recorded voice callouts; anything missing falls back to the browser's speech voice. */
 	private readonly voiceClips = new Map<Alert, AudioBuffer>();
+	private readonly radioDesk = new RadioDesk();
+	/** Recorded radio calls by clip file; anything missing falls back to the speech voice. */
+	private readonly radioClips = new Map<string, AudioBuffer>();
+	private radioBus!: GainNode;
+	private readonly director = new MusicDirector();
+	private score: Score | null = null;
+	private musicBus: GainNode | null = null;
+	/** Score loudness last asked for (-1 = never). */
+	private musicLevel = -1;
 	private ambienceTimer = 3;
 	private voices = 0;
 	volume = 0.8;
+	music = 0.6;
 
 	get ready(): boolean {
 		return this.ctx !== null && this.ctx.state === 'running';
@@ -158,6 +180,45 @@ export class AudioEngine implements SoundSink {
 		this.startEngine();
 		this.startAmbience();
 		this.loadVoices();
+		this.buildRadio(comp);
+		const musicBus = ctx.createGain();
+		musicBus.gain.value = this.music;
+		musicBus.connect(comp);
+		this.musicBus = musicBus;
+		this.score = new Score(ctx, musicBus, this.white);
+	}
+
+	/** Radio band: thin, a little crunchy, so the tower and wingman sound miles away. */
+	private buildRadio(dest: AudioNode): void {
+		const ctx = this.ctx as AudioContext;
+		const hp = ctx.createBiquadFilter();
+		hp.type = 'highpass';
+		hp.frequency.value = 450;
+		const lp = ctx.createBiquadFilter();
+		lp.type = 'lowpass';
+		lp.frequency.value = 2900;
+		const shaper = ctx.createWaveShaper();
+		shaper.curve = softClipCurve(3);
+		this.radioBus = ctx.createGain();
+		this.radioBus.gain.value = 0.9;
+		this.radioBus.connect(hp);
+		hp.connect(shaper);
+		shaper.connect(lp);
+		lp.connect(dest);
+		for (const c of RADIO_CUES)
+			for (const line of RADIO[c].lines) {
+				if (!RECORDED.has(line.file)) continue;
+				const url = new URL(`audio/radio/${line.file}.mp3`, document.baseURI);
+				if (typeof fetch === 'undefined') return;
+				fetch(url)
+					.then((r) => (r.ok ? r.arrayBuffer() : null))
+					.then((data) => (data ? ctx.decodeAudioData(data) : null))
+					.then((buf) => {
+						if (buf) this.radioClips.set(line.file, buf);
+					})
+					// No clip yet: the call is read by the speech voice instead.
+					.catch(() => this.radioClips.delete(line.file));
+			}
 	}
 
 	private noiseBuffer(seconds: number, brown: boolean): AudioBuffer {
@@ -191,6 +252,103 @@ export class AudioEngine implements SoundSink {
 	setVolume(v: number): void {
 		this.volume = v;
 		if (this.master) this.master.gain.value = v;
+	}
+
+	setMusicVolume(v: number): void {
+		this.music = v;
+		if (this.musicBus && this.ctx) this.musicBus.gain.setTargetAtTime(v, this.ctx.currentTime, 0.1);
+	}
+
+	/**
+	 * Dynamic score, called every frame: `threat` (0..1) drives which layers
+	 * play, `level` (0..1) how loud the whole score is (0 fades it out).
+	 */
+	updateMusic(dt: number, threat: number, level: number): void {
+		const score = this.score;
+		if (!score || !this.ready) return;
+		if (level !== this.musicLevel) {
+			this.musicLevel = level;
+			score.setLevel(level, level > 0 ? 2 : 1.2);
+		}
+		this.director.update(dt, threat);
+		score.update(this.director.layers);
+	}
+
+	/** Current music intensity 0..1 (for debugging and the HUD). */
+	get intensity(): number {
+		return this.director.level;
+	}
+
+	/** Queues radio calls; the desk decides when (and whether) each goes out. */
+	radio(cues: readonly RadioCue[]): void {
+		for (const c of cues) this.radioDesk.push(c);
+	}
+
+	/** Puts the next radio call on the air, waiting while the cockpit voice talks. Null clears the channel. */
+	updateRadio(dt: number, active: boolean): void {
+		if (!this.ready) return;
+		if (!active) {
+			this.radioDesk.reset();
+			return;
+		}
+		const tx = this.radioDesk.update(dt, this.announcer.speaking);
+		if (tx) this.transmit(tx);
+	}
+
+	private transmit(tx: Transmission): void {
+		const ctx = this.ctx as AudioContext;
+		const t = ctx.currentTime + 0.02;
+		const clip = this.radioClips.get(tx.line.file);
+		const length = clip ? clip.duration + 0.25 : this.speakRadio(tx.line.text, tx.speaker);
+		this.squelch(t, 0.07);
+		if (clip) {
+			const src = ctx.createBufferSource();
+			src.buffer = clip;
+			src.connect(this.radioBus);
+			src.start(t + 0.08);
+		}
+		this.squelch(t + length, 0.12);
+		this.radioDesk.onAir(length + 0.1);
+	}
+
+	/** The key-up/key-down hiss that brackets every transmission. */
+	private squelch(t: number, dur: number): void {
+		const ctx = this.ctx as AudioContext;
+		const src = ctx.createBufferSource();
+		src.buffer = this.white;
+		const bp = ctx.createBiquadFilter();
+		bp.type = 'bandpass';
+		bp.frequency.value = 2200;
+		bp.Q.value = 0.6;
+		const g = ctx.createGain();
+		g.gain.setValueAtTime(0.0001, t);
+		g.gain.exponentialRampToValueAtTime(0.22, t + 0.008);
+		g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+		src.connect(bp);
+		bp.connect(g);
+		g.connect(this.radioBus);
+		src.start(t, Math.random());
+		src.stop(t + dur + 0.05);
+	}
+
+	/** Speech fallback for a radio call; returns roughly how long it will take. */
+	private speakRadio(text: string, speaker: Speaker): number {
+		const length = estimateLength(text);
+		if (typeof speechSynthesis === 'undefined') return length;
+		const u = new SpeechSynthesisUtterance(text);
+		u.rate = speaker === 'wingman' ? 1.18 : 1.05;
+		u.pitch = speaker === 'wingman' ? 1 : 0.8;
+		u.volume = Math.min(1, this.volume * 0.9);
+		const male = speechSynthesis
+			.getVoices()
+			.filter(
+				(v) => v.lang.startsWith('en') && /male|david|daniel|alex|fred|guy|mark/i.test(v.name)
+			);
+		const voice = male[speaker === 'wingman' ? male.length - 1 : 0];
+		if (voice) u.voice = voice;
+		// The cockpit voice cancels speech when it must talk; the radio never interrupts it.
+		setTimeout(() => speechSynthesis.speak(u), 90);
+		return length;
 	}
 
 	setListener(x: number, y: number): void {
@@ -808,6 +966,7 @@ export class AudioEngine implements SoundSink {
 
 	silenceAll(): void {
 		for (const id of [...this.whistles.keys()]) this.whistle(id, 0, 0, 0, false);
+		this.radioDesk.reset();
 	}
 
 	/** Stops every loop and releases the AudioContext (unmount / hot reload). */
@@ -816,6 +975,8 @@ export class AudioEngine implements SoundSink {
 		const ctx = this.ctx;
 		this.ctx = null;
 		this.engineNodes = null;
+		this.score = null;
+		this.musicBus = null;
 		if (ctx) void ctx.close();
 	}
 }

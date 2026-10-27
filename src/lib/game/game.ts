@@ -1,4 +1,6 @@
 import { AudioEngine } from '../audio/audio';
+import { threatLevel } from '../audio/music';
+import { RadioWatch } from '../audio/radio';
 import { clamp, damp, lerp } from '../engine/math';
 import { fx as rnd } from '../engine/rng';
 import { Renderer, type PostFrame, type Quality } from '../engine/renderer';
@@ -52,6 +54,7 @@ import { SHOAL } from './river';
 import { World } from './world';
 import { Wingman, WING_HP } from './wingman';
 import { AirBase } from './base';
+import { radioState, threatInput } from './battle-audio';
 
 export interface GameCallbacks {
 	hud(h: HudSnapshot): void;
@@ -112,6 +115,7 @@ export class Game {
 	readonly targeting = new Targeting();
 	targetingLayer: TargetingLayer | null = null;
 	private lives = 3;
+	private readonly radioWatch = new RadioWatch();
 	private score = 0;
 	private combo = 0;
 	private comboTimer = 0;
@@ -221,6 +225,8 @@ export class Game {
 		this.focus.reward(0.04);
 		this.comboTimer = 3;
 		this.bestCombo = Math.max(this.bestCombo, this.combo);
+		if (name === 'Interceptor' || name === 'Gunship') this.audio.radio(['splash']);
+		if (this.combo === 6) this.audio.radio(['streak']);
 		const mult = this.multiplier();
 		const pts = score * mult;
 		this.score += pts;
@@ -385,6 +391,8 @@ export class Game {
 			const x = WORLD.runwayMinX + 10;
 			w.wingman = new Wingman(x, w.ground(x) + 70);
 		}
+		this.radioWatch.reset();
+		this.audio.radio(['sortie']);
 		const seed = Math.floor(Math.random() * 1e6);
 		this.waves = new WaveDirector(
 			seed,
@@ -603,6 +611,10 @@ export class Game {
 		const pick = order === 'attack' && p && p.alive ? this.targeting.primary(w, p) : null;
 		const ok = wing.command(w, order, pick ? { unit: pick.unit, air: pick.air } : null);
 		this.audio.play(ok ? 'select' : 'empty', w.camera.x, w.camera.y, 0.6);
+		if (ok)
+			this.audio.radio([
+				order === 'attack' ? 'wingAttack' : order === 'sams' ? 'wingSams' : 'wingCover'
+			]);
 	}
 
 	private step(dt: number, pilot: PilotInput): void {
@@ -672,8 +684,10 @@ export class Game {
 			} else {
 				this.respawnTimer -= dt;
 				if (this.respawnTimer <= 0) {
-					if (this.lives > 0) this.spawnPlayer();
-					else return this.gameOver('All aircraft lost');
+					if (this.lives > 0) {
+						this.spawnPlayer();
+						this.audio.radio(['sortie']);
+					} else return this.gameOver('All aircraft lost');
 				}
 			}
 		}
@@ -865,6 +879,7 @@ export class Game {
 			dt,
 			this.phase === 'playing' && p && !this.autoplay ? cockpitAlerts(w, p) : null
 		);
+		this.updateBattleAudio(dt);
 		this.renderer.water.numRipples = w.fx.water.pack(this.renderer.water.ripples);
 		this.renderer.render(w.camera.frame, env, w.lights, w.particles, post, this.time);
 		this.flushKills();
@@ -880,6 +895,22 @@ export class Game {
 			this.hudTimer = 1 / 15;
 			this.cb.hud(this.snapshot());
 		}
+	}
+
+	/** Radio chatter and the dynamic score, both in real time (not slowed by bullet time). */
+	private updateBattleAudio(dt: number): void {
+		const w = this.world;
+		const p = w.player;
+		const flying = this.phase === 'playing' && !this.autoplay;
+		if (flying) {
+			const s = radioState(w, p, this.waves.state, this.lives);
+			this.audio.radio(this.radioWatch.update(s));
+		}
+		this.audio.updateRadio(dt, flying);
+		const inSortie = this.phase === 'playing' || this.phase === 'paused';
+		const threat = inSortie ? threatLevel(threatInput(w, p, this.waves.state)) : 0.1;
+		const level = { loading: 0, title: 0.55, playing: 1, paused: 0.3, gameover: 0.45 }[this.phase];
+		this.audio.updateMusic(dt, threat, level);
 	}
 
 	/**

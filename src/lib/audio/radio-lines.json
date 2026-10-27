@@ -1,0 +1,140 @@
+{
+	"recorded": [],
+	"voices": {
+		"tower": "VR6AewLTigWG4xSOukaG",
+		"wingman": "TxGEqnHWrfWFTfGW9XiX"
+	},
+	"cues": {
+		"sortie": {
+			"speaker": "tower",
+			"lines": [
+				["sortie-1", "Viper One, cleared for takeoff. Good hunting."],
+				["sortie-2", "Runway is yours, Viper. Wheels up and get on them."],
+				["sortie-3", "Fresh jet on the line, Viper. You're cleared hot."]
+			]
+		},
+		"rearmed": {
+			"speaker": "tower",
+			"lines": [
+				["rearmed-1", "Rearmed and refuelled. Get back out there."],
+				["rearmed-2", "Ground crew's done, Viper. You're good to go."]
+			]
+		},
+		"waveInbound": {
+			"speaker": "tower",
+			"lines": [
+				["inbound-1", "Tower to Viper, new contacts crossing the valley."],
+				["inbound-2", "Heads up, armour moving on the airfield."],
+				["inbound-3", "Here they come again. Multiple vehicles, east of the river."]
+			]
+		},
+		"waveClear": {
+			"speaker": "tower",
+			"lines": [
+				["clear-1", "Sector clear. Nice work, Viper."],
+				["clear-2", "That's the last of them. Stand by for the next push."],
+				["clear-3", "Scope is clean. Catch your breath, Viper."]
+			]
+		},
+		"missionComplete": {
+			"speaker": "tower",
+			"lines": [
+				["complete-1", "Mission complete. Bring her home, Viper."],
+				["complete-2", "That's it, they're breaking off. Outstanding flying."]
+			]
+		},
+		"baseHit": {
+			"speaker": "tower",
+			"lines": [
+				["base-hit-1", "Tower is taking fire! We need support at the field."],
+				["base-hit-2", "They're shelling the runway, Viper!"],
+				["base-hit-3", "Rounds landing on the airfield. Get them off us!"]
+			]
+		},
+		"baseCritical": {
+			"speaker": "tower",
+			"lines": [
+				["base-critical-1", "The airfield is burning, Viper. We can't hold much longer."],
+				["base-critical-2", "Tower to all aircraft, the field is about to fall!"]
+			]
+		},
+		"playerDown": {
+			"speaker": "tower",
+			"lines": [
+				["down-1", "Viper is down! Get a fresh jet on the line."],
+				["down-2", "We lost Viper One. Spinning up a replacement."]
+			]
+		},
+		"lastAircraft": {
+			"speaker": "tower",
+			"lines": [["last-1", "That's our last airframe, Viper. Make it count."]]
+		},
+		"enemyAir": {
+			"speaker": "wingman",
+			"lines": [
+				["bandits-1", "Bandits, bandits! Enemy air inbound."],
+				["bandits-2", "Fast movers on the scope, watch your six."],
+				["bandits-3", "Enemy aircraft in the area, heads on a swivel."]
+			]
+		},
+		"enemyLock": {
+			"speaker": "wingman",
+			"lines": [
+				["spiked-1", "Viper, you're spiked! Break, break!"],
+				["spiked-2", "They've got a lock on you, get low!"],
+				["spiked-3", "SAM radar on you, Viper. Move!"]
+			]
+		},
+		"missileDefeated": {
+			"speaker": "wingman",
+			"lines": [
+				["defeated-1", "Missile's gone wide. You're clear."],
+				["defeated-2", "Nice break, it lost you."]
+			]
+		},
+		"splash": {
+			"speaker": "wingman",
+			"lines": [
+				["splash-1", "Splash one!"],
+				["splash-2", "Good kill, good kill."],
+				["splash-3", "He's going down!"]
+			]
+		},
+		"streak": {
+			"speaker": "wingman",
+			"lines": [
+				["streak-1", "Good effect on target! Keep it coming."],
+				["streak-2", "Look at him go!"],
+				["streak-3", "Column's wrecked. Great shooting, Viper."]
+			]
+		},
+		"wingAttack": {
+			"speaker": "wingman",
+			"lines": [
+				["wing-attack-1", "Copy, engaging your target."],
+				["wing-attack-2", "Rolling in on it."]
+			]
+		},
+		"wingCover": {
+			"speaker": "wingman",
+			"lines": [
+				["wing-cover-1", "Copy, on your wing."],
+				["wing-cover-2", "Forming up. I've got your six."]
+			]
+		},
+		"wingSams": {
+			"speaker": "wingman",
+			"lines": [
+				["wing-sams-1", "Going after the SAMs."],
+				["wing-sams-2", "Copy, suppressing air defences."]
+			]
+		},
+		"wingmanDown": {
+			"speaker": "tower",
+			"lines": [
+				["wing-down-1", "Your wingman is down! He'll be back up shortly."],
+				["wing-down-2", "Viper Two is hit and out of the fight."]
+			]
+		}
+	}
+}
