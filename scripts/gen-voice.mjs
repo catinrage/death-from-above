@@ -23,6 +23,7 @@ const COCKPIT = {
 	fire: 'Engine fire. Engine fire.',
 	stall: 'Stall. Stall.',
 	lock: 'Warning. Locked on.',
+	'too-low-gear': 'Too low. Gear.',
 	damage: 'Warning. Damage critical.',
 	altitude: 'Altitude. Altitude.',
 	ceiling: 'Altitude ceiling.',

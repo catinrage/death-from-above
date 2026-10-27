@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { fly, fade } from 'svelte/transition';
 	import type { HudMessage, HudSnapshot } from '$lib/game/hud';
+	import { BOUNDS_GRACE } from '$lib/game/player';
 
 	interface Props {
 		hud: HudSnapshot;
@@ -19,6 +20,7 @@
 	const baseFrac = $derived(Math.max(0, hud.baseHp / hud.baseMax));
 	const heatFrac = $derived(Math.min(1, hud.heat / 100));
 	const ORDER_TAG = { cover: 'CVR', attack: 'ATK', sams: 'SAM', rearm: 'RTB' } as const;
+	const GEAR_TAG = { down: 'DOWN', up: 'UP', transit: 'TRANSIT', none: '' } as const;
 </script>
 
 <div class="hud" class:critical={hpFrac < 0.3 && hud.hp > 0}>
@@ -209,6 +211,11 @@
 			<span><em>ALT</em>{Math.round(hud.altitude)}<small>m</small></span>
 			<span><em>SPD</em>{Math.round(hud.speed)}<small>km/h</small></span>
 		</div>
+		{#if hud.gear !== 'none'}
+			<div class="gear {hud.gear}" title="Landing gear (B)">
+				<em>GEAR</em>{GEAR_TAG[hud.gear]}
+			</div>
+		{/if}
 	</section>
 
 	<section class="bombs">
@@ -272,7 +279,7 @@
 		{#if hud.stall}<div class="warn">STALL</div>{/if}
 		{#if hud.boundary > 0}
 			<div class="warn">
-				RETURN TO COMBAT AREA <small>{Math.max(0, 4 - hud.boundary).toFixed(1)}</small>
+				RETURN TO COMBAT AREA <small>{Math.max(0, BOUNDS_GRACE - hud.boundary).toFixed(1)}</small>
 			</div>
 		{/if}
 		{#if hud.ceiling}<div class="warn soft">ALTITUDE CEILING</div>{/if}
@@ -280,6 +287,9 @@
 				NO-FIRE ZONE <small>{hud.noFire}</small>
 			</div>{/if}
 		{#if hud.braking}<div class="brake">AIRBRAKE</div>{/if}
+		{#if hud.takeoff}<div class="takeoff">
+				Release brakes: D or Shift · pull up with W · B raises the gear
+			</div>{/if}
 		{#if hud.bayJammed}<div class="warn soft">BOMB BAY JAMMED</div>{/if}
 		{#if hud.rearming}<div class="good">
 				{hud.landed ? 'LANDED · ' : ''}REARMING &amp; REPAIRING
@@ -1127,6 +1137,39 @@
 			0 0 16px rgba(255, 60, 40, 0.75),
 			0 1px 2px #000;
 		animation: pulse 0.2s ease-in-out infinite alternate;
+	}
+
+	.gear {
+		margin-top: 2px;
+		font-family: var(--display);
+		font-size: 13px;
+		letter-spacing: 0.12em;
+		color: var(--ink-faint);
+	}
+
+	.gear em {
+		font-style: normal;
+		font-family: var(--body);
+		font-size: 11px;
+		letter-spacing: 0.2em;
+		margin-right: 6px;
+	}
+
+	.gear.down {
+		color: var(--good);
+	}
+
+	.gear.transit {
+		color: #ffb35a;
+	}
+
+	.takeoff {
+		font-size: 14px;
+		letter-spacing: 0.14em;
+		color: var(--ink);
+		padding: 6px 14px;
+		background: rgba(0, 0, 0, 0.35);
+		border-left: 2px solid var(--good);
 	}
 
 	.brake {

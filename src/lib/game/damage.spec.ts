@@ -135,6 +135,7 @@ describe('damaged aircraft', () => {
 		const land = new Player('kestrel', WORLD.runwayMinX + 20, w.ground(80) + 2.2, 0);
 		land.vx = 45;
 		land.vy = -1;
+		land.gear.extend();
 		land.damageSystem('engine', 1, w);
 		land.damageSystem('hydraulics', 1, w);
 		w.player = land;

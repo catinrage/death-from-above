@@ -43,6 +43,23 @@ describe('headless battle', () => {
 		expect(w.bullets.length).toBeLessThan(900);
 	});
 
+	it('takes off from a parked start and raises the gear on the climb-out', () => {
+		const w = testWorld();
+		for (const id of ['kestrel', 'tu95'] as const) {
+			const x = WORLD.runwayMinX + 60;
+			const p = new Player(id, x, w.ground(x) + 45, 0.08);
+			p.invuln = 1e9;
+			p.park(w);
+			w.player = p;
+			const pilot = new Autopilot();
+			for (let t = 0; t < 25; t += DT) simulateWorld(w, DT, pilot.update(w, p, DT));
+			expect(p.crashed).toBe(false);
+			expect(p.hasFlown).toBe(true);
+			expect(p.y - w.ground(p.x)).toBeGreaterThan(30);
+			expect(p.gear.down).toBe(false);
+		}
+	});
+
 	it('lets armour that reaches the siege line shell the airfield', () => {
 		const w = testWorld();
 		const tank = w.spawnUnit('tank', WORLD.baseAttackX + 60, 0);

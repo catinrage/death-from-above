@@ -135,6 +135,8 @@ export class Game {
 	private squadron = new Squadron(1);
 	/** Counts down from a campaign win to the debrief. */
 	private debriefTimer = 0;
+	/** The AI wingman launches once the player is off the runway; 'join' also announces him. */
+	private wingmanDue: 'plain' | 'join' | null = null;
 	/** Enter / pad A pressed this frame, consumed by the first sub-step that reads it. */
 	private confirm = false;
 	private skip = false;
@@ -505,17 +507,12 @@ export class Game {
 		this.p2Targeting.clear();
 		this.spawnPlayer();
 		// Player two takes the AI wingman's place in co-op.
+		this.wingmanDue = null;
 		if (this.coop) this.spawnPlayer2();
 		else if (this.mode !== 'tutorial' && !mission?.solo) {
-			const x = WORLD.runwayMinX + 10;
-			w.wingman = new Wingman(x, w.ground(x) + 70);
 			// The first campaign mission is flown alone; Two's arrival is worth a word.
-			if (mission && MISSIONS.findIndex((m) => m.solo) === MISSIONS.indexOf(mission) - 1)
-				w.events.message(
-					'TWO JOINS THE FLIGHT',
-					'Your wingman: T attack · G cover · H air defences',
-					'good'
-				);
+			const joins = mission && MISSIONS.findIndex((m) => m.solo) === MISSIONS.indexOf(mission) - 1;
+			this.wingmanDue = joins ? 'join' : 'plain';
 		}
 		this.radioWatch.reset();
 		this.audio.radio(['sortie']);
@@ -597,7 +594,7 @@ export class Game {
 
 	private spawnPlayer(): void {
 		const w = this.world;
-		const x = WORLD.runwayMinX + 40;
+		const x = WORLD.runwayMinX + P1_PARK;
 		const lost = w.player;
 		w.player = new Player(
 			this.flying,
@@ -607,6 +604,7 @@ export class Game {
 			this.flyingLoadout,
 			this.flyingUpgrades
 		);
+		this.parkOnRunway(w.player);
 		// A spent nuke stays spent: a replacement aircraft doesn't bring a new one this wave.
 		if (lost) w.player.ammo.nuke = Math.min(w.player.ammo.nuke, lost.ammo.nuke);
 		// With player two still up, let the camera ease back over rather than cut.
@@ -615,10 +613,10 @@ export class Game {
 		w.camera.snap(w.player, w.ground(x));
 	}
 
-	/** Player two takes off just behind and above the player, in the same airframe. */
+	/** Player two waits on the runway just behind the player, in the same airframe. */
 	private spawnPlayer2(): void {
 		const w = this.world;
-		const x = WORLD.runwayMinX + 10;
+		const x = WORLD.runwayMinX + P2_PARK;
 		const lost = w.player2;
 		w.player2 = new Player(
 			this.flying,
@@ -628,10 +626,35 @@ export class Game {
 			this.flyingLoadout,
 			this.flyingUpgrades
 		);
+		this.parkOnRunway(w.player2);
 		if (lost) w.player2.ammo.nuke = Math.min(w.player2.ammo.nuke, lost.ammo.nuke);
 		if (w.player?.alive) return;
 		w.camera.interest = null;
 		w.camera.snap(w.player2, w.ground(x));
+	}
+
+	/** Fixed-wing sorties start on the runway, brakes on; rotors and the gunship start in the air. */
+	private parkOnRunway(p: Player): void {
+		if (p.flight !== 'fixed') return;
+		p.park(this.world);
+		if (p === this.world.player)
+			this.world.events.message('CLEARED FOR TAKEOFF', 'Tower: runway is yours, wind calm', 'info');
+	}
+
+	/** Two takes off after the player, so he never joins the queue on the runway. */
+	private launchWingman(): void {
+		const w = this.world;
+		const p = w.player;
+		if (!this.wingmanDue || !p || !p.alive || p.landed) return;
+		if (p.y - w.surface.clearance(p.x) < WINGMAN_JOIN_ALT) return;
+		w.wingman = new Wingman(p.x - 70, p.y + 18);
+		if (this.wingmanDue === 'join')
+			w.events.message(
+				'TWO JOINS THE FLIGHT',
+				'Your wingman: T attack · G cover · H air defences · Y rearm',
+				'good'
+			);
+		this.wingmanDue = null;
 	}
 
 	pause(): void {
@@ -696,14 +719,16 @@ export class Game {
 				flare: false,
 				cycle: 0,
 				select: null,
-				missiles: null
+				missiles: null,
+				gear: false
 			});
 			Object.assign(this.p2Sub, this.p2Frame, {
 				bombPressed: false,
 				flare: false,
 				cycle: 0,
 				select: null,
-				missiles: null
+				missiles: null,
+				gear: false
 			});
 			for (let i = 0; i < steps; i++)
 				this.step(
@@ -882,6 +907,7 @@ export class Game {
 		if (this.coop && sq.update(1, !!w.player2?.crashed, dt, training) === 'respawn')
 			this.spawnPlayer2();
 		if (sq.allOut()) return this.gameOver('All aircraft lost');
+		this.launchWingman();
 		if (w.base.hp <= 0) return this.gameOver('The airfield has fallen');
 		if (this.waves.cleared > this.wavesScored) {
 			this.wavesScored = this.waves.cleared;
@@ -1352,6 +1378,8 @@ export class Game {
 			ceiling: !!p?.ceiling && !!p.alive,
 			rearming: !!p?.rearming && !!p.alive,
 			landed: !!p?.landed,
+			gear: gearStatus(p),
+			takeoff: !!p && p.alive && p.flight === 'fixed' && !p.hasFlown,
 			systems: p ? { ...p.systems } : { engine: 0, wing: 0, hydraulics: 0 },
 			bayJammed: !!p && p.alive && p.bayJammed > 0,
 			damageDir: p?.damageDir ?? 0,
@@ -1389,6 +1417,19 @@ function hexToRgb(hex: string): [number, number, number] {
 	const n = parseInt(hex.slice(1), 16);
 	return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
 }
+
+/** The gear lamp: none for rotors and the gunship, amber while the legs travel. */
+function gearStatus(p: Player | null): HudSnapshot['gear'] {
+	if (!p || p.flight !== 'fixed') return 'none';
+	if (p.gear.moving) return 'transit';
+	return p.gear.down ? 'down' : 'up';
+}
+
+/** Where the two aircraft park on the runway (metres past its near end), clear of each other. */
+const P1_PARK = 60;
+const P2_PARK = 15;
+/** Height the player must reach before the AI wingman launches. */
+const WINGMAN_JOIN_ALT = 25;
 
 /** Score for each friendly vehicle that reaches the rally point. */
 const ESCORT_BONUS = 250;

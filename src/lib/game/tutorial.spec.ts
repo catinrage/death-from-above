@@ -42,10 +42,29 @@ describe('Tutorial', () => {
 		expect(t.index).toBe(1);
 	});
 
-	it('passes the climb lesson from the aircraft altitude', () => {
+	it('passes the take-off lesson once airborne with the gear up', () => {
 		const { w, t, p } = setup();
 		t.update(w, DT, { ...IDLE, confirm: true });
+		expect(t.lesson.title).toBe('Take off');
+		p.park(w);
+		t.update(w, DT, IDLE);
+		expect(t.card().progress).toBe(0);
+		p.landed = false;
+		p.hasFlown = true;
+		p.y += 30;
+		t.update(w, DT, IDLE);
+		expect(t.card().progress).toBe(0.5);
+		p.gear.toggle(false);
+		p.gear.update(10);
+		t.update(w, DT, IDLE);
+		expect(t.card().passed).toBe(true);
+		settle(w, t);
 		expect(t.lesson.title).toBe('Climb');
+	});
+
+	it('passes the climb lesson from the aircraft altitude', () => {
+		const { w, t, p } = setup();
+		lessonTitled(w, t, 'Climb');
 		p.y = w.ground(p.x) + 60;
 		t.update(w, DT, IDLE);
 		expect(t.card().progress).toBeCloseTo(0.5, 1);
