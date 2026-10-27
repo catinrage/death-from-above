@@ -13,6 +13,14 @@ import * as br from './bridge';
 import * as real from './aircraft-real';
 import * as sp from './ordnance-special';
 
+/** City blocks, shared by the building and its lit-window mesh so the panes line up. */
+const BLOCKS = {
+	block0: { w: 12, d: 10, floors: 5, wall: P.brick, seed: 1 },
+	block1: { w: 10, d: 10, floors: 8, wall: P.plaster, seed: 2 },
+	block2: { w: 14, d: 14, floors: 14, wall: P.plaster, glass: true, seed: 3 },
+	block3: { w: 14, d: 9, floors: 2, wall: P.plaster, seed: 4 }
+} satisfies Record<string, st.BlockSpec>;
+
 /** Builders for every instanced mesh. The boolean marks shadow casters. */
 const BUILDERS = {
 	kestrel: [air.kestrel, true],
@@ -70,6 +78,15 @@ const BUILDERS = {
 	houseLights: [() => st.houseLights(), false],
 	houseWhiteLights: [() => st.houseLights(7, 5.5), false],
 	ruin: [st.ruin, true],
+	block0: [() => st.block(BLOCKS.block0), true],
+	block1: [() => st.block(BLOCKS.block1), true],
+	block2: [() => st.block(BLOCKS.block2), true],
+	block3: [() => st.block(BLOCKS.block3), true],
+	block0Lights: [() => st.blockLights(BLOCKS.block0), false],
+	block1Lights: [() => st.blockLights(BLOCKS.block1), false],
+	block2Lights: [() => st.blockLights(BLOCKS.block2), false],
+	block3Lights: [() => st.blockLights(BLOCKS.block3), false],
+	rubble: [() => st.rubble(5), true],
 	runway: [() => st.runway(411, 24), false],
 	hangar: [st.hangar, true],
 	hangarGlow: [st.hangarGlow, false],
@@ -94,6 +111,16 @@ const BUILDERS = {
 	broad1: [() => nat.broadleaf(5, P.leafDry), true],
 	broad2: [() => nat.broadleaf(6), true],
 	deadTree: [() => nat.deadTree(7), true],
+	snowPine0: [() => nat.pine(1, true), true],
+	snowPine1: [() => nat.pine(2, true), true],
+	snowPine2: [() => nat.pine(3, true), true],
+	cactus0: [() => nat.cactus(21), true],
+	cactus1: [() => nat.cactus(22), true],
+	palm0: [() => nat.palm(23), true],
+	palm1: [() => nat.palm(24), true],
+	jungle0: [() => nat.jungleTree(25), true],
+	jungle1: [() => nat.jungleTree(26), true],
+	fern: [() => nat.fern(27), false],
 	bush0: [() => nat.bush(8), true],
 	bush1: [() => nat.bush(9, P.leafDry), true],
 	rock0: [() => nat.rock(10), true],

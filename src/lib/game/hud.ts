@@ -4,6 +4,7 @@ import type { Systems } from './damage';
 import type { BigKill } from './killcam';
 import type { TutorialCard } from './tutorial';
 import type { AircraftId, BombId } from './types';
+import type { BiomeId } from './biomes';
 import type { WingOrder } from './wingman';
 
 /** How a sortie is played: training, a campaign mission, or endless waves. */
@@ -11,7 +12,7 @@ export type GameMode = 'tutorial' | 'campaign' | 'endless';
 
 export type ModeStart =
 	| { mode: 'tutorial' }
-	| { mode: 'endless' }
+	| { mode: 'endless'; biome?: BiomeId }
 	/** A campaign mission, softened by the strike flown ahead of it. */
 	| { mode: 'campaign'; mission: string; strike?: StrikeId | null };
 

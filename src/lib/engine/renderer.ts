@@ -182,6 +182,14 @@ export class Renderer {
 	roadParams: [number, number, number, number] = [3.4, -1e9, 1e9, 0];
 	/** Stretch of the battle line where the road leaves the ground (a bridge). */
 	roadGap: [number, number] = [1e9, 1e9];
+	/** Terrain colours (linear RGB): lush grass, dry grass, dirt, rock, road. */
+	ground: { lush: RGB; dry: RGB; dirt: RGB; rock: RGB; road: RGB } = {
+		lush: [0.085, 0.1, 0.045],
+		dry: [0.2, 0.15, 0.072],
+		dirt: [0.13, 0.095, 0.065],
+		rock: [0.17, 0.155, 0.135],
+		road: [0.19, 0.135, 0.08]
+	};
 	readonly water: WaterRenderer;
 
 	constructor(
@@ -534,6 +542,9 @@ export class Renderer {
 			this.roadParams[3]
 		);
 		ter.f2('u_roadGap', this.roadGap[0], this.roadGap[1]);
+		const g = this.ground;
+		ter.v3('u_lush', g.lush).v3('u_dry', g.dry).v3('u_dirt', g.dirt).v3('u_rock', g.rock);
+		ter.v3('u_roadCol', g.road);
 		this.applyLighting(ter, cam, env, lights);
 		for (const c of this.chunks) {
 			if (c.maxX < cam.cullMinX || c.minX > cam.cullMaxX) continue;

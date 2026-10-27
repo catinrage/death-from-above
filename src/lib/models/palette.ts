@@ -82,6 +82,20 @@ export const P = {
 	grassGreen: mat(0x5c6a2c, 0.9, 0),
 	mountain: mat(0x4a4d42, 0.95, 0),
 	snow: mat(0xe8e6f0, 0.6, 0),
+	pineFrost: mat(0x40584a, 0.85, 0),
+	cactus: mat(0x56703c, 0.8, 0),
+	cactusDark: mat(0x435a30, 0.85, 0),
+	palmBark: mat(0x7a6448, 0.95, 0),
+	palmLeaf: mat(0x4e6a2a, 0.85, 0),
+	jungleLeaf: mat(0x2f5326, 0.85, 0),
+	jungleLeafDark: mat(0x23401f, 0.88, 0),
+	vine: mat(0x3a4a22, 0.9, 0),
+
+	// City
+	brick: mat(0x8a5a44, 0.9, 0),
+	plaster: mat(0xb8b0a2, 0.9, 0),
+	officeGlass: mat(0x2a3846, 0.12, 0.8),
+	trim: mat(0x6a6a66, 0.8, 0.1),
 
 	// Ordnance
 	bombOlive: mat(0x4e5637, 0.55, 0.35),
