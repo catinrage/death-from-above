@@ -7,13 +7,21 @@ export type QualityLevel = 'low' | 'medium' | 'high';
 export interface Settings {
 	quality: QualityLevel;
 	volume: number;
+	/** Music level, relative to the master volume. */
+	music: number;
 	aircraft: AircraftId;
 	/** Hangar loadouts the pilot customised, per aircraft. */
 	loadouts: Partial<Record<AircraftId, Loadout>>;
 }
 
 const KEY = 'dfa.settings';
-const DEFAULTS: Settings = { quality: 'high', volume: 0.75, aircraft: 'kestrel', loadouts: {} };
+const DEFAULTS: Settings = {
+	quality: 'high',
+	volume: 0.75,
+	music: 0.6,
+	aircraft: 'kestrel',
+	loadouts: {}
+};
 const QUALITIES: QualityLevel[] = ['low', 'medium', 'high'];
 const AIRCRAFT: readonly AircraftId[] = AIRCRAFT_ORDER;
 
@@ -29,6 +37,7 @@ export function loadSettings(): Settings {
 				: DEFAULTS.quality,
 			volume:
 				typeof r.volume === 'number' && r.volume >= 0 && r.volume <= 1 ? r.volume : DEFAULTS.volume,
+			music: typeof r.music === 'number' && r.music >= 0 && r.music <= 1 ? r.music : DEFAULTS.music,
 			aircraft: AIRCRAFT.includes(r.aircraft as AircraftId)
 				? (r.aircraft as AircraftId)
 				: DEFAULTS.aircraft,

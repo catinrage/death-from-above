@@ -13,11 +13,21 @@
 		onHangar: () => void;
 		onQuality: (q: QualityLevel) => void;
 		onVolume: (v: number) => void;
+		onMusic: (v: number) => void;
 		onControls: () => void;
 	}
 
-	let { settings, loadout, best, onSortie, onHangar, onQuality, onVolume, onControls }: Props =
-		$props();
+	let {
+		settings,
+		loadout,
+		best,
+		onSortie,
+		onHangar,
+		onQuality,
+		onVolume,
+		onMusic,
+		onControls
+	}: Props = $props();
 
 	const selected = $derived(AIRCRAFT[settings.aircraft]);
 
@@ -88,6 +98,17 @@
 				step="0.05"
 				value={settings.volume}
 				oninput={(e) => onVolume(Number((e.currentTarget as HTMLInputElement).value))}
+			/>
+		</label>
+		<label class="vol">
+			<span>Music</span>
+			<input
+				type="range"
+				min="0"
+				max="1"
+				step="0.05"
+				value={settings.music}
+				oninput={(e) => onMusic(Number((e.currentTarget as HTMLInputElement).value))}
 			/>
 		</label>
 	</aside>
@@ -370,6 +391,10 @@
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
 		color: var(--ink-dim);
+	}
+
+	.vol span {
+		min-width: 4.6em;
 	}
 
 	.vol input {
