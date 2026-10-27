@@ -2,6 +2,7 @@ import { DEFAULT_STYLE, type InstanceStyle, type Mesh } from '../engine/gl/mesh'
 import { mat4, type Mat4 } from '../engine/math';
 import type { MeshName, Models } from '../models';
 import { WORLD } from './constants';
+import { AIRCRAFT } from './defs-aircraft';
 import { BOMBS } from './defs-bombs';
 import { brakeFx, engineFx } from './boost-fx';
 import { flareGlow, flareHeat } from './flare-fx';
@@ -63,6 +64,7 @@ export class SceneView {
 		this.debris(w);
 		this.ordnance(w);
 		this.air(w);
+		this.wingman(w, time);
 		this.player(w, time);
 		this.bullets(w);
 		this.flares(w);
@@ -324,6 +326,26 @@ export class SceneView {
 				this.models.heliTailRotor.push(this.m2, st);
 			}
 		}
+	}
+
+	/** The AI wingman flies an F-16, with blue nav strobes to tell it from the enemy. */
+	private wingman(w: World, time: number): void {
+		const a = w.wingman;
+		if (!a || !a.alive) return;
+		const m = this.m;
+		const def = AIRCRAFT.f16;
+		const sc = def.scale;
+		mat4.fromTranslation(m, a.x, a.y, a.z);
+		mat4.rotateZ(m, m, a.angle);
+		mat4.rotateX(m, m, a.roll);
+		mat4.scale(m, m, sc, sc, sc);
+		const st = this.style(a.dying ? 0.5 : 0, a.flash * 0.5, 0, 1, 1, a.dying ? 1 : 0);
+		this.mesh(def.mesh).push(m, st);
+		if (a.dying) return;
+		const ca = Math.cos(a.angle),
+			sa = Math.sin(a.angle);
+		w.fx.immediateGlow(a.x - ca * 6, a.y - sa * 6, a.z, 1.2, 9, 5, 2);
+		if (Math.sin(time * 7 + 1.3) > 0.9) w.fx.immediateGlow(a.x, a.y + 1.4, a.z, 1.3, 2, 5, 12);
 	}
 
 	private player(w: World, time: number): void {

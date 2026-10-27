@@ -176,6 +176,11 @@ export class Targeting {
 		return auto ? toDesignation(auto) : null;
 	}
 
+	/** The pilot's pick for the wingman's "attack my target": first lock, reticle target, or best one ahead. */
+	primary(w: World, p: Player): Lock | null {
+		return this.locks[0] ?? this.hover ?? this.ahead(w, p);
+	}
+
 	/**
 	 * Where a guided bomb should go: a painted ground target, the ground unit
 	 * under the reticle, or the reticle spot. Null lets the bomb pick a target

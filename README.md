@@ -32,6 +32,9 @@ strongly recommended; quality presets (LOW / MEDIUM / HIGH) are on the title scr
 | Flares                            | `F`, `L` or `C`                         | B           |
 | Afterburner                       | `Shift`                                 | X           |
 | Airbrake                          | `V`                                     | View        |
+| Wingman: attack my target         | `T`                                     | D-pad right |
+| Wingman: cover me                 | `G`                                     | D-pad up    |
+| Wingman: hit the SAMs             | `H`                                     | D-pad down  |
 | Pause                             | `Esc` or `P`                            | Start       |
 
 Steering is directional: press the way you want to fly. Asking for the opposite heading loops you
@@ -50,6 +53,13 @@ can only tell a flare from your aircraft once it is within about 450 m. A flare 
 sits between the missile and you, so drop them as the missile closes from behind. Flares fired too
 early burn out, and the seeker picks you up again. Head-on shots and radar-guided SAMs are much
 harder to fool, and your afterburner makes you a brighter target.
+
+**Your wingman** (callsign Two) flies an F-16 on your wing in campaign and endless sorties. Press
+`T` to send it after your target (your first lock, whatever is under the reticle, or the best target
+ahead), `H` to have it hunt the air defences (SAM sites and radars first, then AA guns), and `G` to
+call it back. While covering it chases interceptors that come after you. Enemies shoot at whichever
+of you is closer, its kills count toward your score, and if it is shot down a replacement takes off
+from the airfield 25 seconds later.
 
 **The tactical nuke** comes back once per wave. The airfield and supply pickups never restock it,
 and losing your aircraft doesn't hand you a fresh one.

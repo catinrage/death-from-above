@@ -1,4 +1,5 @@
 import type { PilotInput } from './player';
+import type { WingOrder } from './wingman';
 
 const STEER = {
 	up: ['KeyW', 'ArrowUp'],
@@ -16,6 +17,12 @@ const PREV = ['KeyQ'];
 const PAUSE = ['Escape', 'KeyP'];
 const MISSILE = ['KeyE', 'KeyU', 'Mouse1'];
 const FOCUS = ['KeyR', 'KeyI'];
+/** Wingman orders. */
+const ORDERS: [WingOrder, string[]][] = [
+	['attack', ['KeyT']],
+	['cover', ['KeyG']],
+	['sams', ['KeyH']]
+];
 /** Scroll distance (pixels) that counts as one weapon switch. */
 const WHEEL_NOTCH = 60;
 /** Seconds after the last mouse movement that the reticle stays pointer-driven. */
@@ -35,7 +42,10 @@ const PAD = {
 	rt: 7,
 	view: 8,
 	start: 9,
-	l3: 10
+	l3: 10,
+	up: 12,
+	down: 13,
+	right: 15
 } as const;
 
 /** Keyboard, mouse and gamepad state with per-frame edge detection. */
@@ -166,6 +176,15 @@ export class Input {
 	/** Toggle focus (slow motion). */
 	focusPressed(): boolean {
 		return this.anyPressed(FOCUS) || this.padPressed(PAD.lt);
+	}
+
+	/** Wingman order given this frame (T / G / H, or the d-pad: right, up, down). */
+	orderPressed(): WingOrder | null {
+		for (const [order, keys] of ORDERS) if (this.anyPressed(keys)) return order;
+		if (this.padPressed(PAD.right)) return 'attack';
+		if (this.padPressed(PAD.up)) return 'cover';
+		if (this.padPressed(PAD.down)) return 'sams';
+		return null;
 	}
 
 	/** Number key pressed this frame as a 0-based rack slot (keys 1–9). */

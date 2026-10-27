@@ -4,6 +4,7 @@ import { updateProjectiles } from './projectiles';
 import { updateStrikes } from './specials';
 import { updateUnits } from './unit-ai';
 import { applyFireDamage, updateBombs } from './weapons';
+import { updateWingman } from './wingman';
 import type { World } from './world';
 
 /**
@@ -17,6 +18,7 @@ export function simulateWorld(w: World, dt: number, input: PilotInput | null): v
 	if (p && input) p.update(dt, input, w);
 	updateUnits(w, dt);
 	updateAir(w, dt);
+	updateWingman(w, dt);
 	updateBombs(w, dt);
 	updateProjectiles(w, dt);
 	updateStrikes(w, dt);

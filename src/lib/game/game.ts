@@ -47,6 +47,7 @@ import { cockpitAlerts, incomingThreats, lockThreat, missileThreat } from './war
 import { RESOLVE } from './projectiles';
 import { SHOAL } from './river';
 import { World } from './world';
+import { Wingman, WING_HP } from './wingman';
 import { AirBase } from './base';
 
 export interface GameCallbacks {
@@ -371,6 +372,10 @@ export class Game {
 		this.killCam.reset();
 		this.targeting.clear();
 		this.spawnPlayer();
+		if (this.mode !== 'tutorial') {
+			const x = WORLD.runwayMinX + 10;
+			w.wingman = new Wingman(x, w.ground(x) + 70);
+		}
 		const seed = Math.floor(Math.random() * 1e6);
 		this.waves = new WaveDirector(
 			seed,
@@ -481,6 +486,7 @@ export class Game {
 			this.confirm = this.input.confirmPressed();
 			this.skip = this.input.enterPressed();
 			this.aim(raw);
+			this.orders();
 			Object.assign(this.pilotSub, this.pilotFrame, {
 				bombPressed: false,
 				flare: false,
@@ -554,6 +560,19 @@ export class Game {
 		if (!this.input.missilePressed()) return;
 		if (p.missilesFree <= 0) this.audio.play('empty', p.x, p.y, 0.7);
 		else if (!p.landed) this.pilotFrame.missiles = this.targeting.salvo(w, p, p.missilesFree);
+	}
+
+	/** Turns an order key into a command for the wingman. */
+	private orders(): void {
+		const w = this.world;
+		const wing = w.wingman;
+		const p = w.player;
+		if (this.phase !== 'playing' || !wing) return;
+		const order = this.input.orderPressed();
+		if (!order) return;
+		const pick = order === 'attack' && p && p.alive ? this.targeting.primary(w, p) : null;
+		const ok = wing.command(w, order, pick ? { unit: pick.unit, air: pick.air } : null);
+		this.audio.play(ok ? 'select' : 'empty', w.camera.x, w.camera.y, 0.6);
 	}
 
 	private step(dt: number, pilot: PilotInput): void {
@@ -1000,7 +1019,14 @@ export class Game {
 			braking: !!p && p.brakeLevel > 0.3,
 			...missileThreat(w, p),
 			...lockThreat(p),
-			flareWindow: RESOLVE
+			flareWindow: RESOLVE,
+			wingman: w.wingman
+				? {
+						order: w.wingman.order,
+						hp: Math.max(0, w.wingman.hp / WING_HP),
+						down: w.wingman.alive ? 0 : Math.max(0, w.wingman.respawn)
+					}
+				: null
 		};
 	}
 }

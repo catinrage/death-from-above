@@ -18,6 +18,7 @@
 	const systemsHit = $derived(SYSTEM_TAGS.some((s) => hud.systems[s.id] > 0));
 	const baseFrac = $derived(Math.max(0, hud.baseHp / hud.baseMax));
 	const heatFrac = $derived(Math.min(1, hud.heat / 100));
+	const ORDER_TAG = { cover: 'CVR', attack: 'ATK', sams: 'SAM' } as const;
 </script>
 
 <div class="hud" class:critical={hpFrac < 0.3 && hud.hp > 0}>
@@ -174,6 +175,22 @@
 			{/each}
 			<span class="val">F</span>
 		</div>
+		{#if hud.wingman}
+			{@const wing = hud.wingman}
+			<div
+				class="gauge wing"
+				class:down={wing.down > 0}
+				title="Wingman: T attack · G cover · H SAMs"
+			>
+				<span class="lbl">WING</span>
+				<span class="track"
+					><span class="fill wing" class:low={wing.hp < 0.3} style:transform="scaleX({wing.hp})"
+					></span></span
+				>
+				<span class="val">{wing.down > 0 ? `${Math.ceil(wing.down)}s` : ORDER_TAG[wing.order]}</span
+				>
+			</div>
+		{/if}
 		<div class="readout">
 			<span><em>ALT</em>{Math.round(hud.altitude)}<small>m</small></span>
 			<span><em>SPD</em>{Math.round(hud.speed)}<small>km/h</small></span>
@@ -724,6 +741,19 @@
 
 	.fill.boost {
 		background: linear-gradient(90deg, #ffe7b8, var(--amber));
+	}
+
+	.gauge.wing {
+		grid-template-columns: 56px 1fr 34px;
+	}
+
+	.gauge.wing.down .lbl,
+	.gauge.wing.down .val {
+		color: var(--danger);
+	}
+
+	.fill.wing {
+		background: linear-gradient(90deg, #d4ecff, #6cb8ff);
 	}
 
 	.fill.heat {

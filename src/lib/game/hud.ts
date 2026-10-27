@@ -3,6 +3,7 @@ import type { Systems } from './damage';
 import type { BigKill } from './killcam';
 import type { TutorialCard } from './tutorial';
 import type { AircraftId, BombId } from './types';
+import type { WingOrder } from './wingman';
 
 /** How a sortie is played: training, a campaign mission, or endless waves. */
 export type GameMode = 'tutorial' | 'campaign' | 'endless';
@@ -109,6 +110,8 @@ export interface HudSnapshot {
 	lockDir: number;
 	/** Range inside which a flare can fool it. */
 	flareWindow: number;
+	/** The AI wingman: current order, armour 0..1, and seconds until a replacement while down. */
+	wingman: { order: WingOrder; hp: number; down: number } | null;
 }
 
 export interface GameOverStats {
@@ -192,6 +195,7 @@ export function emptyHud(): HudSnapshot {
 		missileDist: 0,
 		missileDir: 0,
 		lockDir: 0,
-		flareWindow: 450
+		flareWindow: 450,
+		wingman: null
 	};
 }
