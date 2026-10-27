@@ -16,11 +16,38 @@ export interface WavePlan {
 	statics: { kind: UnitKind; x: number }[];
 }
 
+/**
+ * Adjustments a mission (or the endless escalation) makes to the generated
+ * waves. Everything is optional; an empty object reproduces the stock waves.
+ */
+export interface WaveTweaks {
+	/** Multiplies the wave's spending budget. */
+	budget?: number;
+	/** Multiplies how often each kind leads a convoy. */
+	lead?: Partial<Record<UnitKind, number>>;
+	/** Replaces the number of interceptors / gunships. */
+	fighters?: number;
+	helis?: number;
+}
+
+export interface WaveOptions {
+	/** Added to the wave number to set enemy strength (wave 1 of a late mission is tougher). */
+	offset?: number;
+	/** Final wave: clearing it ends the sequence instead of starting the next. */
+	last?: number;
+	/** Per-wave adjustments, keyed by the sequence's own wave number. */
+	tweaks?: (wave: number) => WaveTweaks;
+	/** Emplacements dug in on top of the usual ones when the first wave launches. */
+	statics?: UnitKind[];
+	/** Briefing lines for each wave (falls back to the stock ones). */
+	briefings?: string[];
+}
+
 const AIR: AirKind[] = ['fighter', 'heli'];
 const isAir = (k: UnitKind | AirKind): k is AirKind => (AIR as string[]).includes(k);
 
 /** Weighted pick of a convoy's lead vehicle for the current wave. */
-function leadFor(wave: number, rng: Rng): UnitKind {
+function leadFor(wave: number, rng: Rng, bias: WaveTweaks['lead'] = {}): UnitKind {
 	const pool: [UnitKind, number][] = [
 		['truck', 3],
 		['jeep', 3],
@@ -30,6 +57,7 @@ function leadFor(wave: number, rng: Rng): UnitKind {
 		['sam', wave >= 4 ? 1.2 : 0],
 		['artillery', wave >= 4 ? 1.3 : 0]
 	];
+	for (const entry of pool) entry[1] *= bias[entry[0]] ?? 1;
 	const total = pool.reduce((s, [, w]) => s + w, 0);
 	let r = rng.next() * total;
 	for (const [k, w] of pool) {
@@ -45,10 +73,13 @@ export function planWave(
 	seed: number,
 	existingStatics: number,
 	/** Battle-line stretch to keep emplacements out of (the river valley). */
-	avoid: [number, number] | null = null
+	avoid: [number, number] | null = null,
+	tweaks: WaveTweaks = {},
+	/** Emplacements to place regardless of how many are already standing. */
+	extraStatics: UnitKind[] = []
 ): WavePlan {
 	const rng = new Rng(seed * 7919 + wave * 104729);
-	let budget = 70 + wave * 48;
+	let budget = (70 + wave * 48) * (tweaks.budget ?? 1);
 	const orders: SpawnOrder[] = [];
 	let t = 2;
 	const lane = (): number => rng.pick([-1.8, 0, 1.6]);
@@ -59,7 +90,7 @@ export function planWave(
 	if (wave >= 2) add('spaag', t + 6, lane());
 	if (wave >= 4) add('sam', t + 14, lane());
 	while (budget > 0) {
-		const lead = leadFor(wave, rng);
+		const lead = leadFor(wave, rng, tweaks.lead);
 		add(lead, t, lane());
 		let at = t;
 		const escorts = rng.int(1, 3 + Math.min(wave, 4));
@@ -83,8 +114,8 @@ export function planWave(
 		}
 		t = at + rng.range(7, 13) - Math.min(wave, 8) * 0.4;
 	}
-	const fighters = wave >= 5 ? Math.min(1 + Math.floor((wave - 5) / 2), 4) : 0;
-	const helis = wave >= 3 ? Math.min(Math.floor((wave - 1) / 2), 4) : 0;
+	const fighters = tweaks.fighters ?? (wave >= 5 ? Math.min(1 + Math.floor((wave - 5) / 2), 4) : 0);
+	const helis = tweaks.helis ?? (wave >= 3 ? Math.min(Math.floor((wave - 1) / 2), 4) : 0);
 	for (let i = 0; i < fighters; i++)
 		orders.push({ t: rng.range(10, Math.max(20, t)), kind: 'fighter', z: 0 });
 	for (let i = 0; i < helis; i++)
@@ -95,9 +126,7 @@ export function planWave(
 	const want = Math.max(0, Math.min(1 + Math.floor(wave * 0.8), 9) - existingStatics);
 	const options = STATIC_KINDS.filter((k) => UNITS[k].minWave <= wave);
 	const used: number[] = [];
-	for (let i = 0; i < want; i++) {
-		let kind = rng.pick(options);
-		if ((kind === 'depot' || kind === 'radar') && rng.chance(0.5)) kind = rng.pick(options);
+	const place = (kind: UnitKind): void => {
 		let x = 0;
 		for (let tries = 0; tries < 20; tries++) {
 			x = rng.range(WORLD.baseMaxX + 600, WORLD.enemySpawnX - 160);
@@ -111,11 +140,35 @@ export function planWave(
 		statics.push({ kind, x });
 		if (kind === 'flak' && wave >= 3 && rng.chance(0.6))
 			statics.push({ kind: 'searchlight', x: x + rng.sign() * 16 });
+	};
+	for (let i = 0; i < want; i++) {
+		let kind = rng.pick(options);
+		if ((kind === 'depot' || kind === 'radar') && rng.chance(0.5)) kind = rng.pick(options);
+		place(kind);
 	}
+	for (const kind of extraStatics) place(kind);
 	return { orders, statics };
 }
 
-export type WaveState = 'idle' | 'briefing' | 'active' | 'cleared';
+/**
+ * Endless escalation: past the hand-tuned early waves the columns keep
+ * growing and more aircraft join them.
+ */
+export function endlessTweaks(wave: number): WaveTweaks {
+	const late = Math.max(0, wave - 11);
+	return {
+		budget: 1 + Math.max(0, wave - 6) * 0.07,
+		fighters: late > 0 ? Math.min(4 + Math.floor(late / 3), 7) : undefined,
+		helis: late > 0 ? Math.min(4 + Math.floor(late / 3), 6) : undefined
+	};
+}
+
+/** Score for beating a wave: grows with the wave and with what is left of the airfield. */
+export function waveBonus(wave: number, baseFrac: number): number {
+	return Math.round(((100 + wave * 100) * (0.5 + baseFrac * 0.5)) / 10) * 10;
+}
+
+export type WaveState = 'idle' | 'briefing' | 'active' | 'cleared' | 'complete';
 
 export class WaveDirector {
 	wave = 0;
@@ -125,19 +178,35 @@ export class WaveDirector {
 	private elapsed = 0;
 	total = 0;
 	spawned = 0;
+	/** Waves fully beaten in this sequence. */
+	cleared = 0;
 
-	constructor(private readonly seed = 1) {}
+	constructor(
+		private readonly seed = 1,
+		private readonly opts: WaveOptions = {}
+	) {}
+
+	/** Enemy strength for a wave of this sequence. */
+	difficulty(wave = this.wave): number {
+		return wave + (this.opts.offset ?? 0);
+	}
+
+	/** "WAVE 2/4" in a mission, "WAVE 7" in an open-ended run. */
+	get label(): string {
+		return this.opts.last ? `WAVE ${this.wave}/${this.opts.last}` : `WAVE ${this.wave}`;
+	}
 
 	begin(w: World, wave = 1): void {
 		this.wave = wave;
-		w.wave = wave;
+		w.wave = this.difficulty(wave);
 		this.state = 'briefing';
 		if (wave > 1) {
 			w.bridge?.rebuild(w);
 			w.player?.restockWave();
 		}
 		this.timer = 3.5;
-		w.events.message(`WAVE ${wave}`, briefing(wave), 'info');
+		const note = this.opts.briefings?.[wave - 1] ?? briefing(this.difficulty(wave));
+		w.events.message(this.label, note, 'info');
 		w.sound.play('siren', w.camera.x, w.camera.y, 0.7);
 	}
 
@@ -147,7 +216,14 @@ export class WaveDirector {
 		const avoid: [number, number] | null = r
 			? [r.x0 - r.bridgeHalf - 40, r.x0 + r.bridgeHalf + 40]
 			: null;
-		const plan = planWave(this.wave, this.seed, statics, avoid);
+		const plan = planWave(
+			this.difficulty(),
+			this.seed,
+			statics,
+			avoid,
+			this.opts.tweaks?.(this.wave) ?? {},
+			this.wave === 1 ? (this.opts.statics ?? []) : []
+		);
 		this.queue = plan.orders;
 		this.total = plan.orders.length;
 		this.spawned = 0;
@@ -162,7 +238,7 @@ export class WaveDirector {
 	}
 
 	update(w: World, dt: number): void {
-		if (this.state === 'idle') return;
+		if (this.state === 'idle' || this.state === 'complete') return;
 		this.timer -= dt;
 		if (this.state === 'briefing') {
 			if (this.timer <= 0) this.launch(w);
@@ -179,6 +255,11 @@ export class WaveDirector {
 			this.spawn(w, o);
 		}
 		if (this.queue.length === 0 && w.hostilesAlive() === 0) {
+			this.cleared++;
+			if (this.opts.last && this.wave >= this.opts.last) {
+				this.state = 'complete';
+				return;
+			}
 			this.state = 'cleared';
 			this.timer = 7;
 			w.events.message(`WAVE ${this.wave} CLEARED`, 'Rearm at the airfield', 'good');

@@ -45,6 +45,8 @@ test('remembers the chosen aircraft and its custom loadout', async ({ page }) =>
 test('flies a sortie: HUD, bombing and pause menu', async ({ page }) => {
 	const errors = await openTitle(page);
 	await page.getByRole('button', { name: /sortie/i }).click();
+	await page.getByRole('tab', { name: /endless/i }).click();
+	await page.getByRole('button', { name: /start endless/i }).click();
 	await expect(page.getByText('ARMOR')).toBeVisible();
 	await expect(page.getByText(/WAVE 1/).first()).toBeVisible();
 
@@ -83,4 +85,51 @@ test('opens the flight manual from the title screen', async ({ page }) => {
 	await expect(page.getByRole('dialog', { name: /controls/i })).toBeVisible();
 	await page.keyboard.press('Escape');
 	await expect(page.getByRole('dialog', { name: /controls/i })).toBeHidden();
+});
+
+test('mode select: training first, campaign missions unlock in order', async ({ page }) => {
+	const errors = await openTitle(page);
+	await page.keyboard.press('Enter');
+	const dialog = page.getByRole('dialog', { name: /choose a mode/i });
+	await expect(dialog).toBeVisible();
+	// A new pilot is pointed at training.
+	await expect(page.getByRole('tab', { name: /training/i })).toHaveAttribute(
+		'aria-selected',
+		'true'
+	);
+	await page.getByRole('tab', { name: /campaign/i }).click();
+	await expect(page.getByRole('button', { name: /mission 1: first light/i })).toBeEnabled();
+	await expect(page.getByRole('button', { name: /mission 2: .*locked/i })).toBeDisabled();
+	await page.keyboard.press('Escape');
+	await expect(dialog).toBeHidden();
+	expect(errors).toEqual([]);
+});
+
+test('training walks through lessons', async ({ page }) => {
+	const errors = await openTitle(page);
+	await page.getByRole('button', { name: /sortie/i }).click();
+	await page.getByRole('button', { name: /start training/i }).click();
+	await expect(page.getByText('Lesson 1/12')).toBeVisible();
+	await expect(page.getByText(/TRAINING/).first()).toBeVisible();
+	await page.keyboard.press('Enter');
+	await expect(page.getByText('Lesson 2/12')).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Climb', exact: true })).toBeVisible();
+	// Enter skips an action lesson; its targets appear with the next one.
+	await page.keyboard.press('Enter');
+	await expect(page.getByText('Lesson 3/12')).toBeVisible();
+	await page.keyboard.press('Enter');
+	await expect(page.getByRole('heading', { name: 'Guns', exact: true })).toBeVisible();
+	expect(errors).toEqual([]);
+});
+
+test('a campaign mission shows its objectives', async ({ page }) => {
+	const errors = await openTitle(page);
+	await page.getByRole('button', { name: /sortie/i }).click();
+	await page.getByRole('tab', { name: /campaign/i }).click();
+	await page.getByRole('button', { name: /fly first light/i }).click();
+	const goals = page.getByRole('region', { name: /objectives/i });
+	await expect(goals).toContainText('First Light');
+	await expect(goals).toContainText('0/2 waves');
+	await expect(page.getByText(/WAVE 1\/2/).first()).toBeVisible();
+	expect(errors).toEqual([]);
 });

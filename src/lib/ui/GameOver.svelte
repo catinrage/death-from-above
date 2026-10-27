@@ -1,14 +1,48 @@
 <script lang="ts">
 	import { fade, fly } from 'svelte/transition';
-	import type { GameOverStats } from '$lib/game/hud';
+	import { missionById } from '$lib/game/campaign';
+	import type { GameOverStats, ModeStart } from '$lib/game/hud';
 
 	interface Props {
 		stats: GameOverStats;
 		onRetry: () => void;
 		onTitle: () => void;
+		/** Fly something else straight away (next mission, or the campaign after training). */
+		onLaunch: (start: ModeStart) => void;
 	}
 
-	let { stats, onRetry, onTitle }: Props = $props();
+	let { stats, onRetry, onTitle, onLaunch }: Props = $props();
+
+	const won = $derived(stats.outcome === 'complete');
+	const next = $derived(stats.nextMission ? missionById(stats.nextMission) : undefined);
+	/** The Enter / primary action. */
+	const primary = $derived.by((): { label: string; run: () => void } => {
+		if (won && stats.mode === 'tutorial')
+			return {
+				label: 'Start the campaign',
+				run: () => onLaunch({ mode: 'campaign', mission: 'first-light' })
+			};
+		if (won && next)
+			return {
+				label: `Next: ${next.name}`,
+				run: () => onLaunch({ mode: 'campaign', mission: next.id })
+			};
+		return {
+			label: won ? 'Fly it again' : stats.mode === 'endless' ? 'Fly again' : 'Retry',
+			run: onRetry
+		};
+	});
+	const kicker = $derived(
+		stats.mode === 'tutorial'
+			? won
+				? 'Training complete'
+				: 'Training'
+			: stats.mode === 'campaign'
+				? won
+					? `${stats.title} · mission complete`
+					: `${stats.title} · mission failed`
+				: 'Endless · run over'
+	);
 
 	const minutes = $derived(Math.floor(stats.time / 60));
 	const seconds = $derived(
@@ -18,27 +52,41 @@
 	);
 
 	function onKey(e: KeyboardEvent): void {
-		if (e.code === 'Enter') onRetry();
+		if (e.code === 'Enter') primary.run();
 	}
 </script>
 
 <svelte:window onkeydown={onKey} />
 
-<div class="veil" transition:fade={{ duration: 400 }}>
+<div class="veil" class:won transition:fade={{ duration: 400 }}>
 	<div class="content" in:fly={{ y: 24, duration: 500, delay: 250 }}>
-		<p class="kicker">Mission failed</p>
+		<p class="kicker">{kicker}</p>
 		<h2>{stats.reason}</h2>
-		<div class="score">
-			<span>Final score</span>
-			<strong>{stats.score.toLocaleString()}</strong>
-			{#if stats.newBest}<em>New personal best</em>{:else}<em class="dim"
-					>Best {stats.best.toLocaleString()}</em
-				>{/if}
-		</div>
+		{#if stats.mode === 'campaign' && won && stats.starNotes}
+			<ul class="stars">
+				{#each stats.starNotes as n, i (i)}
+					<li class:got={n.got} style:--d="{0.5 + i * 0.25}s">
+						<i>★</i>
+						<span>{n.label}</span>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+		{#if stats.mode !== 'tutorial'}
+			<div class="score">
+				<span>{stats.mode === 'campaign' ? 'Mission score' : 'Final score'}</span>
+				<strong>{stats.score.toLocaleString()}</strong>
+				{#if stats.newBest}<em>New personal best</em>
+				{:else if stats.best > 0}<em class="dim">Best {stats.best.toLocaleString()}</em>{/if}
+				{#if stats.mode === 'endless' && stats.rank}
+					<em class="rank">#{stats.rank} on your leaderboard</em>
+				{/if}
+			</div>
+		{/if}
 		<dl>
 			<div>
-				<dt>Wave reached</dt>
-				<dd>{stats.wave}</dd>
+				<dt>{stats.mode === 'tutorial' ? 'Lessons' : 'Wave reached'}</dt>
+				<dd>{stats.mode === 'tutorial' ? '12/12' : stats.wave}</dd>
 			</div>
 			<div>
 				<dt>Kills</dt>
@@ -54,8 +102,11 @@
 			</div>
 		</dl>
 		<div class="actions">
-			<button class="primary" onclick={onRetry}>Fly again <small>Enter</small></button>
-			<button onclick={onTitle}>Back to hangar</button>
+			<button class="primary" onclick={primary.run}>{primary.label} <small>Enter</small></button>
+			{#if primary.run !== onRetry}
+				<button onclick={onRetry}>{stats.mode === 'tutorial' ? 'Train again' : 'Replay'}</button>
+			{/if}
+			<button onclick={onTitle}>Main menu</button>
 		</div>
 	</div>
 </div>
@@ -77,12 +128,71 @@
 		padding: 24px;
 	}
 
+	.veil.won {
+		background: radial-gradient(ellipse at center, rgba(40, 26, 4, 0.5), rgba(4, 5, 9, 0.88));
+	}
+
 	.kicker {
 		margin: 0;
 		font-size: 15px;
 		letter-spacing: 0.5em;
 		text-transform: uppercase;
 		color: var(--danger);
+	}
+
+	.won .kicker {
+		color: var(--good);
+	}
+
+	.won h2 {
+		text-shadow: 0 0 40px rgba(255, 170, 60, 0.4);
+	}
+
+	.stars {
+		list-style: none;
+		display: flex;
+		gap: 26px;
+		margin: 18px 0 0;
+		padding: 0;
+	}
+
+	.stars li {
+		display: grid;
+		justify-items: center;
+		gap: 4px;
+		font-size: 13px;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--ink-faint);
+	}
+
+	.stars i {
+		font-style: normal;
+		font-size: 44px;
+		line-height: 1;
+		color: rgba(255, 255, 255, 0.12);
+	}
+
+	.stars li.got {
+		color: var(--ink);
+	}
+
+	.stars li.got i {
+		color: var(--amber);
+		text-shadow: 0 0 22px var(--amber-glow);
+		animation: star 0.5s cubic-bezier(0.2, 1.5, 0.5, 1) both;
+		animation-delay: var(--d);
+	}
+
+	@keyframes star {
+		from {
+			scale: 2.4;
+			opacity: 0;
+		}
+	}
+
+	.score em.rank {
+		color: var(--amber);
 	}
 
 	h2 {
@@ -147,6 +257,8 @@
 
 	.actions {
 		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
 		gap: 10px;
 		margin-top: 16px;
 	}

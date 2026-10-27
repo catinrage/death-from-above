@@ -7,8 +7,11 @@
 		type GameOverStats,
 		type GamePhase,
 		type HudMessage,
-		type HudSnapshot
+		type HudSnapshot,
+		type ModeStart
 	} from '$lib/game/hud';
+	import { loadProgress, type CampaignProgress } from '$lib/game/campaign';
+	import { readBoard, readTrained, type EndlessRun } from '$lib/game/records';
 	import type { AircraftId } from '$lib/game/types';
 	import { PopupLayer } from './popups';
 	import { TargetingLayer } from './targeting-layer';
@@ -26,6 +29,7 @@
 	import PauseMenu from './PauseMenu.svelte';
 	import GameOver from './GameOver.svelte';
 	import Controls from './Controls.svelte';
+	import ModeSelect from './ModeSelect.svelte';
 
 	let canvas: HTMLCanvasElement;
 	let popupRoot: HTMLDivElement;
@@ -42,6 +46,12 @@
 	);
 	let best = $state(readBestScore());
 	let showControls = $state(false);
+	let modeOpen = $state(false);
+	/** What the last sortie flew: Restart and Retry repeat it. */
+	let lastStart = $state<ModeStart | null>(null);
+	let progress = $state<CampaignProgress>(loadProgress());
+	let board = $state<EndlessRun[]>(readBoard());
+	let trained = $state(readTrained());
 	let error = $state('');
 
 	onMount(() => {
@@ -53,7 +63,7 @@
 						hud: (h) => (hud = h),
 						phase: (p) => {
 							phase = p;
-							if (p === 'title') best = readBestScore();
+							if (p === 'title' || p === 'gameover') refreshRecords();
 						},
 						message: pushMessage,
 						gameOver: (s) => (over = s)
@@ -85,19 +95,39 @@
 		// Missile launches already drive the flashing HUD warning.
 		if (m.text === 'MISSILE LAUNCH' || messages.some((x) => x.text === m.text)) return;
 		messages = [...messages.slice(-2), m];
-		const ttl = m.text.startsWith('WAVE') ? 3800 : 2000;
+		const ttl = m.sub.length > 70 ? 7000 : m.text.startsWith('WAVE') ? 3800 : 2000;
 		setTimeout(() => (messages = messages.filter((x) => x.id !== m.id)), ttl);
 	}
 
-	function sortie(): void {
+	function refreshRecords(): void {
+		best = readBestScore();
+		progress = loadProgress();
+		board = readBoard();
+		trained = readTrained();
+	}
+
+	/** Opens the mode chooser (training, campaign, endless). */
+	function chooseMode(): void {
+		refreshRecords();
+		modeOpen = true;
+	}
+
+	function launch(start: ModeStart): void {
+		lastStart = start;
 		over = null;
 		messages = [];
 		showControls = false;
+		modeOpen = false;
 		void game?.audio.unlock();
 		hangarOpen = false;
 		if (game) game.showcase = false;
-		game?.newGame(settings.aircraft, loadout);
+		game?.newGame(settings.aircraft, loadout, start);
 		canvas.focus();
+	}
+
+	/** Flies the last sortie again. */
+	function sortie(): void {
+		launch(lastStart ?? { mode: 'endless' });
 	}
 
 	function toTitle(): void {
@@ -171,14 +201,14 @@
 				onSelect={selectAircraft}
 				onLoadout={setLoadout}
 				onBack={() => openHangar(false)}
-				onSortie={sortie}
+				onSortie={chooseMode}
 			/>
 		{:else}
 			<TitleScreen
 				{settings}
 				{loadout}
 				{best}
-				onSortie={sortie}
+				onSortie={chooseMode}
 				onHangar={() => openHangar(true)}
 				onQuality={setQuality}
 				onVolume={setVolume}
@@ -196,8 +226,20 @@
 		/>
 	{/if}
 
+	{#if phase === 'title' && modeOpen}
+		<ModeSelect
+			{progress}
+			{board}
+			{best}
+			{trained}
+			initial={lastStart}
+			onLaunch={launch}
+			onClose={() => (modeOpen = false)}
+		/>
+	{/if}
+
 	{#if phase === 'gameover' && over}
-		<GameOver stats={over} onRetry={sortie} onTitle={toTitle} />
+		<GameOver stats={over} onRetry={sortie} onTitle={toTitle} onLaunch={launch} />
 	{/if}
 
 	{#if showControls}
