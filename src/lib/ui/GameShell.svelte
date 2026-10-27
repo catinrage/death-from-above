@@ -99,7 +99,6 @@
 					(window as unknown as { __dfa: Game }).__dfa = game;
 				}
 				game.audio.setVolume(settings.volume);
-				game.audio.setMusicVolume(settings.music);
 				game.preview(settings.aircraft, loadout, upgrades);
 				game.start();
 			} catch (e) {
@@ -216,12 +215,6 @@
 		saveSettings(settings);
 		game?.audio.setVolume(v);
 	}
-
-	function setMusic(v: number): void {
-		settings = { ...settings, music: v };
-		saveSettings(settings);
-		game?.audio.setMusicVolume(v);
-	}
 </script>
 
 <div class="shell" class:flying={phase === 'playing'}>
@@ -280,7 +273,6 @@
 				onHangar={() => openHangar(true)}
 				onQuality={setQuality}
 				onVolume={setVolume}
-				onMusic={setMusic}
 				onControls={() => (showControls = true)}
 			/>
 		{/if}
