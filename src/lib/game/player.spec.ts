@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WORLD } from './constants';
+import { AIRCRAFT_ORDER } from './defs-aircraft';
 import { NO_INPUT, Player, type PilotInput } from './player';
 import { testWorld } from './test-world';
 
@@ -98,5 +99,23 @@ describe('Player flight model', () => {
 		fly(p, { brake: true }, 2, w);
 		expect(p.rearming || p.x > WORLD.runwayMaxX).toBe(true);
 		expect(p.hp).toBeGreaterThan(40);
+	});
+	it('turns itself back before reaching the edge of the landscape', () => {
+		for (const id of AIRCRAFT_ORDER) {
+			for (const side of [1, -1]) {
+				const w = testWorld();
+				w.godMode = true;
+				const x0 = side > 0 ? WORLD.arenaMaxX : WORLD.arenaMinX;
+				const p = new Player(id, x0, w.ground(x0) + 150, side > 0 ? 0 : Math.PI);
+				w.player = p;
+				let reach = 0;
+				for (let t = 0; t < 30; t += 1 / 60) {
+					p.update(1 / 60, { ...NO_INPUT, steerX: side, boost: true }, w);
+					reach = Math.max(reach, (p.x - x0) * side);
+				}
+				expect(reach).toBeGreaterThan(WORLD.arenaTurnback);
+				expect(reach).toBeLessThan(WORLD.arenaTurnback + 300);
+			}
+		}
 	});
 });

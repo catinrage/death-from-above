@@ -202,6 +202,7 @@ export class Player implements Trackable {
 			this.fall(dt, w);
 			return;
 		}
+		inp = this.turnback(inp);
 		this.steer(dt, inp, w);
 		this.fly(dt, inp, w);
 		if (!this.alive) return;
@@ -215,6 +216,23 @@ export class Player implements Trackable {
 		const out = this.x < WORLD.arenaMinX || this.x > WORLD.arenaMaxX;
 		this.outOfBounds = out ? this.outOfBounds + dt : 0;
 		if (this.outOfBounds > 4) this.hit(10 * dt, w, this.x, this.y, true, 'bounds');
+	}
+
+	/** Side (+1 past the far edge, -1 past the near edge) if beyond the turn-back line, else 0. */
+	private pastTurnback(): number {
+		if (this.x > WORLD.arenaMaxX + WORLD.arenaTurnback) return 1;
+		if (this.x < WORLD.arenaMinX - WORLD.arenaTurnback) return -1;
+		return 0;
+	}
+
+	/**
+	 * Well outside the combat area the aircraft swings itself around, so the
+	 * player can never fly off to where the landscape runs out.
+	 */
+	private turnback(inp: PilotInput): PilotInput {
+		const side = this.pastTurnback();
+		if (side === 0 || Math.cos(this.angle) * side < -0.5) return inp;
+		return { ...inp, steerX: -side, steerY: 0.2 };
 	}
 
 	private steer(dt: number, inp: PilotInput, w: World): void {
@@ -717,7 +735,7 @@ export class Player implements Trackable {
 
 	private fall(dt: number, w: World): void {
 		this.vy -= G * 1.2 * dt;
-		this.vx *= Math.exp(-0.25 * dt);
+		this.vx *= Math.exp((this.pastTurnback() * this.vx > 0 ? -1.5 : -0.25) * dt);
 		this.x += this.vx * dt;
 		this.y += this.vy * dt;
 		this.angle += this.angVel * dt;

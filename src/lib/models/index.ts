@@ -182,9 +182,13 @@ export function createModels(r: Renderer): Models {
 		}
 	];
 	const mountains = layers.map((l, i) => {
-		const width = 2400 + Math.abs(l.z) * 1.6;
-		const mid = (WORLD.terrainMinX + WORLD.terrainMaxX) / 2;
-		const data = nat.mountainLayer({ ...l, minX: mid - width, maxX: mid + width });
+		// Reach past the terrain by as much as a wide screen widens out at this depth.
+		const spill = (Math.abs(l.z) + l.depth) * 0.9;
+		const data = nat.mountainLayer({
+			...l,
+			minX: WORLD.terrainMinX - spill,
+			maxX: WORLD.terrainMaxX + spill
+		});
 		return r.createMesh(`mountain${i}`, data, false);
 	});
 	return { ...out, beamCone, mountains };
