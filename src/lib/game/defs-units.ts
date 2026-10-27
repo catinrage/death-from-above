@@ -97,6 +97,29 @@ export const UNITS: Record<UnitKind, UnitDef> = {
 		siege: 0,
 		supply: true
 	},
+	engineer: {
+		kind: 'engineer',
+		name: 'Bridging Engineers',
+		hp: 70,
+		armor: 0.15,
+		speed: 11,
+		half: [3.8, 1.5, 1.25],
+		score: 90,
+		cost: 0,
+		// Never planned into a wave: the bridge calls them up when a column is stranded.
+		minWave: 99,
+		isStatic: false,
+		category: 'vehicle',
+		weapon: null,
+		range: 0,
+		parts: [
+			{ mesh: 'engineerTruck', at: [0, 0, 0] },
+			...wheels('wheel', [2.9, -0.8, -2.2], 0.5, 1.05)
+		],
+		death: 'flip',
+		boom: 0.8,
+		siege: 0
+	},
 	tank: {
 		kind: 'tank',
 		name: 'Battle Tank',

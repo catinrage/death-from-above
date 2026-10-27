@@ -108,3 +108,47 @@ export function bridgeTrussHalf(): Float32Array {
 	trussPlane(b, 15, 0, -H / 2);
 	return b.build();
 }
+
+const PONTOON = mat(0x4c5538, 0.75, 0.15);
+const TREAD = mat(0x3a3d3a, 0.6, 0.5);
+
+/** One 5 m treadway section of the engineers' bridge. Origin at the road surface centre. */
+export function pontoonSection(len = 5): Float32Array {
+	const b = new MeshBuilder();
+	for (const s of [-1, 1]) {
+		b.box(len, 0.35, 1.6, TREAD, 0, -0.18, 1.7 * s);
+		b.box(len, 0.45, 0.25, STEEL_DARK, 0, -0.55, 1.7 * s);
+		// Rope rail on short stanchions.
+		b.box(len, 0.06, 0.06, PAINT, 0, 0.95, 3.4 * s);
+		for (const x of [-len / 2 + 0.3, 0, len / 2 - 0.3])
+			b.box(0.08, 0.95, 0.08, STEEL, x, 0.48, 3.4 * s);
+	}
+	b.box(len, 0.12, 1.8, PONTOON, 0, -0.12, 0);
+	for (let x = -len / 2 + 0.6; x < len / 2; x += 1.25)
+		b.box(0.16, 0.2, 6.8, STEEL_DARK, x, -0.5, 0);
+	return b.build();
+}
+
+/** Trestle legs, 1 m tall from y = 0 down to y = -1; scaled to the drop under a section. */
+export function pontoonTrestle(): Float32Array {
+	const b = new MeshBuilder();
+	for (const s of [-1, 1]) b.box(0.3, 1, 0.3, STEEL_DARK, 0, -0.5, 2.4 * s);
+	b.box(0.2, 0.08, 5, STEEL, 0, -0.35, 0);
+	b.box(0.2, 0.08, 5, STEEL, 0, -0.8, 0);
+	return b.build();
+}
+
+/** Floating pontoon boat lying across the current. Origin at the waterline. */
+export function pontoonBoat(): Float32Array {
+	const b = new MeshBuilder();
+	b.box(3.2, 1.1, 8.6, PONTOON, 0, 0.15, 0);
+	b.box(2.6, 0.06, 8.0, STEEL_DARK, 0, 0.72, 0);
+	for (const s of [-1, 1]) {
+		b.push()
+			.translate(0, 0.15, 4.3 * s)
+			.rotateX(0.5 * s);
+		b.box(3.2, 0.9, 0.8, PONTOON);
+		b.pop();
+	}
+	return b.build();
+}

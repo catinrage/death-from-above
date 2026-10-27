@@ -44,6 +44,7 @@ const BUILDERS = {
 	samChassis: [veh.samChassis, true],
 	samRack: [veh.samRack, true],
 	truck: [veh.truck, true],
+	engineerTruck: [veh.engineerTruck, true],
 	jeepBody: [veh.jeepBody, true],
 	jeepGun: [veh.jeepGun, true],
 	apcHull: [veh.apcHull, true],
@@ -86,6 +87,9 @@ const BUILDERS = {
 	bridgeAbutment: [br.bridgeAbutment, true],
 	bridgeDeckHalf: [br.bridgeDeckHalf, true],
 	bridgeTrussHalf: [br.bridgeTrussHalf, true],
+	pontoonSection: [br.pontoonSection, true],
+	pontoonTrestle: [br.pontoonTrestle, true],
+	pontoonBoat: [br.pontoonBoat, true],
 
 	pine0: [() => nat.pine(1), true],
 	pine1: [() => nat.pine(2), true],

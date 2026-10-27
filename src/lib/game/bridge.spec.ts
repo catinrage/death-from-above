@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { BOMBS } from './defs-bombs';
 import { explode } from './combat';
-import { SPAN_HP, TRUSS_H } from './bridge';
+import { PONTOON_BUILD, PONTOON_HP, SPAN_HP, TRUSS_H } from './bridge';
+import { killUnit } from './deaths';
 import { NO_INPUT } from './player';
 import { STRIP } from './river';
 import { simulateWorld } from './simulate';
@@ -139,5 +140,94 @@ describe('bridge', () => {
 		b.rebuild(w);
 		expect(b.downCount).toBe(0);
 		expect(w.debris.list.some((d) => d.persistent)).toBe(false);
+	});
+});
+
+describe('pontoon bridge engineers', () => {
+	const engineers = (w: World) => w.units.filter((u) => u.alive && u.def.kind === 'engineer');
+
+	it('sends a crew to a stranded column, lays a pontoon, and lets traffic cross on it', () => {
+		const { w, deckY } = setup();
+		const b = w.bridge!;
+		const span = b.spans[2];
+		b.collapse(w, span, 'player');
+		const truck = w.spawnUnit('truck', b.east + 20, 0);
+		run(w, 2);
+		expect(engineers(w).length).toBe(0);
+		run(w, 8);
+		const crew = engineers(w);
+		expect(crew.length).toBe(1);
+		// Skip the long drive in from the spawn point.
+		crew[0].x = b.east + 40;
+		run(w, 6);
+		expect(span.pontoon).not.toBeNull();
+		expect(span.pontoon!.up).toBe(false);
+		expect(b.stopLine(truck.x, -1, truck.def.half[0])).not.toBeNull();
+		run(w, PONTOON_BUILD);
+		expect(span.pontoon!.up).toBe(true);
+		expect(b.deckAt((span.x0 + span.x1) / 2, 0)).toBe(deckY);
+		expect(w.surface.clearance((span.x0 + span.x1) / 2)).toBeLessThan(deckY + TRUSS_H);
+		let lowest = Infinity;
+		for (let i = 0; i < 60 * 20 && truck.x > span.x0 - 10; i++) {
+			simulateWorld(w, 1 / 60, NO_INPUT);
+			if (truck.x > span.x0 + 2 && truck.x < span.x1 - 2) lowest = Math.min(lowest, truck.y);
+		}
+		expect(truck.alive).toBe(true);
+		expect(truck.x).toBeLessThan(span.x0 - 10);
+		expect(lowest).toBeCloseTo(deckY, 1);
+	});
+
+	it('stops laying when the crew is killed', () => {
+		const { w } = setup();
+		const b = w.bridge!;
+		const span = b.spans[1];
+		b.collapse(w, span, 'player');
+		const crew = w.spawnUnit('engineer', span.x1 + 30, 0);
+		run(w, 6);
+		const laid = span.pontoon!.progress;
+		expect(laid).toBeGreaterThan(0);
+		killUnit(w, crew, crew.x, 'blast', 'player');
+		run(w, 5);
+		expect(span.pontoon!.progress).toBeCloseTo(laid, 5);
+		expect(span.pontoon!.up).toBe(false);
+	});
+
+	it('sinks under one iron bomb, dropping its traffic and closing the gap again', () => {
+		const { w, deckY } = setup();
+		const b = w.bridge!;
+		const span = b.spans[2];
+		b.collapse(w, span, 'player');
+		span.pontoon = { progress: 1, hp: PONTOON_HP, flash: 0, up: true, from: 1 };
+		const mid = (span.x0 + span.x1) / 2;
+		const jeep = w.spawnUnit('jeep', mid + 8, 0);
+		expect(jeep.y).toBeCloseTo(deckY, 1);
+		explode(w, mid, deckY, 0, BOMBS.gp.blast, 'player');
+		expect(span.pontoon).toBeNull();
+		expect(jeep.alive).toBe(false);
+		expect(b.deckAt(mid, 0)).toBeNull();
+		expect(b.stopLine(b.east + 10, -1, 2)).toBeCloseTo(span.x1 + 3.5, 5);
+	});
+
+	it('takes cannon fire on the treadway', () => {
+		const { w } = setup();
+		const b = w.bridge!;
+		const span = b.spans[3];
+		b.collapse(w, span, 'player');
+		span.pontoon = { progress: 1, hp: PONTOON_HP, flash: 0, up: true, from: 1 };
+		b.damage(w, span, 30, 'player');
+		expect(span.pontoon.hp).toBe(PONTOON_HP - 30);
+		b.damage(w, span, PONTOON_HP, 'player');
+		expect(span.pontoon).toBeNull();
+	});
+
+	it('is cleared away when the steel bridge is rebuilt', () => {
+		const { w } = setup();
+		const b = w.bridge!;
+		const span = b.spans[0];
+		b.collapse(w, span, 'player');
+		span.pontoon = { progress: 0.5, hp: PONTOON_HP, flash: 0, up: false, from: 1 };
+		b.rebuild(w);
+		expect(span.pontoon).toBeNull();
+		expect(b.downCount).toBe(0);
 	});
 });

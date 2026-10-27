@@ -1,6 +1,7 @@
 import { DEFAULT_STYLE, type InstanceStyle, type Mesh } from '../engine/gl/mesh';
 import { mat4, type Mat4 } from '../engine/math';
 import type { MeshName, Models } from '../models';
+import { PONTOON_SECTIONS, type Span } from './bridge';
 import { WORLD } from './constants';
 import { AIRCRAFT } from './defs-aircraft';
 import { BOMBS } from './defs-bombs';
@@ -160,6 +161,7 @@ export class SceneView {
 				this.style(wear * 0.7, s.flash * 0.25, 0, 1, 1, wear > 0.6 ? 0.3 : 0)
 			);
 		}
+		for (const s of b.spans) if (s.down && s.pontoon) this.pontoon(w, s);
 		for (const x of b.piers) {
 			mat4.fromTranslation(m, x, b.deckY - 0.9, 0);
 			this.models.bridgePier.push(m, this.style());
@@ -170,6 +172,37 @@ export class SceneView {
 		] as const) {
 			mat4.fromTranslation(m, x + dir * 2.4, b.deckY, 0);
 			this.models.bridgeAbutment.push(m, this.style());
+		}
+	}
+
+	/** Treadway sections laid so far, each on a pontoon boat or a trestle down to the bank. */
+	private pontoon(w: World, s: Span): void {
+		const b = w.bridge;
+		const p = s.pontoon;
+		if (!b || !p) return;
+		const m = this.m;
+		const len = (s.x1 - s.x0) / PONTOON_SECTIONS;
+		const n = p.up ? PONTOON_SECTIONS : Math.floor(p.progress * PONTOON_SECTIONS + 1e-6);
+		const style = this.style(0, p.flash * 0.3);
+		for (let k = 0; k < n; k++) {
+			const x = p.from > 0 ? s.x1 - (k + 0.5) * len : s.x0 + (k + 0.5) * len;
+			mat4.fromTranslation(m, x, b.deckY, 0);
+			this.models.pontoonSection.push(m, style);
+			const g = w.terrain.heightAt(x);
+			const wl = w.surface.water(x, 0);
+			const afloat = wl > g;
+			const foot = afloat ? wl + 0.7 : g;
+			const drop = b.deckY - 0.6 - foot;
+			if (afloat) {
+				// Bob gently on the current.
+				mat4.fromTranslation(m, x, wl + Math.sin(w.time * 1.4 + k) * 0.06, 0);
+				this.models.pontoonBoat.push(m, style);
+			}
+			if (drop > 0.2) {
+				mat4.fromTranslation(m, x, b.deckY - 0.6, 0);
+				mat4.scale(m, m, 1, drop, 1);
+				this.models.pontoonTrestle.push(m, style);
+			}
 		}
 	}
 
