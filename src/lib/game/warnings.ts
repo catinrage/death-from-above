@@ -45,3 +45,51 @@ export function missileThreat(
 	}
 	return { missileDist: best, missileDir: dir };
 }
+
+/** Bearing (radians, 0 = right, clockwise) of the launcher closest to finishing its lock, or 0 when none is locking. */
+export function lockThreat(p: Player | null): { lockDir: number } {
+	let best: Player['lockers'][number] | null = null;
+	if (p && p.alive) for (const l of p.lockers) if (!best || l.progress > best.progress) best = l;
+	return { lockDir: best ? Math.atan2(-(best.y - p!.y), best.x - p!.x) : 0 };
+}
+
+/** Something hunting the aircraft: a missile in flight, or a launcher locking on. */
+export interface Threat {
+	kind: 'missile' | 'lock';
+	x: number;
+	y: number;
+	/** Range in metres. */
+	dist: number;
+	/** 0..1 urgency: closeness for a missile, lock progress for a launcher. */
+	level: number;
+}
+
+/** Furthest missile range that still registers any urgency. */
+const THREAT_RANGE = 1500;
+
+/** Every missile homing on the aircraft (closest first), then every launcher locking it (furthest along first). */
+export function incomingThreats(w: World, p: Player | null, max = 8): Threat[] {
+	if (!p || !p.alive || p.dying) return [];
+	const missiles: Threat[] = [];
+	for (const m of w.missiles) {
+		if (m.target !== p || !m.alive) continue;
+		const dist = Math.hypot(m.x - p.x, m.y - p.y);
+		missiles.push({
+			kind: 'missile',
+			x: m.x,
+			y: m.y,
+			dist,
+			level: Math.max(0, Math.min(1, 1 - dist / THREAT_RANGE))
+		});
+	}
+	missiles.sort((a, b) => a.dist - b.dist);
+	const locks: Threat[] = p.lockers.map((l) => ({
+		kind: 'lock',
+		x: l.x,
+		y: l.y,
+		dist: Math.hypot(l.x - p.x, l.y - p.y),
+		level: l.progress
+	}));
+	locks.sort((a, b) => b.level - a.level);
+	return missiles.concat(locks).slice(0, max);
+}

@@ -4,7 +4,7 @@ import { fx as rnd } from '../engine/rng';
 import { Renderer, type PostFrame, type Quality } from '../engine/renderer';
 import { createModels } from '../models';
 import type { PopupLayer } from '../ui/popups';
-import type { TargetingLayer, TargetingView } from '../ui/targeting-layer';
+import type { TargetingLayer, TargetingView, ThreatMarker } from '../ui/targeting-layer';
 import { Focus } from './focus';
 import { Targeting } from './targeting';
 import { Autopilot } from './autopilot';
@@ -41,7 +41,7 @@ import { placeRun, readBest, readBoard, saveBoard, writeBest, writeTrained } fro
 import { predictImpact } from './weapons';
 import { simulateWorld } from './simulate';
 import type { Loadout } from './loadout';
-import { cockpitAlerts, missileThreat } from './warnings';
+import { cockpitAlerts, incomingThreats, lockThreat, missileThreat } from './warnings';
 import { RESOLVE } from './projectiles';
 import { SHOAL } from './river';
 import { World } from './world';
@@ -59,6 +59,8 @@ const STEP = 1 / 60;
 const ENV_BY_WAVE = [0.9, 0, 0.7, 1.25, 2.1, 3, 3, 3.6, 4.2, 5];
 /** Seconds between a campaign win and the debrief, so the last kills can land. */
 const DEBRIEF_DELAY = 3.5;
+/** Radius (CSS px) of the ring of threat chevrons around the aircraft. */
+const THREAT_RING = 74;
 /** Aircraft flown in training: it carries every kind of weapon the lessons use. */
 const TRAINER: AircraftId = 'kestrel';
 
@@ -820,8 +822,36 @@ export class Game {
 			cursor: visible && t.pointer ? { x: t.cursorX, y: t.cursorY } : null,
 			focus: this.focus.blend,
 			hover,
-			locks
+			locks,
+			threats: visible ? this.threatMarkers() : []
 		};
+	}
+
+	/** Chevrons on a ring around the aircraft, each pointing at a missile or launcher hunting it. */
+	private threatMarkers(): ThreatMarker[] {
+		const w = this.world;
+		const p = w.player;
+		const cam = w.camera;
+		if (!p) return [];
+		const o = cam.project(p.x, p.y, p.z, this.cssW, this.cssH);
+		if (!o) return [];
+		const out: ThreatMarker[] = [];
+		for (const t of incomingThreats(w, p)) {
+			const s = cam.project(t.x, t.y, 0, this.cssW, this.cssH);
+			const angle = s ? Math.atan2(s[1] - o[1], s[0] - o[0]) : Math.atan2(-(t.y - p.y), t.x - p.x);
+			// Closer missiles pull their chevron in toward the aircraft.
+			const r = THREAT_RING - (t.kind === 'missile' ? t.level * 14 : 0);
+			out.push({
+				kind: t.kind,
+				x: o[0] + Math.cos(angle) * r,
+				y: o[1] + Math.sin(angle) * r,
+				angle,
+				level: t.level,
+				close: t.kind === 'missile' && t.dist < RESOLVE,
+				dist: t.dist
+			});
+		}
+		return out;
 	}
 
 	private updateSkyFlash(dt: number): void {
@@ -900,6 +930,7 @@ export class Game {
 			locks: this.targeting.locks.length,
 			braking: !!p && p.brakeLevel > 0.3,
 			...missileThreat(w, p),
+			...lockThreat(p),
 			flareWindow: RESOLVE
 		};
 	}

@@ -199,7 +199,9 @@
 			</div>
 		{:else if hud.lock > 0}
 			<div class="warn lock">
-				RADAR LOCK
+				<span
+					><span class="arrow" style:transform="rotate({hud.lockDir}rad)">➤</span> RADAR LOCK</span
+				>
 				<span class="lockbar"><span style:transform="scaleX({hud.lock})"></span></span>
 			</div>
 		{/if}
@@ -985,6 +987,12 @@
 		display: grid;
 		justify-items: center;
 		gap: 4px;
+	}
+
+	.warn.lock .arrow {
+		display: inline-block;
+		margin-right: 6px;
+		transition: transform 0.08s linear;
 	}
 
 	.lockbar {

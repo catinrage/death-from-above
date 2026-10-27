@@ -91,6 +91,8 @@ export interface HudSnapshot {
 	/** Nearest missile chasing the aircraft: range in metres (0 = none) and screen bearing (radians, 0 = right, clockwise). */
 	missileDist: number;
 	missileDir: number;
+	/** Screen bearing of the launcher closest to completing its radar lock (radians, 0 = right, clockwise). */
+	lockDir: number;
 	/** Range inside which a flare can fool it. */
 	flareWindow: number;
 }
@@ -170,6 +172,7 @@ export function emptyHud(): HudSnapshot {
 		braking: false,
 		missileDist: 0,
 		missileDir: 0,
+		lockDir: 0,
 		flareWindow: 450
 	};
 }

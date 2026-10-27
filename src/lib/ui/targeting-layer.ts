@@ -8,9 +8,27 @@ export interface TargetingView {
 	focus: number;
 	hover: ScreenMarker | null;
 	locks: ScreenMarker[];
+	/** Direction markers ringing the aircraft, one per incoming missile or locking launcher. */
+	threats: ThreatMarker[];
+}
+
+export interface ThreatMarker {
+	kind: 'missile' | 'lock';
+	/** Marker position in CSS px. */
+	x: number;
+	y: number;
+	/** Screen bearing from the aircraft to the threat (radians, 0 = right, clockwise). */
+	angle: number;
+	/** 0..1 urgency. */
+	level: number;
+	/** Inside flare range: flash. */
+	close: boolean;
+	/** Range in metres, shown for missiles. */
+	dist: number;
 }
 
 const SLOTS = 6;
+const THREAT_SLOTS = 8;
 
 /** DOM overlay for the aiming reticle, the target under it and painted locks. */
 export class TargetingLayer {
@@ -18,6 +36,7 @@ export class TargetingLayer {
 	private readonly hover: HTMLDivElement;
 	private readonly locks: HTMLDivElement[] = [];
 	private readonly shown: boolean[] = [];
+	private readonly threats: HTMLDivElement[] = [];
 
 	constructor(private readonly root: HTMLElement) {
 		this.reticle = this.el(
@@ -29,6 +48,8 @@ export class TargetingLayer {
 			this.locks.push(this.el('tl-lock', `<i class="diamond"></i><b>${i + 1}</b>`));
 			this.shown.push(false);
 		}
+		for (let i = 0; i < THREAT_SLOTS; i++)
+			this.threats.push(this.el('tl-threat', '<i class="chev"></i><b></b>'));
 	}
 
 	private el(cls: string, html: string): HTMLDivElement {
@@ -73,6 +94,20 @@ export class TargetingLayer {
 				el.classList.add('fresh');
 				this.shown[i] = true;
 			}
+		}
+		for (let i = 0; i < THREAT_SLOTS; i++) {
+			const el = this.threats[i];
+			const t = v.threats[i];
+			if (!t) {
+				el.style.display = 'none';
+				continue;
+			}
+			this.place(el, t.x, t.y);
+			el.className = `tl-threat ${t.kind}${t.close ? ' close' : ''}`;
+			el.style.setProperty('--a', `${t.angle.toFixed(3)}rad`);
+			el.style.setProperty('--lv', t.level.toFixed(2));
+			const label = el.lastElementChild as HTMLElement;
+			label.textContent = t.kind === 'missile' ? `${Math.round(t.dist)}m` : 'LOCK';
 		}
 	}
 }

@@ -23,6 +23,7 @@ export function updateUnits(w: World, dt: number): void {
 	if (p) {
 		p.lockedBy = 0;
 		p.lockProgress = 0;
+		p.lockers.length = 0;
 	}
 	for (const u of w.units) {
 		u.flash = Math.max(0, u.flash - dt * 4);
@@ -300,7 +301,9 @@ function missileSite(
 		spec.lockTime * p.def.stealth * (w.radarCoverage && u.def.kind === 'sam' ? 0.65 : 1);
 	u.lock += dt;
 	p.lockedBy++;
-	p.lockProgress = Math.max(p.lockProgress, Math.min(1, u.lock / lockTime));
+	const progress = Math.min(1, u.lock / lockTime);
+	p.lockProgress = Math.max(p.lockProgress, progress);
+	p.lockers.push({ x: u.x, y: u.y + u.def.half[1], progress });
 	if (u.lock < lockTime || u.cooldown > 0) return;
 	u.lock = 0;
 	u.cooldown = spec.interval * rnd.range(0.85, 1.2);
