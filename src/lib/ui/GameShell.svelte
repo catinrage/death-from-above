@@ -147,6 +147,8 @@
 		hangarOpen = false;
 		if (game) game.showcase = false;
 		game?.newGame(settings.aircraft, loadout, start, upgrades);
+		// A strike flown ahead of a campaign mission spends credits.
+		wallet = loadProgression();
 		canvas.focus();
 	}
 
@@ -295,6 +297,7 @@
 			{board}
 			{best}
 			{trained}
+			credits={wallet.credits}
 			initial={lastStart}
 			onLaunch={launch}
 			onClose={() => (modeOpen = false)}

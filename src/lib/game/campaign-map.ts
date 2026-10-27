@@ -1,4 +1,5 @@
 import { MISSIONS, type CampaignProgress, type Mission } from './campaign';
+import type { CreditLine, Progression } from './progression';
 import type { UnitKind } from './types';
 import type { WaveTweaks } from './waves';
 
@@ -16,6 +17,8 @@ export interface Strike {
 	target: string;
 	/** What it changes about the next mission, in a line. */
 	effect: string;
+	/** Credits it costs to fly, paid each time the mission launches with it. */
+	cost: number;
 	tweak: (t: WaveTweaks, wave: number) => WaveTweaks;
 }
 
@@ -32,6 +35,7 @@ export const STRIKES: Record<StrikeId, Strike> = {
 		name: 'Fuel depot',
 		target: 'Fuel and ammunition dump',
 		effect: 'Fewer tanks and APCs, and every column is smaller',
+		cost: 150,
 		tweak: (t) => ({
 			...t,
 			budget: (t.budget ?? 1) * 0.85,
@@ -43,6 +47,7 @@ export const STRIKES: Record<StrikeId, Strike> = {
 		name: 'Supply bridge',
 		target: 'Rail bridge behind the lines',
 		effect: 'Reinforcements are cut off: waves after the first are much lighter',
+		cost: 200,
 		tweak: (t, wave) => (wave >= 2 ? { ...t, budget: (t.budget ?? 1) * 0.7 } : t)
 	},
 	radar: {
@@ -50,6 +55,7 @@ export const STRIKES: Record<StrikeId, Strike> = {
 		name: 'Radar site',
 		target: 'Early-warning radar',
 		effect: 'Fewer SAMs and AA guns, and one fewer interceptor and gunship a wave',
+		cost: 250,
 		tweak: (t) => ({
 			...t,
 			lead: lead(t, { sam: 0.4, spaag: 0.5 }),
@@ -73,6 +79,12 @@ export function withStrike(m: Mission, strike: StrikeId | null | undefined): Mis
 	const s = STRIKES[strike];
 	const base = m.waves.tweaks;
 	return { ...m, waves: { ...m.waves, tweaks: (wave) => s.tweak(base?.(wave) ?? {}, wave) } };
+}
+
+/** Pays for a strike. Returns the same object when the pilot can't afford it. */
+export function payForStrike(p: Progression, strike: StrikeId): Progression {
+	const cost = STRIKES[strike].cost;
+	return p.credits < cost ? p : { ...p, credits: p.credits - cost };
 }
 
 /** The first mission has nothing in front of it to strike yet. */
@@ -122,6 +134,21 @@ export function frontX(progress: CampaignProgress): number {
 export function sectorSpan(s: Sector): [number, number] {
 	const first = MISSIONS.findIndex((m) => m.id === s.missions[0]);
 	return [first / MISSIONS.length, (first + s.missions.length) / MISSIONS.length];
+}
+
+/** Credits for taking a sector: more the deeper it lies. */
+export function captureCredits(s: Sector): number {
+	return 200 + 150 * SECTORS.indexOf(s);
+}
+
+/**
+ * The bonus line for a win that takes a sector: the first win of the
+ * sector's last mission. Replays pay nothing extra.
+ */
+export function captureLine(missionId: string, wonBefore: boolean): CreditLine | null {
+	const s = sectorOf(missionId);
+	if (!s || wonBefore || s.missions[s.missions.length - 1] !== missionId) return null;
+	return { label: `${s.name} captured`, amount: captureCredits(s) };
 }
 
 export type SectorState = 'held' | 'contested' | 'enemy';

@@ -50,7 +50,14 @@ import {
 	starsFor,
 	type Mission
 } from './campaign';
-import { canStrike, STRIKES, withStrike } from './campaign-map';
+import {
+	canStrike,
+	captureLine,
+	payForStrike,
+	STRIKES,
+	withStrike,
+	type StrikeId
+} from './campaign-map';
 import { Tutorial } from './tutorial';
 import { placeRun, readBest, readBoard, saveBoard, writeBest, writeTrained } from './records';
 import { predictImpact } from './weapons';
@@ -450,7 +457,8 @@ export class Game {
 		this.loadout = loadout;
 		this.upgrades = upgrades;
 		const flown = start.mode === 'campaign' ? (missionById(start.mission) ?? null) : null;
-		const strike = start.mode === 'campaign' && flown && canStrike(flown.id) ? start.strike : null;
+		const wanted = start.mode === 'campaign' && flown && canStrike(flown.id) ? start.strike : null;
+		const strike = wanted && this.payStrike(aircraft, wanted) ? wanted : null;
 		const mission = flown && withStrike(flown, strike);
 		this.mode = start.mode === 'campaign' && !mission ? 'endless' : start.mode;
 		this.mission = mission;
@@ -510,7 +518,9 @@ export class Game {
 					text: mission.name.toUpperCase(),
 					sub: strike
 						? `${mission.brief} ${STRIKES[strike].name} hit: ${STRIKES[strike].effect.toLowerCase()}.`
-						: mission.brief,
+						: wanted
+							? `${mission.brief} Not enough credits for the ${STRIKES[wanted].name.toLowerCase()} strike.`
+							: mission.brief,
 					tone: 'info'
 				});
 			this.waves.begin(w, 1);
@@ -531,6 +541,15 @@ export class Game {
 		if (!w.setBiome(id)) return;
 		this.renderer.ground = w.biome.ground;
 		this.terrainView.syncAll();
+	}
+
+	/** Takes a strike's cost from the wallet. False when the pilot can't afford it. */
+	private payStrike(aircraft: AircraftId, strike: StrikeId): boolean {
+		const wallet = loadOrMigrate(aircraft);
+		const paid = payForStrike(wallet, strike);
+		if (paid === wallet) return false;
+		saveProgression(paid);
+		return true;
 	}
 
 	/** Time of day for a wave of the current sortie. */
@@ -945,14 +964,16 @@ export class Game {
 		const lost = this.squadron.lost;
 		const stars = starsFor(baseFrac, lost);
 		const next = nextMission(m.id);
+		const earned = missionCredits({
+			index: MISSIONS.findIndex((x) => x.id === m.id),
+			won: outcome === 'complete',
+			score: this.score,
+			stars,
+			prevStars: progress[m.id]?.stars ?? 0
+		});
+		const capture = outcome === 'complete' ? captureLine(m.id, !!progress[m.id]) : null;
 		const credits = pay(
-			missionCredits({
-				index: MISSIONS.findIndex((x) => x.id === m.id),
-				won: outcome === 'complete',
-				score: this.score,
-				stars,
-				prevStars: progress[m.id]?.stars ?? 0
-			})
+			capture ? { lines: [...earned.lines, capture], total: earned.total + capture.amount } : earned
 		);
 		if (outcome === 'complete') saveProgress(recordMission(progress, m.id, stars, this.score));
 		return {

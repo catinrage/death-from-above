@@ -168,6 +168,10 @@ test('the campaign map shows the front and remembers the strike for a mission', 
 			'dfa.campaign',
 			JSON.stringify({ 'first-light': { stars: 2, best: 900 } })
 		);
+		localStorage.setItem(
+			'dfa.progression',
+			JSON.stringify({ credits: 1000, earned: 1000, owned: [], upgrades: {} })
+		);
 	});
 	const errors = await openTitle(page);
 	await page.getByRole('button', { name: /sortie/i }).click();
@@ -189,6 +193,10 @@ test('the campaign map shows the front and remembers the strike for a mission', 
 	);
 	await page.getByRole('button', { name: /fly the crossing/i }).click();
 	await expect(page.getByText(/radar site hit/i).first()).toBeVisible();
+	const credits = await page.evaluate(
+		() => JSON.parse(localStorage.getItem('dfa.progression') ?? '{}').credits
+	);
+	expect(credits).toBe(750);
 	expect(errors).toEqual([]);
 });
 
