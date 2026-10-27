@@ -28,6 +28,8 @@ export interface WaveTweaks {
 	/** Replaces the number of interceptors / gunships. */
 	fighters?: number;
 	helis?: number;
+	/** Vehicles the wave must field, each leading its own convoy, whatever the budget. */
+	units?: UnitKind[];
 }
 
 export interface WaveOptions {
@@ -89,8 +91,9 @@ export function planWave(
 	};
 	if (wave >= 2) add('spaag', t + 6, lane());
 	if (wave >= 4) add('sam', t + 14, lane());
-	while (budget > 0) {
-		const lead = leadFor(wave, rng, tweaks.lead);
+	const forced = [...(tweaks.units ?? [])];
+	while (budget > 0 || forced.length > 0) {
+		const lead = forced.shift() ?? leadFor(wave, rng, tweaks.lead);
 		add(lead, t, lane());
 		let at = t;
 		const escorts = rng.int(1, 3 + Math.min(wave, 4));
