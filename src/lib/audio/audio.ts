@@ -1,16 +1,7 @@
 import type { SfxId, SoundSink } from '../game/world';
 import { softClipCurve, synthBoom, type BoomContext } from './boom';
 import { ALERTS, ALERT_ORDER, Announcer, type Alert, type AlertState } from './cockpit';
-import {
-	RADIO,
-	RADIO_CUES,
-	RECORDED,
-	RadioDesk,
-	estimateLength,
-	type RadioCue,
-	type Speaker,
-	type Transmission
-} from './radio';
+import { RADIO, RADIO_CUES, RECORDED, RadioDesk, type RadioCue, type Transmission } from './radio';
 
 interface Voice {
 	gain: GainNode;
@@ -23,9 +14,6 @@ interface Whistle {
 	pan: StereoPannerNode;
 	seen: number;
 }
-
-/** Longest the radio waits for its recordings before falling back to speech. */
-const RADIO_LOAD_WAIT = 4;
 
 interface JetNodes {
 	roarFilter: BiquadFilterNode;
@@ -109,14 +97,13 @@ export class AudioEngine implements SoundSink {
 	private warnTimer = 0;
 	private hornTimer = 0;
 	private readonly announcer = new Announcer();
-	/** Recorded voice callouts; anything missing falls back to the browser's speech voice. */
+	/** Recorded voice callouts; one that is missing sounds only its attention tone. */
 	private readonly voiceClips = new Map<Alert, AudioBuffer>();
 	private readonly radioDesk = new RadioDesk();
-	/** Recorded radio calls by clip file; anything missing falls back to the speech voice. */
+	/** Recorded radio calls by clip file; a call is only put on the air with one of these. */
 	private readonly radioClips = new Map<string, AudioBuffer>();
+	private readonly hasClip = (file: string): boolean => this.radioClips.has(file);
 	/** Recorded radio clips still downloading, and when loading began (audio clock). */
-	private radioLoading = 0;
-	private radioLoadStart = 0;
 	private radioBus!: GainNode;
 	private ambienceTimer = 3;
 	private voices = 0;
@@ -218,17 +205,14 @@ export class AudioEngine implements SoundSink {
 				if (!RECORDED.has(line.file)) continue;
 				const url = new URL(`audio/radio/${line.file}.mp3`, document.baseURI);
 				if (typeof fetch === 'undefined') return;
-				if (this.radioLoading === 0) this.radioLoadStart = ctx.currentTime;
-				this.radioLoading++;
 				fetch(url)
 					.then((r) => (r.ok ? r.arrayBuffer() : null))
 					.then((data) => (data ? ctx.decodeAudioData(data) : null))
 					.then((buf) => {
 						if (buf) this.radioClips.set(line.file, buf);
 					})
-					// No clip yet: the call is read by the speech voice instead.
-					.catch(() => this.radioClips.delete(line.file))
-					.finally(() => this.radioLoading--);
+					// No clip: calls using it wait for another take or stay silent.
+					.catch(() => this.radioClips.delete(line.file));
 			}
 	}
 
@@ -277,11 +261,8 @@ export class AudioEngine implements SoundSink {
 			this.radioDesk.reset();
 			return;
 		}
-		// The opening call fires as the sortie starts, often before the recordings have
-		// arrived: hold the channel briefly rather than read it with the robotic speech voice.
-		const ctx = this.ctx as AudioContext;
-		if (this.radioLoading > 0 && ctx.currentTime - this.radioLoadStart < RADIO_LOAD_WAIT) return;
-		const tx = this.radioDesk.update(dt, this.announcer.speaking);
+		// Calls wait for their recordings (the opening one often fires before they arrive).
+		const tx = this.radioDesk.update(dt, this.announcer.speaking, this.hasClip);
 		if (tx) this.transmit(tx);
 	}
 
@@ -289,14 +270,13 @@ export class AudioEngine implements SoundSink {
 		const ctx = this.ctx as AudioContext;
 		const t = ctx.currentTime + 0.02;
 		const clip = this.radioClips.get(tx.line.file);
-		const length = clip ? clip.duration + 0.25 : this.speakRadio(tx.line.text, tx.speaker);
+		if (!clip) return;
+		const length = clip.duration + 0.25;
 		this.squelch(t, 0.07);
-		if (clip) {
-			const src = ctx.createBufferSource();
-			src.buffer = clip;
-			src.connect(this.radioBus);
-			src.start(t + 0.08);
-		}
+		const src = ctx.createBufferSource();
+		src.buffer = clip;
+		src.connect(this.radioBus);
+		src.start(t + 0.08);
 		this.squelch(t + length, 0.12);
 		this.radioDesk.onAir(length + 0.1);
 	}
@@ -319,26 +299,6 @@ export class AudioEngine implements SoundSink {
 		g.connect(this.radioBus);
 		src.start(t, Math.random());
 		src.stop(t + dur + 0.05);
-	}
-
-	/** Speech fallback for a radio call; returns roughly how long it will take. */
-	private speakRadio(text: string, speaker: Speaker): number {
-		const length = estimateLength(text);
-		if (typeof speechSynthesis === 'undefined') return length;
-		const u = new SpeechSynthesisUtterance(text);
-		u.rate = speaker === 'wingman' ? 1.18 : 1.05;
-		u.pitch = speaker === 'wingman' ? 1 : 0.8;
-		u.volume = Math.min(1, this.volume * 0.9);
-		const male = speechSynthesis
-			.getVoices()
-			.filter(
-				(v) => v.lang.startsWith('en') && /male|david|daniel|alex|fred|guy|mark/i.test(v.name)
-			);
-		const voice = male[speaker === 'wingman' ? male.length - 1 : 0];
-		if (voice) u.voice = voice;
-		// The cockpit voice cancels speech when it must talk; the radio never interrupts it.
-		setTimeout(() => speechSynthesis.speak(u), 90);
-		return length;
 	}
 
 	setListener(x: number, y: number): void {
@@ -966,7 +926,7 @@ export class AudioEngine implements SoundSink {
 				.then((buf) => {
 					if (buf) this.voiceClips.set(a, buf);
 				})
-				// No clip (not generated yet): that callout uses the speech fallback instead.
+				// No clip (not generated yet): that callout sounds only its tone.
 				.catch(() => this.voiceClips.delete(a));
 		}
 	}
@@ -981,7 +941,6 @@ export class AudioEngine implements SoundSink {
 		if (!ctx || ctx.state !== 'running') return;
 		if (!s) {
 			this.announcer.reset();
-			if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
 			return;
 		}
 		this.hornTimer -= dt;
@@ -1017,24 +976,8 @@ export class AudioEngine implements SoundSink {
 			lp.connect(g);
 			g.connect(this.uiBus);
 			src.start(ctx.currentTime + delay);
-			return;
 		}
-		if (typeof speechSynthesis === 'undefined') return;
-		const u = new SpeechSynthesisUtterance(ALERTS[a].text);
-		u.rate = 1.15;
-		u.pitch = 1.05;
-		u.volume = Math.min(1, this.volume * 1.2);
-		const voice = speechSynthesis
-			.getVoices()
-			.find(
-				(v) =>
-					v.lang.startsWith('en') && /female|zira|samantha|susan|hazel|aria|jenny/i.test(v.name)
-			);
-		if (voice) u.voice = voice;
-		setTimeout(() => {
-			speechSynthesis.cancel();
-			speechSynthesis.speak(u);
-		}, delay * 1000);
+		// No recording (yet): the attention tone alone, never a synthetic voice.
 	}
 
 	private jetVoice(

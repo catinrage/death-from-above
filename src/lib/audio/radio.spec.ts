@@ -84,7 +84,7 @@ describe('radio watch', () => {
 		expect(w.update({ ...calm, wingman: false })).toEqual([]);
 		expect(w.update({ ...calm, wingman: true, wingRejoins: 1 })).toEqual(['wingBack']);
 		expect(RADIO.wingmanDown.speaker).toBe('wingman');
-		expect(RADIO.wingmanDown.lines.every((l) => /mayday/i.test(l.text))).toBe(true);
+		expect(RADIO.wingmanDown.lines.some((l) => /mayday/i.test(l.text))).toBe(true);
 	});
 
 	it('does not welcome back the first wingman of a sortie', () => {
@@ -93,9 +93,8 @@ describe('radio watch', () => {
 		expect(w.update(calm)).toEqual([]);
 	});
 
-	it('acknowledges the rearm order with clips that are not on disk yet, read by the speech voice', () => {
-		expect(RADIO.wingRearm.lines.length).toBe(2);
-		for (const l of RADIO.wingRearm.lines) expect(RECORDED.has(l.file)).toBe(false);
+	it('gives the mayday a recorded take so it is never read by a speech voice', () => {
+		expect(RADIO.wingmanDown.lines.some((l) => RECORDED.has(l.file))).toBe(true);
 	});
 
 	it('says nothing on the first frame of a sortie', () => {
@@ -153,5 +152,23 @@ describe('radio desk', () => {
 		}
 		expect(takes).toHaveLength(4);
 		for (let i = 1; i < takes.length; i++) expect(takes[i]).not.toBe(takes[i - 1]);
+	});
+
+	it('holds a call until one of its recordings has loaded, then plays only a loaded take', () => {
+		const d = new RadioDesk(() => 0);
+		const loaded = new Set<string>();
+		d.push('sortie');
+		for (let t = 0; t < 3; t += 0.05)
+			expect(d.update(0.05, false, (f) => loaded.has(f))).toBeNull();
+		loaded.add('sortie-2');
+		let tx = null;
+		for (let t = 0; t < 1 && !tx; t += 0.05) tx = d.update(0.05, false, (f) => loaded.has(f));
+		expect(tx?.line.file).toBe('sortie-2');
+	});
+
+	it('lets a call with no recording go stale instead of reading it aloud', () => {
+		const d = new RadioDesk(() => 0);
+		d.push('wingRearm');
+		for (let t = 0; t < 10; t += 0.05) expect(d.update(0.05, false, () => false)).toBeNull();
 	});
 });

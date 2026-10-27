@@ -29,14 +29,14 @@ export const ALERT_ORDER: readonly Alert[] = [
 ];
 
 interface AlertSpec {
-	/** Clip file (static/audio/voice/<file>.mp3) and the words, for the speech fallback. */
+	/** Clip file (static/audio/voice/<file>.mp3) and the words, for the voice generator. */
 	file: string;
 	text: string;
 	/** Seconds between repeats while the condition holds; 0 = say once per occurrence. */
 	repeat: number;
 	/** Warning tone played before the words. */
 	tone: 'caution' | 'warning' | 'none';
-	/** No clip generated yet: it is never fetched and the speech fallback reads the words. */
+	/** No clip generated yet: it is never fetched and only its tone sounds. */
 	pending?: boolean;
 }
 

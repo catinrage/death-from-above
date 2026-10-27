@@ -172,7 +172,7 @@ src/routes/       App shell; /sandbox renders a static showcase scene for engine
 or DOM, which is what the integration tests drive. Hot loops mutate preallocated state on purpose
 to keep garbage collection out of the frame budget.
 
-Cockpit callouts and the tower / wingman radio calls play recorded clips from
+`static/audio/` when they exist; there is no synthetic speech fallback, so a call without a clip stays silent (cockpit alerts still sound their tone). To record
 `static/audio/` when they exist and fall back to the browser's speech voice otherwise. To record
 them, run `ELEVENLABS_API_KEY=... pnpm voice` (add `radio` or `cockpit` for one set, `--force` to
 redo existing clips); radio lines live in `src/lib/audio/radio-lines.json`.

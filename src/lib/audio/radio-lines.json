@@ -40,7 +40,8 @@
 		"wing-cover-1",
 		"wing-cover-2",
 		"wing-sams-1",
-		"wing-sams-2"
+		"wing-sams-2",
+		"wing-down-2"
 	],
 	"voices": {
 		"tower": "D11AWvkESE7DJwqIVi7L",
@@ -189,7 +190,8 @@
 			"speaker": "wingman",
 			"lines": [
 				["wing-mayday-1", "Mayday, mayday, Two is hit, ejecting!"],
-				["wing-mayday-2", "Mayday! Two's going down, I'm punching out!"]
+				["wing-mayday-2", "Mayday! Two's going down, I'm punching out!"],
+				["wing-down-2", "Viper Two is hit and out of the fight."]
 			]
 		}
 	}
