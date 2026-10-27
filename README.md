@@ -150,7 +150,7 @@ and losing your aircraft doesn't hand you a fresh one.
 src/lib/engine/   WebGL2 engine: math, GL wrappers, mesh builder, particles, lights, shaders
 src/lib/models/   Procedural meshes (aircraft, vehicles, infantry, structures, nature, ordnance)
 src/lib/game/     Simulation: flight, weapons, AI, waves, terrain, debris, effects, game loop
-src/lib/audio/    Synthesised sound effects, engine loops, dynamic music, cockpit voice and radio chatter
+src/lib/audio/    Synthesised sound effects, engine loops, cockpit voice and radio chatter
 src/lib/ui/       Svelte HUD, title / hangar, pause, game-over, controls
 src/routes/       App shell; /sandbox renders a static showcase scene for engine work
 ```
@@ -159,8 +159,7 @@ src/routes/       App shell; /sandbox renders a static showcase scene for engine
 or DOM, which is what the integration tests drive. Hot loops mutate preallocated state on purpose
 to keep garbage collection out of the frame budget.
 
-The music is a synthesised score whose layers (pad, bass, drums, lead) fade in with the threat
-around the aircraft. Cockpit callouts and the tower / wingman radio calls play recorded clips from
+Cockpit callouts and the tower / wingman radio calls play recorded clips from
 `static/audio/` when they exist and fall back to the browser's speech voice otherwise. To record
 them, run `ELEVENLABS_API_KEY=... pnpm voice` (add `radio` or `cockpit` for one set, `--force` to
 redo existing clips); radio lines live in `src/lib/audio/radio-lines.json`.

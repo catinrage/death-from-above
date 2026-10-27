@@ -1,5 +1,4 @@
 import { AudioEngine } from '../audio/audio';
-import { threatLevel } from '../audio/music';
 import { RadioWatch } from '../audio/radio';
 import { clamp, damp, lerp } from '../engine/math';
 import { fx as rnd } from '../engine/rng';
@@ -74,7 +73,7 @@ import { World } from './world';
 import { Wingman, WING_HP } from './wingman';
 import { zoneAt } from './no-fire';
 import { AirBase } from './base';
-import { radioState, threatInput } from './battle-audio';
+import { radioState } from './battle-audio';
 
 export interface GameCallbacks {
 	hud(h: HudSnapshot): void;
@@ -1077,7 +1076,7 @@ export class Game {
 		}
 	}
 
-	/** Radio chatter and the dynamic score, both in real time (not slowed by bullet time). */
+	/** Radio chatter, in real time (not slowed by bullet time). */
 	private updateBattleAudio(dt: number): void {
 		const w = this.world;
 		const p = w.player;
@@ -1087,10 +1086,6 @@ export class Game {
 			this.audio.radio(this.radioWatch.update(s));
 		}
 		this.audio.updateRadio(dt, flying);
-		const inSortie = this.phase === 'playing' || this.phase === 'paused';
-		const threat = inSortie ? threatLevel(threatInput(w, p, this.waves.state)) : 0.1;
-		const level = { loading: 0, title: 0.55, playing: 1, paused: 0.3, gameover: 0.45 }[this.phase];
-		this.audio.updateMusic(dt, threat, level);
 	}
 
 	/**

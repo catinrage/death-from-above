@@ -1,7 +1,6 @@
 import type { SfxId, SoundSink } from '../game/world';
 import { softClipCurve, synthBoom, type BoomContext } from './boom';
 import { ALERTS, ALERT_ORDER, Announcer, type Alert, type AlertState } from './cockpit';
-import { MusicDirector } from './music';
 import {
 	RADIO,
 	RADIO_CUES,
@@ -12,7 +11,6 @@ import {
 	type Speaker,
 	type Transmission
 } from './radio';
-import { Score } from './score';
 
 interface Voice {
 	gain: GainNode;
@@ -102,15 +100,9 @@ export class AudioEngine implements SoundSink {
 	/** Recorded radio calls by clip file; anything missing falls back to the speech voice. */
 	private readonly radioClips = new Map<string, AudioBuffer>();
 	private radioBus!: GainNode;
-	private readonly director = new MusicDirector();
-	private score: Score | null = null;
-	private musicBus: GainNode | null = null;
-	/** Score loudness last asked for (-1 = never). */
-	private musicLevel = -1;
 	private ambienceTimer = 3;
 	private voices = 0;
 	volume = 0.8;
-	music = 0.6;
 
 	get ready(): boolean {
 		return this.ctx !== null && this.ctx.state === 'running';
@@ -184,11 +176,6 @@ export class AudioEngine implements SoundSink {
 		this.startAmbience();
 		this.loadVoices();
 		this.buildRadio(comp);
-		const musicBus = ctx.createGain();
-		musicBus.gain.value = this.music;
-		musicBus.connect(comp);
-		this.musicBus = musicBus;
-		this.score = new Score(ctx, musicBus, this.white);
 	}
 
 	/** Radio band: thin, a little crunchy, so the tower and wingman sound miles away. */
@@ -255,31 +242,6 @@ export class AudioEngine implements SoundSink {
 	setVolume(v: number): void {
 		this.volume = v;
 		if (this.master) this.master.gain.value = v;
-	}
-
-	setMusicVolume(v: number): void {
-		this.music = v;
-		if (this.musicBus && this.ctx) this.musicBus.gain.setTargetAtTime(v, this.ctx.currentTime, 0.1);
-	}
-
-	/**
-	 * Dynamic score, called every frame: `threat` (0..1) drives which layers
-	 * play, `level` (0..1) how loud the whole score is (0 fades it out).
-	 */
-	updateMusic(dt: number, threat: number, level: number): void {
-		const score = this.score;
-		if (!score || !this.ready) return;
-		if (level !== this.musicLevel) {
-			this.musicLevel = level;
-			score.setLevel(level, level > 0 ? 2 : 1.2);
-		}
-		this.director.update(dt, threat);
-		score.update(this.director.layers);
-	}
-
-	/** Current music intensity 0..1 (for debugging and the HUD). */
-	get intensity(): number {
-		return this.director.level;
 	}
 
 	/** Queues radio calls; the desk decides when (and whether) each goes out. */
@@ -1023,8 +985,6 @@ export class AudioEngine implements SoundSink {
 		const ctx = this.ctx;
 		this.ctx = null;
 		this.engineNodes = null;
-		this.score = null;
-		this.musicBus = null;
 		if (ctx) void ctx.close();
 	}
 }
