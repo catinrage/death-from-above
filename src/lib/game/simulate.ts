@@ -1,4 +1,5 @@
 import { updateAir } from './enemy-air';
+import { ORBIT_PITCH, SIDE_PITCH } from './camera';
 import type { PilotInput } from './player';
 import { updateProjectiles } from './projectiles';
 import { updateStrikes } from './specials';
@@ -38,7 +39,9 @@ export function simulateWorld(w: World, dt: number, input: PilotInput | null): v
 	w.lights.update(dt);
 	w.fx.update(dt);
 	if (p) {
-		const target = p.crashed ? { x: p.x, y: p.y + 20, vx: 0, vy: 0 } : p;
-		w.camera.follow(dt, target, w.ground(p.x));
+		const target = p.crashed ? { x: p.x, y: p.y + 20, vx: 0, vy: 0 } : p.cameraTarget;
+		// The gunship looks down on its orbit; everything else gets the flat side-on view.
+		w.camera.pitchTarget = p.flight === 'orbit' && !p.crashed ? ORBIT_PITCH : SIDE_PITCH;
+		w.camera.follow(dt, target, w.ground(target.x));
 	}
 }

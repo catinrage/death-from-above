@@ -21,7 +21,21 @@ export type BombId =
 	| 'arm'
 	| 'gunpod';
 export type AircraftId =
-	'kestrel' | 'wraith' | 'grizzly' | 'albatross' | 'a10' | 'f16' | 'su25' | 'f4' | 'b1';
+	| 'kestrel'
+	| 'wraith'
+	| 'grizzly'
+	| 'albatross'
+	| 'a10'
+	| 'f16'
+	| 'su25'
+	| 'f4'
+	| 'b1'
+	| 'ac130'
+	| 'apache'
+	| 'mq9'
+	| 'stuka'
+	| 'a1'
+	| 'tu95';
 
 export type UnitKind =
 	| 'rifleman'

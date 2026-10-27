@@ -13,6 +13,9 @@ const BEHIND = 30;
 const BEYOND = 45;
 /** Furthest landing point (from the aircraft) the camera will widen out to show. */
 const MAX_REACH = 340;
+/** Camera pitch for the usual side-on shot and for looking down on the gunship's orbit. */
+export const SIDE_PITCH = 5 * DEG;
+export const ORBIT_PITCH = 16 * DEG;
 
 /**
  * Side-on chase camera. It frames the aircraft, the ground beneath it and —
@@ -23,7 +26,9 @@ export class CameraRig {
 	x = 0;
 	y = 40;
 	dist = 150;
-	readonly pitch = 5 * DEG;
+	pitch = SIDE_PITCH;
+	/** Pitch the camera eases toward (set every step by the simulation). */
+	pitchTarget = SIDE_PITCH;
 	readonly fovY = 38 * DEG;
 	readonly near = 2;
 	readonly far = 9000;
@@ -70,6 +75,7 @@ export class CameraRig {
 		this.y = f.y;
 		this.dist = f.dist;
 		this.lead = f.lead;
+		this.pitch = this.pitchTarget;
 	}
 
 	private framing(
@@ -121,6 +127,7 @@ export class CameraRig {
 		// Ride along with vertical speed so a hard climb never outruns the frame.
 		this.y = damp(this.y + t.vy * dt * 0.7, f.y, 3, dt);
 		this.dist = damp(this.dist, f.dist, 1.8, dt);
+		this.pitch = damp(this.pitch, this.pitchTarget, 1.5, dt);
 	}
 
 	addTrauma(amount: number): void {

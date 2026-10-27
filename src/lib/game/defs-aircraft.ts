@@ -15,7 +15,17 @@ export interface GunSpec {
 	color: [number, number, number];
 	/** Explosive rounds make small blasts on impact. */
 	explosive: number;
+	/** Turret or side-firing guns: they aim at the reticle instead of along the nose. */
+	aimed?: boolean;
+	/** A heavy gun (the gunship's howitzer) that fires a shell every `every` seconds of trigger. */
+	heavy?: { every: number; speed: number; muzzle: Vec3T };
 }
+
+/**
+ * How the airframe moves: wings that need airspeed, a rotor that can hover
+ * and land anywhere, or a gunship's fixed left-hand orbit around a point.
+ */
+export type FlightModel = 'fixed' | 'rotor' | 'orbit';
 
 export interface AircraftDef {
 	id: AircraftId;
@@ -33,7 +43,10 @@ export interface AircraftDef {
 	turnRate: number;
 	stallSpeed: number;
 	cruise: number;
-	gun: GunSpec;
+	/** Fixed wing unless set. */
+	flight?: FlightModel;
+	/** Forward guns; null for airframes that carry none (the drone, the Bear). */
+	gun: GunSpec | null;
 	loadout: Partial<Record<BombId, number>>;
 	/** Seconds to regenerate one general-purpose bomb. */
 	regen: number;
@@ -43,13 +56,21 @@ export interface AircraftDef {
 	flares: number;
 	/** Multiplier on enemy lock time (stealth > 1). */
 	stealth: number;
-	engine: 'jet' | 'prop';
+	engine: 'jet' | 'prop' | 'rotor';
+	/** Pairs of propellers on each hub that turn in opposite directions. */
+	contra?: boolean;
+	/** Main and tail rotor hubs (local space) and the rotor mesh scale. */
+	rotor?: { main: Vec3T; tail: Vec3T; size: number };
+	/** Dive bomber: a siren howls and dive brakes hold `limit` m/s in a steep dive. */
+	dive?: { limit: number };
 	exhaust: Vec3T[];
 	radius: number;
 	/** Bombs dropped per trigger pull (bombers ripple-release). */
 	salvo: number;
 	/** Tail gunner that engages enemy aircraft and missiles. */
 	tailGun: boolean;
+	/** Where the tail gunner's muzzle sits (local space). */
+	tailGunAt?: Vec3T;
 	stats: { speed: number; armor: number; payload: number; agility: number };
 	/** How the boost looks: afterburner flame, rocket bottles, cold plasma or a smoky push. */
 	boostFx: BoostFx;
@@ -513,6 +534,304 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 		stats: { speed: 0.75, armor: 0.85, payload: 1.0, agility: 0.35 },
 		boostFx: 'afterburner',
 		tip: [-9.8, -0.1, 15.5]
+	},
+	ac130: {
+		id: 'ac130',
+		name: 'SPECTRE',
+		real: 'AC-130H Spectre',
+		role: 'Orbiting gunship',
+		blurb:
+			'Circles the target in a slow left-hand pylon turn while a 40 mm Bofors and a 105 mm howitzer fire out of the port side.',
+		mesh: 'ac130',
+		scale: 0.55,
+		flight: 'orbit',
+		props: [
+			[5.2, 1.4, 5.6],
+			[5.2, 1.4, 10.6],
+			[5.2, 1.4, -5.6],
+			[5.2, 1.4, -10.6]
+		],
+		hp: 360,
+		thrust: 14,
+		boost: 30,
+		drag: 0.005,
+		lift: 2,
+		turnRate: 1,
+		stallSpeed: 20,
+		cruise: 34,
+		gun: {
+			rate: 3,
+			damage: 34,
+			pierce: 0.55,
+			speed: 520,
+			spread: 0.006,
+			heatPerShot: 6,
+			muzzles: [[-1.5, -0.6, -3.6]],
+			tracerEvery: 1,
+			color: [10, 6, 2],
+			explosive: 4.5,
+			aimed: true,
+			heavy: { every: 2.6, speed: 330, muzzle: [-6, -0.6, -4.4] }
+		},
+		loadout: { gp: 2, guided: 3 },
+		regen: 3,
+		missiles: 6,
+		hardpoints: [],
+		flares: 12,
+		stealth: 0.6,
+		engine: 'prop',
+		exhaust: [],
+		radius: 9,
+		salvo: 1,
+		tailGun: false,
+		stats: { speed: 0.2, armor: 1, payload: 0.4, agility: 0.1 },
+		boostFx: 'smoke',
+		tip: [-0.5, 1.9, 20]
+	},
+	apache: {
+		id: 'apache',
+		name: 'LONGBOW',
+		real: 'AH-64D Apache Longbow',
+		role: 'Attack helicopter',
+		blurb:
+			'Hovers, strafes and sets down anywhere. The chin gun tracks your reticle and Hellfires do the rest.',
+		mesh: 'apache',
+		scale: 1,
+		flight: 'rotor',
+		props: [],
+		hp: 170,
+		thrust: 30,
+		boost: 20,
+		drag: 0.004,
+		lift: 2,
+		turnRate: 2,
+		stallSpeed: 0,
+		cruise: 46,
+		gun: {
+			rate: 10,
+			damage: 15,
+			pierce: 0.35,
+			speed: 640,
+			spread: 0.014,
+			heatPerShot: 1.8,
+			muzzles: [[3.9, -0.8, 0]],
+			tracerEvery: 1,
+			color: [10, 5, 1.6],
+			explosive: 1.2,
+			aimed: true
+		},
+		loadout: { gp: 2, guided: 2, rockets: 4 },
+		regen: 3,
+		missiles: 8,
+		hardpoints: [
+			[-0.2, -0.75, 1.55],
+			[-0.2, -0.75, -1.55]
+		],
+		flares: 6,
+		stealth: 1,
+		engine: 'rotor',
+		rotor: { main: [0, 1.95, 0], tail: [-8.65, 1.5, 0.32], size: 1.25 },
+		exhaust: [],
+		radius: 5,
+		salvo: 1,
+		tailGun: false,
+		stats: { speed: 0.3, armor: 0.55, payload: 0.35, agility: 1 },
+		boostFx: 'smoke',
+		tip: [-0.2, -0.05, 1.85]
+	},
+	mq9: {
+		id: 'mq9',
+		name: 'REAPER',
+		real: 'MQ-9 Reaper',
+		role: 'Hunter-killer drone',
+		blurb:
+			'Slow, fragile and hard for radar to see. No gun: it kills with laser-guided bombs and Hellfires only.',
+		mesh: 'mq9',
+		scale: 0.9,
+		props: [[-5.4, 0, 0]],
+		hp: 70,
+		thrust: 12,
+		boost: 9,
+		drag: 0.006,
+		lift: 2.6,
+		turnRate: 1.7,
+		stallSpeed: 22,
+		cruise: 42,
+		gun: null,
+		loadout: { guided: 4 },
+		regen: 3,
+		missiles: 8,
+		hardpoints: [
+			[0.1, -0.35, 2.6],
+			[0.1, -0.35, -2.6],
+			[0.1, -0.3, 4.4],
+			[0.1, -0.3, -4.4]
+		],
+		flares: 3,
+		stealth: 1.6,
+		engine: 'prop',
+		exhaust: [],
+		radius: 4.5,
+		salvo: 1,
+		tailGun: false,
+		stats: { speed: 0.15, armor: 0.1, payload: 0.3, agility: 0.45 },
+		boostFx: 'smoke',
+		tip: [-0.2, 0.5, 10]
+	},
+	stuka: {
+		id: 'stuka',
+		name: 'STUKA',
+		real: 'Ju 87 B Stuka',
+		role: 'Dive bomber',
+		blurb:
+			'Point the nose at the target and dive. The siren howls, the dive brakes bite and the bombs fall true.',
+		mesh: 'stuka',
+		scale: 0.85,
+		props: [[5.95, 0, 0]],
+		hp: 130,
+		thrust: 15,
+		boost: 10,
+		drag: 0.0049,
+		lift: 2.4,
+		turnRate: 2,
+		stallSpeed: 26,
+		cruise: 52,
+		gun: {
+			rate: 14,
+			damage: 6,
+			pierce: 0.05,
+			speed: 700,
+			spread: 0.016,
+			heatPerShot: 1.2,
+			muzzles: [
+				[1.8, -0.95, 3.4],
+				[1.8, -0.95, -3.4]
+			],
+			tracerEvery: 2,
+			color: [9, 6.5, 2.2],
+			explosive: 0
+		},
+		loadout: { gp: 6, penetrator: 1 },
+		regen: 2.2,
+		missiles: 0,
+		hardpoints: [
+			[0.3, -1.3, 0],
+			[-0.3, -1.95, 4.3],
+			[-0.3, -1.95, -4.3]
+		],
+		flares: 3,
+		stealth: 0.9,
+		engine: 'prop',
+		dive: { limit: 92 },
+		exhaust: [],
+		radius: 5,
+		salvo: 1,
+		tailGun: false,
+		stats: { speed: 0.35, armor: 0.4, payload: 0.45, agility: 0.6 },
+		boostFx: 'smoke',
+		tip: [-0.3, -0.9, 8.6]
+	},
+	a1: {
+		id: 'a1',
+		name: 'SANDY',
+		real: 'A-1H Skyraider',
+		role: 'Piston attack',
+		blurb:
+			'A propeller-driven dump truck: four 20 mm cannons, pylons everywhere and armour that laughs at rifle fire.',
+		mesh: 'a1',
+		scale: 0.85,
+		props: [[5.95, 0, 0]],
+		hp: 220,
+		thrust: 17,
+		boost: 12,
+		drag: 0.0044,
+		lift: 2.5,
+		turnRate: 2,
+		stallSpeed: 28,
+		cruise: 58,
+		gun: {
+			rate: 16,
+			damage: 10,
+			pierce: 0.22,
+			speed: 700,
+			spread: 0.016,
+			heatPerShot: 1.4,
+			muzzles: [
+				[1.7, -0.5, 3.2],
+				[1.7, -0.5, -3.2],
+				[1.7, -0.5, 3.7],
+				[1.7, -0.5, -3.7]
+			],
+			tracerEvery: 2,
+			color: [9, 6, 2],
+			explosive: 0.8
+		},
+		loadout: { gp: 10, cluster: 3, napalm: 3, chemical: 1 },
+		regen: 2.2,
+		missiles: 2,
+		hardpoints: [
+			[-0.2, -1.05, 2.4],
+			[-0.2, -1.05, -2.4],
+			[-0.4, -0.95, 4.0],
+			[-0.4, -0.95, -4.0],
+			[-0.5, -0.85, 5.4],
+			[-0.5, -0.85, -5.4]
+		],
+		flares: 6,
+		stealth: 0.85,
+		engine: 'prop',
+		exhaust: [],
+		radius: 5.5,
+		salvo: 1,
+		tailGun: false,
+		stats: { speed: 0.4, armor: 0.75, payload: 0.85, agility: 0.55 },
+		boostFx: 'smoke',
+		tip: [-0.6, 0, 7.6]
+	},
+	tu95: {
+		id: 'tu95',
+		name: 'BEAR',
+		real: 'Tu-95MS Bear',
+		role: 'Turboprop strategic bomber',
+		blurb:
+			'Eight contra-rotating propellers, twin 23 mm cannons in the tail turret and no forward gun at all.',
+		mesh: 'tu95',
+		scale: 0.5,
+		props: [
+			[5.05, -1.05, 7],
+			[4.45, -1.05, 7],
+			[1.75, -1.38, 13.5],
+			[1.15, -1.38, 13.5],
+			[5.05, -1.05, -7],
+			[4.45, -1.05, -7],
+			[1.75, -1.38, -13.5],
+			[1.15, -1.38, -13.5]
+		],
+		contra: true,
+		hp: 360,
+		thrust: 20,
+		boost: 13,
+		drag: 0.004,
+		lift: 2,
+		turnRate: 1.35,
+		stallSpeed: 34,
+		cruise: 66,
+		gun: null,
+		loadout: { gp: 20, cluster: 6, cruise: 3, thunder: 2 },
+		regen: 1.3,
+		missiles: 0,
+		hardpoints: [],
+		flares: 10,
+		stealth: 0.6,
+		engine: 'prop',
+		exhaust: [],
+		radius: 11,
+		salvo: 3,
+		tailGun: true,
+		tailGunAt: [-25.6, 0.1, 0],
+		stats: { speed: 0.6, armor: 0.9, payload: 0.95, agility: 0.25 },
+		boostFx: 'smoke',
+		tip: [-9.5, -1.65, 25]
 	}
 };
 
@@ -525,5 +844,11 @@ export const AIRCRAFT_ORDER: AircraftId[] = [
 	'f16',
 	'su25',
 	'f4',
-	'b1'
+	'b1',
+	'ac130',
+	'apache',
+	'mq9',
+	'stuka',
+	'a1',
+	'tu95'
 ];

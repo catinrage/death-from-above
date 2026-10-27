@@ -1,5 +1,6 @@
 import { angleDiff, clamp, damp, moveToward, smoothstep, wrapAngle } from '../engine/math';
 import { fx as rnd } from '../engine/rng';
+import type { FollowTarget } from './camera';
 import { explode } from './combat';
 import {
 	COMPONENT_INFO,
@@ -26,14 +27,15 @@ import {
 	POD_RESET,
 	ROCKETS_PER_POD,
 	ROCKET_SPEED,
-	type BlastSpec
+	type BlastSpec,
+	type BombDef
 } from './defs-bombs';
 import { launchSpecial } from './specials';
 import { launchMissile, spawnBullet, type Flare } from './projectiles';
 import { trackUnit } from './targeting';
 import type { AircraftId, BombId, Designation, Trackable } from './types';
 import type { Loadout } from './loadout';
-import { dropBomb } from './weapons';
+import { dropBomb, predictImpact } from './weapons';
 import type { World } from './world';
 
 export interface PilotInput {
@@ -94,6 +96,26 @@ const FLARES_PER_SALVO = 8;
 /** Ordnance the airfield cannot restock: it comes back once, at the start of each wave. */
 const WAVE_ONLY: ReadonlySet<BombId> = new Set<BombId>(['nuke']);
 const FOCUS_AGILITY = 2.3;
+/** Gunship orbit: radius across the screen, depth into it, bank, climb rate and altitude band. */
+export const ORBIT_R = 80;
+const ORBIT_RZ = 30;
+const ORBIT_BANK = 0.5;
+const ORBIT_CLIMB = 24;
+export const ORBIT_MIN = 35;
+const ORBIT_START = 130;
+/** Helicopter: climb rate, skid height, the sink and roll speeds a touchdown survives, pedal turn rate. */
+const HELI_CLIMB = 26;
+const HELI_SKIDS = 1.7;
+export const HELI_SAFE_SINK = 9;
+const HELI_SAFE_ROLL = 26;
+const HELI_YAW_RATE = 5;
+/** How far off the nose the chin turret can swing. */
+const HELI_GUN_ARC = 1.3;
+/** Furthest a turret gun picks a target on its own when nothing is designated. */
+const AUTO_AIM_RANGE = 450;
+/** Dive bombing: how steep counts as a dive, and how far the release may be corrected. */
+const DIVE_SIN = 0.5;
+const DIVE_CORRECTION = 0.35;
 const CRASH_BLAST: BlastSpec = {
 	radius: 16,
 	damage: 160,
@@ -112,6 +134,8 @@ export class Player implements Trackable {
 	vy: number;
 	angle: number;
 	angVel = 0;
+	/** Turn about the vertical axis: the gunship's orbit heading, a helicopter's pedal turn. */
+	yaw = 0;
 	roll = 0;
 	rollTarget = 0;
 	bank = 0;
@@ -179,6 +203,16 @@ export class Player implements Trackable {
 	outOfBounds = 0;
 	ceiling = false;
 	propSpin = 0;
+	/** Dive siren level 0..1 (dive bombers only). */
+	siren = 0;
+	/** Gunship orbit: pivot on the ground track, height above it and position around it. */
+	orbitX = Number.NaN;
+	orbitAlt = ORBIT_START;
+	private orbitPhase = 0;
+	/** Which way a helicopter's nose points along the battlefield (+1 right, -1 left). */
+	facing = 1;
+	private heavyTimer = 0;
+	private readonly view: FollowTarget = { x: 0, y: 0, vx: 0, vy: 0 };
 	private tailTimer = 0;
 	private trailTimer = 0;
 	/** Enemy launchers currently locking (reset by the AI every frame). */
@@ -207,6 +241,25 @@ export class Player implements Trackable {
 		>;
 		this.invuln = 2.5;
 		this.rollTarget = this.roll = Math.cos(angle) < 0 ? Math.PI : 0;
+		this.facing = Math.cos(angle) < 0 ? -1 : 1;
+		if (this.flight === 'rotor') {
+			this.vx = 0;
+			this.vy = 0;
+		}
+	}
+
+	get flight(): 'fixed' | 'rotor' | 'orbit' {
+		return this.def.flight ?? 'fixed';
+	}
+
+	/** What the chase camera frames: the gunship's orbit pivot, otherwise the aircraft itself. */
+	get cameraTarget(): FollowTarget {
+		if (this.flight !== 'orbit' || Number.isNaN(this.orbitX) || !this.alive) return this;
+		this.view.x = this.orbitX;
+		this.view.y = this.y;
+		this.view.vx = 0;
+		this.view.vy = this.vy;
+		return this.view;
 	}
 
 	get heat(): number {
@@ -245,8 +298,12 @@ export class Player implements Trackable {
 			return;
 		}
 		inp = this.turnback(inp);
-		this.steer(dt, inp, w);
-		this.fly(dt, inp, w);
+		if (this.flight === 'orbit') this.orbit(dt, inp, w);
+		else if (this.flight === 'rotor') this.hover(dt, inp, w);
+		else {
+			this.steer(dt, inp, w);
+			this.fly(dt, inp, w);
+		}
 		if (!this.alive) return;
 		this.guns(dt, inp, w);
 		this.gunPod(dt, inp, w);
@@ -275,7 +332,11 @@ export class Player implements Trackable {
 	 */
 	private turnback(inp: PilotInput): PilotInput {
 		const side = this.pastTurnback();
-		if (side === 0 || Math.cos(this.angle) * side < -0.5) return inp;
+		if (side === 0) return inp;
+		// A helicopter turns on the spot, so judge it by the stick rather than the nose.
+		const inbound =
+			this.flight === 'rotor' ? inp.steerX * side < -0.2 : Math.cos(this.angle) * side < -0.5;
+		if (inbound) return inp;
 		return { ...inp, steerX: -side, steerY: 0.2 };
 	}
 
@@ -304,8 +365,8 @@ export class Player implements Trackable {
 		this.angle = wrapAngle(this.angle + this.angVel * dt);
 	}
 
-	private fly(dt: number, inp: PilotInput, w: World): void {
-		const d = this.def;
+	/** Boost meter and burner; airframes with an airbrake also deploy it. Returns whether it is out. */
+	private power(dt: number, inp: PilotInput, w: World, airbrake: boolean): boolean {
 		const wasBoosting = this.boosting;
 		this.boosting = inp.boost && this.boostMeter > 0.02 && !this.landed;
 		if (this.boosting && !wasBoosting) this.ignition = 1;
@@ -313,9 +374,15 @@ export class Player implements Trackable {
 		this.boostLevel = damp(this.boostLevel, this.boosting ? 1 : 0, this.boosting ? 7 : 4, dt);
 		// About seven seconds of boost, back in about eight.
 		this.boostMeter = clamp(this.boostMeter + (this.boosting ? -0.14 : 0.125) * dt, 0, 1);
-		const braking = inp.brake && !this.boosting && !this.landed;
+		const braking = airbrake && inp.brake && !this.boosting && !this.landed;
 		if (braking && this.brakeLevel < 0.05) w.sound.play('airbrake', this.x, this.y, 0.9);
 		this.brakeLevel = damp(this.brakeLevel, braking ? 1 : 0, braking ? 6 : 4, dt);
+		return braking;
+	}
+
+	private fly(dt: number, inp: PilotInput, w: World): void {
+		const d = this.def;
+		const braking = this.power(dt, inp, w, true);
 		// Idle while braking, but keep enough power to hold the floor speed rather than sink into a stall.
 		const slowEnough = this.speed < d.stallSpeed * BRAKE_FLOOR * 1.08;
 		const idle = braking && !slowEnough;
@@ -363,6 +430,7 @@ export class Player implements Trackable {
 			this.vx -= (this.vx / speed) * cut;
 			this.vy -= (this.vy / speed) * cut;
 		}
+		if (d.dive) this.diveBrake(dt, d.dive.limit);
 		this.stalled = speed < d.stallSpeed && !this.landed;
 		if (this.stalled)
 			this.angle += angleDiff(this.angle, -Math.PI / 2) * (1 - speed / d.stallSpeed) * 1.8 * dt;
@@ -395,7 +463,136 @@ export class Player implements Trackable {
 		this.bank = damp(this.bank, -this.angVel * 0.32 * (this.rollTarget > 1 ? -1 : 1), 6, dt);
 	}
 
-	/** Local hardpoint/muzzle offset to world space (applies roll, then heading). */
+	/**
+	 * Dive brakes and siren: in a steep dive the brakes hold the speed at `limit`
+	 * so the aim stays steady, and the siren winds up with the airspeed.
+	 */
+	private diveBrake(dt: number, limit: number): void {
+		const steep = smoothstep(DIVE_SIN * 0.7, DIVE_SIN * 1.5, -Math.sin(this.angle));
+		const speed = this.speed;
+		const howl = steep * smoothstep(this.def.stallSpeed, limit * 0.9, speed);
+		this.siren = damp(this.siren, howl, howl > this.siren ? 4 : 2, dt);
+		if (steep < 0.5 || speed <= limit) return;
+		const cut = Math.min(speed - limit, this.def.boost * BRAKE_POWER * 2 * steep * dt);
+		this.vx -= (this.vx / speed) * cut;
+		this.vy -= (this.vy / speed) * cut;
+	}
+
+	/**
+	 * Gunship orbit: a fixed left-hand pylon turn around a pivot on the ground.
+	 * Steering slides the pivot along the battlefield and moves the orbit up or
+	 * down; the aircraft itself never needs flying, so it cannot stall or crash.
+	 */
+	private orbit(dt: number, inp: PilotInput, w: World): void {
+		if (dt <= 0) return;
+		const d = this.def;
+		this.power(dt, inp, w, false);
+		this.throttle = damp(this.throttle, this.boosting ? 1 : 0.8, 6, dt);
+		if (Number.isNaN(this.orbitX)) {
+			// Join the orbit at its near point, already heading the way the aircraft faces.
+			this.orbitPhase = Math.cos(this.angle) >= 0 ? Math.PI / 2 : -Math.PI / 2;
+			this.orbitX = this.x;
+			this.orbitAlt = Math.max(ORBIT_START, this.y - w.ground(this.x));
+		}
+		const sx = Math.abs(inp.steerX) > 0.2 ? inp.steerX : 0;
+		const sy = Math.abs(inp.steerY) > 0.2 ? inp.steerY : 0;
+		const slide =
+			(d.cruise * 0.8 + (this.boosting ? d.boost : 0)) * engineFactor(this.systems.engine);
+		this.orbitX = clamp(
+			this.orbitX + sx * slide * dt,
+			WORLD.arenaMinX + ORBIT_R,
+			WORLD.arenaMaxX - ORBIT_R
+		);
+		this.orbitAlt = clamp(this.orbitAlt + sy * ORBIT_CLIMB * dt, ORBIT_MIN, WORLD.ceiling - 15);
+		this.orbitPhase = wrapAngle(this.orbitPhase - (d.cruise / ORBIT_R) * dt);
+		const x = this.orbitX + Math.cos(this.orbitPhase) * ORBIT_R;
+		const z = Math.sin(this.orbitPhase) * ORBIT_RZ;
+		const floor = w.surface.clearance(x) + ORBIT_MIN * 0.6;
+		const wantY = Math.max(w.ground(this.orbitX) + this.orbitAlt, floor);
+		const y = this.y + clamp(wantY - this.y, -ORBIT_CLIMB * dt, ORBIT_CLIMB * dt);
+		const vz = (z - this.z) / dt;
+		this.vx = (x - this.x) / dt;
+		this.vy = (y - this.y) / dt;
+		this.x = x;
+		this.y = Math.max(y, floor);
+		this.z = z;
+		this.yaw = Math.atan2(-vz, this.vx);
+		this.angle = clamp(Math.atan2(this.vy, Math.hypot(this.vx, vz)), -0.3, 0.3);
+		this.angVel = 0;
+		this.roll = this.rollTarget = 0;
+		this.bank = damp(this.bank, -ORBIT_BANK, 2, dt);
+		this.stalled = false;
+		this.landed = false;
+		this.ceiling = this.y - WORLD.baseHeight > WORLD.ceiling - 20;
+	}
+
+	/**
+	 * Helicopter: the stick sets the velocity directly (forward speed and climb),
+	 * with no stall. Letting go or braking hovers. It turns on the spot with the
+	 * pedals and can set down anywhere if it touches down gently enough.
+	 */
+	private hover(dt: number, inp: PilotInput, w: World): void {
+		const d = this.def;
+		this.power(dt, inp, w, false);
+		const hold = inp.brake;
+		const sx = !hold && Math.abs(inp.steerX) > 0.2 ? inp.steerX : 0;
+		const sy = !hold && Math.abs(inp.steerY) > 0.2 ? inp.steerY : 0;
+		const top = (d.cruise + (this.boosting ? d.boost : 0)) * engineFactor(this.systems.engine);
+		const alt = this.y - WORLD.baseHeight;
+		const thin = 1 - smoothstep(WORLD.ceiling - 40, WORLD.ceiling + 60, alt);
+		// Sitting on the skids it only moves off once the collective lifts it.
+		const wantVx = this.landed && sy <= 0 ? 0 : clamp(sx, -1, 1) * top;
+		// Ground cushion: the sink rate eases off near the ground, so holding down sets it down gently.
+		const height = this.y - w.surface.clearance(this.x) - HELI_SKIDS;
+		const wantVy = Math.max(
+			clamp(sy, -1, 1) * HELI_CLIMB * (sy > 0 ? thin : 1) - (1 - thin) * 6,
+			-3 - height * 1.2
+		);
+		this.vx = moveToward(this.vx, wantVx, d.thrust * dt);
+		this.vy = moveToward(this.vy, wantVy, d.thrust * 0.9 * dt);
+		const effort = Math.min(1, Math.hypot(this.vx / top, this.vy / HELI_CLIMB));
+		this.throttle = damp(
+			this.throttle,
+			Math.min(1, 0.55 + effort * 0.3 + this.boostLevel * 0.15),
+			4,
+			dt
+		);
+		this.x += this.vx * dt;
+		this.y += this.vy * dt;
+		if (sx !== 0 && Math.sign(sx) !== this.facing) {
+			// Pedal turn: flip the nose, and swing the model round from where it was.
+			this.facing = -this.facing;
+			this.yaw = wrapAngle(this.yaw - Math.PI);
+		}
+		this.yaw = moveToward(this.yaw, 0, HELI_YAW_RATE * dt);
+		const level = this.facing > 0 ? 0 : Math.PI;
+		// Nose down to fly forward, up to back off.
+		this.angle = wrapAngle(
+			level + clamp(-this.vx * 0.007, -0.32, 0.32) + this.vy * 0.003 * this.facing
+		);
+		this.angVel = 0;
+		this.roll = this.rollTarget = level;
+		this.bank = 0;
+		this.stalled = false;
+		this.ceiling = alt > WORLD.ceiling - 20;
+
+		const g = w.surface.clearance(this.x);
+		if (this.y - g < HELI_SKIDS) {
+			const gentle = this.vy > -HELI_SAFE_SINK && Math.abs(this.vx) < HELI_SAFE_ROLL;
+			if (!gentle && !this.landed) {
+				this.crash(w);
+				return;
+			}
+			this.landed = true;
+			this.y = g + HELI_SKIDS;
+			this.vy = Math.max(0, this.vy);
+			this.vx *= Math.exp(-6 * dt);
+		} else if (this.y - g > HELI_SKIDS + 0.4) {
+			this.landed = false;
+		}
+	}
+
+	/** Local hardpoint/muzzle offset to world space (applies roll, then pitch, then yaw). */
 	localToWorld(
 		l: readonly number[],
 		out: [number, number, number] = [0, 0, 0]
@@ -408,16 +605,67 @@ export class Player implements Trackable {
 			z1 = l[1] * sr + l[2] * cr;
 		const ca = Math.cos(this.angle),
 			sa = Math.sin(this.angle);
-		out[0] = this.x + (l[0] * ca - y1 * sa) * s;
+		const x2 = l[0] * ca - y1 * sa;
+		const cy = Math.cos(this.yaw),
+			sy = Math.sin(this.yaw);
+		out[0] = this.x + (x2 * cy + z1 * sy) * s;
 		out[1] = this.y + (l[0] * sa + y1 * ca) * s;
-		out[2] = this.z + z1 * s;
+		out[2] = this.z + (z1 * cy - x2 * sy) * s;
 		return out;
+	}
+
+	/**
+	 * Where a turret or side gun shoots from `from`: the designated spot, or
+	 * the nearest target it can bear on, or (with nothing about) its rest angle.
+	 */
+	aimPoint(w: World, inp: PilotInput, from: readonly number[]): [number, number] | null {
+		const d = inp.designate;
+		if (d && this.canBear(from, d.track.x, d.track.y)) return [d.track.x, d.track.y];
+		let best: [number, number] | null = null;
+		let bestD = AUTO_AIM_RANGE;
+		const cx = this.flight === 'orbit' ? this.orbitX : from[0];
+		for (const u of w.units) {
+			if (!u.alive) continue;
+			const ty = u.y + u.def.half[1];
+			const dist = Math.hypot(u.x - cx, ty - from[1]);
+			if (dist < bestD && this.canBear(from, u.x, ty)) {
+				bestD = dist;
+				best = [u.x, ty];
+			}
+		}
+		return best;
+	}
+
+	private canBear(from: readonly number[], x: number, y: number): boolean {
+		const a = Math.atan2(y - from[1], x - from[0]);
+		if (this.flight === 'rotor') return Math.abs(angleDiff(this.angle, a)) < HELI_GUN_ARC;
+		if (this.flight === 'orbit') return y < from[1];
+		return true;
+	}
+
+	/** Barrel angle for a gun at `from`. Aimed guns track a target; fixed ones point down the nose. */
+	private gunAngle(w: World, inp: PilotInput, from: readonly number[], aimed: boolean): number {
+		if (!aimed) return this.angle;
+		const t = this.aimPoint(w, inp, from);
+		if (t) return Math.atan2(t[1] - from[1], t[0] - from[0]);
+		if (this.flight === 'orbit')
+			return Math.atan2(w.ground(this.orbitX) - from[1], this.orbitX - from[0]);
+		return this.angle;
 	}
 
 	private guns(dt: number, inp: PilotInput, w: World): void {
 		const gun = this.def.gun;
+		if (!gun) {
+			this.firing = false;
+			return;
+		}
 		this.gunTimer -= dt;
+		this.heavyTimer = Math.max(0, this.heavyTimer - dt);
 		this.firing = inp.fire && !this.overheated && !this.landed;
+		if (this.firing && gun.heavy && this.heavyTimer <= 0) {
+			this.heavyTimer = gun.heavy.every;
+			this.fireHeavy(w, inp, gun.heavy.muzzle, gun.heavy.speed);
+		}
 		if (!this.firing) this.gunHeat = Math.max(0, this.gunHeat - dt * (this.overheated ? 30 : 45));
 		if (this.overheated && this.gunHeat < 25) this.overheated = false;
 		if (!this.firing) {
@@ -426,7 +674,7 @@ export class Player implements Trackable {
 		}
 		while (this.gunTimer <= 0) {
 			this.gunTimer += 1 / gun.rate;
-			this.shoot(w, gun, this.shot++);
+			this.shoot(w, gun, this.shot++, inp);
 			this.gunHeat += gun.heatPerShot;
 			if (this.gunHeat >= 100) {
 				this.overheated = true;
@@ -468,15 +716,18 @@ export class Player implements Trackable {
 		}
 	}
 
-	private shoot(w: World, gun: GunSpec, shot: number): void {
+	private shoot(w: World, gun: GunSpec, shot: number, inp: PilotInput = NO_INPUT): void {
 		const m = this.localToWorld(gun.muzzles[shot % gun.muzzles.length]);
-		const a = this.angle + rnd.gauss(gun.spread);
+		const aim = this.gunAngle(w, inp, m, !!gun.aimed);
+		const a = aim + rnd.gauss(gun.spread);
+		// A turret leads for itself, so its rounds leave without the airframe's drift.
+		const carry = gun.aimed ? 0 : 1;
 		spawnBullet(w, {
 			x: m[0],
 			y: m[1],
 			z: m[2],
-			vx: Math.cos(a) * gun.speed + this.vx,
-			vy: Math.sin(a) * gun.speed + this.vy,
+			vx: Math.cos(a) * gun.speed + this.vx * carry,
+			vy: Math.sin(a) * gun.speed + this.vy * carry,
 			life: 1.25,
 			damage: gun.damage,
 			pierce: gun.pierce,
@@ -490,12 +741,34 @@ export class Player implements Trackable {
 			m[0],
 			m[1],
 			m[2],
-			Math.cos(this.angle),
-			Math.sin(this.angle),
+			Math.cos(aim),
+			Math.sin(aim),
 			gun.explosive > 0 ? 1.5 : 1,
 			gun.color
 		);
 		w.sound.play(gun.explosive > 0 ? 'cannon' : 'gun', m[0], m[1], 0.5);
+	}
+
+	/** The gunship's howitzer: a heavy shell lobbed onto the aim point. */
+	private fireHeavy(w: World, inp: PilotInput, muzzle: readonly number[], speed: number): void {
+		const m = this.localToWorld(muzzle);
+		const t = this.aimPoint(w, inp, m) ?? [this.orbitX, w.ground(this.orbitX)];
+		const shell = BOMBS.gp;
+		const a = solveAngle(
+			w,
+			m[0],
+			m[1],
+			speed,
+			shell.drag,
+			Math.atan2(t[1] - m[1], t[0] - m[0]),
+			t[0],
+			0.6
+		);
+		dropBomb(w, shell, m[0], m[1], m[2], Math.cos(a) * speed, Math.sin(a) * speed, a);
+		w.fx.muzzleFlash(m[0], m[1], m[2], Math.cos(a), Math.sin(a), 3, [12, 7, 3]);
+		w.fx.gunSmoke(m[0], m[1], m[2], 3);
+		w.sound.play('tankGun', m[0], m[1], 0.9);
+		w.camera.addTrauma(0.12);
 	}
 
 	private ordnance(dt: number, inp: PilotInput, w: World): void {
@@ -575,17 +848,55 @@ export class Player implements Trackable {
 		const ca = Math.cos(this.angle),
 			sa = Math.sin(this.angle);
 		const down = Math.cos(this.roll) >= 0 ? 1 : -1;
-		dropBomb(
+		const [vx, vy] = this.bombVelocity(
 			w,
 			def,
 			p[0],
 			p[1],
-			p[2],
+			designate,
 			this.vx + sa * 2.5 * down,
-			this.vy - ca * 2.5 * down,
-			this.angle,
-			designate
+			this.vy - ca * 2.5 * down
 		);
+		dropBomb(w, def, p[0], p[1], p[2], vx, vy, this.angle, designate);
+	}
+
+	/**
+	 * How a bomb leaves the rack at (x, y): with the aircraft's own velocity,
+	 * except that a dive bomber in a steep dive throws it down its line of
+	 * sight so it falls true. The bomb sight uses this too.
+	 */
+	bombVelocity(
+		w: World,
+		def: BombDef,
+		x: number,
+		y: number,
+		designate: Designation | null,
+		vx = this.vx,
+		vy = this.vy
+	): [number, number] {
+		if (!this.def.dive || def.id === 'guided' || -Math.sin(this.angle) < DIVE_SIN) return [vx, vy];
+		const target = this.diveTarget(w, designate);
+		if (target === null) return [vx, vy];
+		const sp = Math.hypot(vx, vy);
+		const a = solveAngle(w, x, y, sp, def.drag, Math.atan2(vy, vx), target, DIVE_CORRECTION);
+		return [Math.cos(a) * sp, Math.sin(a) * sp];
+	}
+
+	/** Where a dive bomber's nose meets the ground, or the designated spot if it is close to that. */
+	diveTarget(w: World, designate: Designation | null): number | null {
+		const ca = Math.cos(this.angle),
+			sa = Math.sin(this.angle);
+		let nose: number | null = null;
+		for (let s = 4; s < 900; s += 4) {
+			const x = this.x + ca * s;
+			if (this.y + sa * s <= w.ground(x)) {
+				nose = x;
+				break;
+			}
+		}
+		if (nose === null) return null;
+		if (designate && Math.abs(designate.x - nose) < 60) return designate.x;
+		return nose;
 	}
 
 	/** Ripples the queued rockets off alternate pods, straight along the nose. */
@@ -777,7 +1088,8 @@ export class Player implements Trackable {
 
 	private rearm(dt: number, w: World): void {
 		// Only a full stop on the runway lets the ground crew get at the airframe.
-		if (this.landed && this.systemsDamaged && !repairSystems(this.systems, dt))
+		const onRunway = this.x > WORLD.runwayMinX && this.x < WORLD.runwayMaxX;
+		if (this.landed && onRunway && this.systemsDamaged && !repairSystems(this.systems, dt))
 			w.events.message('SYSTEMS REPAIRED', 'Engine, wings and hydraulics working', 'good');
 		const g = w.ground(this.x);
 		this.rearming = this.x > WORLD.runwayMinX && this.x < WORLD.runwayMaxX && this.y - g < 48;
@@ -880,7 +1192,7 @@ export class Player implements Trackable {
 			return;
 		}
 		this.tailTimer = 0.09;
-		const tail = this.localToWorld([-11.6, 0.2, 0]);
+		const tail = this.localToWorld(this.def.tailGunAt ?? [-11.6, 0.2, 0]);
 		const t = bestD / 650;
 		const a =
 			Math.atan2(best.y + best.vy * t - tail[1], best.x + best.vx * t - tail[0]) + rnd.gauss(0.03);
@@ -963,4 +1275,34 @@ export class Player implements Trackable {
 		w.damageTaken.crash = (w.damageTaken.crash ?? 0) + 1;
 		w.events.message('AIRCRAFT LOST', '', 'warn');
 	}
+}
+
+/**
+ * Nudges a launch angle (by at most `maxTurn`) so a ballistic round with this
+ * speed and drag lands on world x `tx`: a few secant steps on the impact point.
+ */
+export function solveAngle(
+	w: World,
+	x: number,
+	y: number,
+	speed: number,
+	drag: number,
+	a0: number,
+	tx: number,
+	maxTurn: number
+): number {
+	const miss = (a: number): number =>
+		predictImpact(w, x, y, Math.cos(a) * speed, Math.sin(a) * speed, drag, null).x - tx;
+	let prevA = a0 + 0.02;
+	let prevErr = miss(prevA);
+	let a = a0;
+	for (let i = 0; i < 5; i++) {
+		const err = miss(a);
+		if (Math.abs(err) < 0.4 || err === prevErr) break;
+		const next = a - (err * (a - prevA)) / (err - prevErr);
+		prevA = a;
+		prevErr = err;
+		a = clamp(next, a0 - maxTurn, a0 + maxTurn);
+	}
+	return a;
 }

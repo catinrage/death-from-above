@@ -32,7 +32,7 @@ export class Autopilot {
 	update(w: World, p: Player, dt: number): PilotInput {
 		const inp = this.input;
 		const g = w.surface.clearance(p.x);
-		const hurt = p.hp < p.def.hp * 0.45 || p.ammo.gp === 0;
+		const hurt = p.hp < p.def.hp * 0.45 || (p.capacity('gp') > 0 && p.ammo.gp === 0);
 		if (hurt && !this.homing) this.homing = true;
 		if (this.homing && p.hp > p.def.hp * 0.95 && p.ammo.gp >= p.capacity('gp') - 1)
 			this.homing = false;
@@ -99,6 +99,9 @@ export class Autopilot {
 			const d = Math.hypot(dx, dy);
 			if (d < 500 && (dx * ca + dy * sa) / d > 0.97) fire = true;
 		}
+		// Turret and side guns pick their own targets: just keep them firing when anything is near.
+		if (p.def.gun?.aimed)
+			fire = w.units.some((u) => u.alive && Math.abs(u.x - p.x) < 260 && u.y < p.y);
 		inp.fire = fire && !p.overheated;
 		inp.flare = p.lockedBy > 0 && rnd.chance(dt * 1.5);
 		return inp;

@@ -14,10 +14,10 @@ const LANCER = mat(0x3b3f43, 0.5, 0.35);
 const LANCER_DARK = mat(0x2d3034, 0.55, 0.35);
 const RADOME = mat(0x2a2c2e, 0.5, 0.2);
 
-const mirror = (pts: readonly P2[]): P2[] => pts.map(([x, z]) => [x, -z] as P2);
+export const mirror = (pts: readonly P2[]): P2[] => pts.map(([x, z]) => [x, -z] as P2);
 
 /** A wing pair from one planform (XZ), at height y, optionally tilted (dihedral). */
-function wingPair(
+export function wingPair(
 	b: MeshBuilder,
 	planform: readonly P2[],
 	y: number,
@@ -35,7 +35,7 @@ function wingPair(
 }
 
 /** A vertical fin from a side profile (XY), centred at z. */
-function fin(
+export function fin(
 	b: MeshBuilder,
 	profile: readonly P2[],
 	z: number,
@@ -50,13 +50,13 @@ function fin(
 	b.pop();
 }
 
-function body(b: MeshBuilder, profile: readonly P2[], m: Material, sy = 1, sz = 1): void {
+export function body(b: MeshBuilder, profile: readonly P2[], m: Material, sy = 1, sz = 1): void {
 	b.push().scale(1, sy, sz);
 	b.lathe(profile, 16, m, { axis: 'x' });
 	b.pop();
 }
 
-function nozzle(b: MeshBuilder, x: number, y: number, z: number, r: number): void {
+export function nozzle(b: MeshBuilder, x: number, y: number, z: number, r: number): void {
 	b.push()
 		.translate(x, y, z)
 		.cylinder(r * 0.9, r, 0.8, 12, P.nozzle, { axis: 'x' })
@@ -67,11 +67,18 @@ function nozzle(b: MeshBuilder, x: number, y: number, z: number, r: number): voi
 		.pop();
 }
 
-function canopy(b: MeshBuilder, x: number, y: number, len: number, h: number, w: number): void {
+export function canopy(
+	b: MeshBuilder,
+	x: number,
+	y: number,
+	len: number,
+	h: number,
+	w: number
+): void {
 	b.push().translate(x, y, 0).scale(len, h, w).sphere(1, 14, 8, P.canopy).pop();
 }
 
-function navLights(b: MeshBuilder, x: number, y: number, z: number): void {
+export function navLights(b: MeshBuilder, x: number, y: number, z: number): void {
 	b.box(0.22, 0.09, 0.12, P.navGreen, x, y, z);
 	b.box(0.22, 0.09, 0.12, P.navRed, x, y, -z);
 }
