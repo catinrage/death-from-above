@@ -1,4 +1,5 @@
 import type { ObjectiveStatus } from './campaign';
+import type { Systems } from './damage';
 import type { TutorialCard } from './tutorial';
 import type { AircraftId, BombId } from './types';
 
@@ -72,6 +73,10 @@ export interface HudSnapshot {
 	ceiling: boolean;
 	rearming: boolean;
 	landed: boolean;
+	/** Engine, wing and hydraulic damage, 0..1 each. */
+	systems: Systems;
+	/** A bomb release just stuck in the bay. */
+	bayJammed: boolean;
 	damageDir: number;
 	damageFlash: number;
 	aircraft: AircraftId;
@@ -157,6 +162,8 @@ export function emptyHud(): HudSnapshot {
 		ceiling: false,
 		rearming: false,
 		landed: false,
+		systems: { engine: 0, wing: 0, hydraulics: 0 },
+		bayJammed: false,
 		damageDir: 0,
 		damageFlash: 0,
 		aircraft: 'kestrel',

@@ -1,6 +1,19 @@
 import { angleDiff, clamp, damp, moveToward, smoothstep, wrapAngle } from '../engine/math';
 import { fx as rnd } from '../engine/rng';
 import { explode } from './combat';
+import {
+	COMPONENT_INFO,
+	COMPONENTS,
+	WING_AGILITY_LOSS,
+	WING_PULL,
+	bayJams,
+	engineFactor,
+	noDamage,
+	repairSystems,
+	rollComponentHit,
+	type Component,
+	type Systems
+} from './damage';
 import { WORLD } from './constants';
 import { AIRCRAFT, type AircraftDef } from './defs-aircraft';
 import { BOMBS, BOMB_ORDER, LAUNCHED, type BlastSpec } from './defs-bombs';
@@ -132,6 +145,12 @@ export class Player implements Trackable {
 	hitFlash = 0;
 	damageDir = 0;
 	stalled = false;
+	/** Engine, wing and hydraulic damage (0..1 each); fixed only by landing. */
+	readonly systems: Systems = noDamage();
+	/** Which way a damaged wing pulls the nose (+1 up/anticlockwise, -1 down). */
+	wingPull = 1;
+	/** Seconds left on the "bay jammed" warning after a release sticks. */
+	bayJammed = 0;
 	landed = false;
 	rearming = false;
 	private rearmTimer = 0;
@@ -189,6 +208,7 @@ export class Player implements Trackable {
 		this.invuln = Math.max(0, this.invuln - dt);
 		this.hitFlash = Math.max(0, this.hitFlash - dt * 3);
 		this.ignition = Math.max(0, this.ignition - dt * 4);
+		this.bayJammed = Math.max(0, this.bayJammed - dt);
 		this.sinceHit += dt;
 		const cap = this.def.hp * REPAIR_CAP;
 		if (this.alive && !this.dying && this.sinceHit > REPAIR_DELAY && this.hp < cap)
@@ -251,9 +271,11 @@ export class Player implements Trackable {
 				diff = Math.abs(diff) * (high ? -noseUp : noseUp);
 			}
 			const agility = this.focus ? FOCUS_AGILITY : 1;
-			const maxRate = d.turnRate * agility;
+			const maxRate = d.turnRate * agility * (1 - WING_AGILITY_LOSS * this.systems.wing);
 			rate = clamp(diff * 5 * agility, -maxRate, maxRate) * authority * Math.min(1, mag);
 		}
+		// A shot-up wing keeps dragging the nose round; the pilot has to hold against it.
+		if (!this.landed) rate += this.wingPull * WING_PULL * this.systems.wing * authority;
 		this.angVel = damp(this.angVel, rate, 10, dt);
 		this.angle = wrapAngle(this.angle + this.angVel * dt);
 	}
@@ -279,7 +301,10 @@ export class Player implements Trackable {
 		const alt = this.y - WORLD.baseHeight;
 		this.ceiling = alt > WORLD.ceiling - 20;
 		const thin = 1 - smoothstep(WORLD.ceiling - 40, WORLD.ceiling + 60, alt) * 0.9;
-		const accel = (d.thrust * this.throttle + (this.boosting ? d.boost : 0)) * thin;
+		const accel =
+			(d.thrust * this.throttle + (this.boosting ? d.boost : 0)) *
+			thin *
+			engineFactor(this.systems.engine);
 		this.vx += ca * accel * dt;
 		this.vy += sa * accel * dt - G * dt;
 
@@ -444,6 +469,13 @@ export class Player implements Trackable {
 			}
 			return;
 		}
+		if (bayJams(this.systems.hydraulics, rnd)) {
+			// Damaged hydraulics: the doors stick and the bomb stays on the rack.
+			this.bayJammed = 1.2;
+			this.bombTimer = 0.45;
+			w.sound.play('empty', this.x, this.y, 0.8);
+			return;
+		}
 		this.releaseBomb(w, inp.designate);
 		// Bombers ripple faster when the button is held.
 		this.bombTimer = BOMBS[this.selected].cooldown / Math.max(1, this.def.salvo * 0.6);
@@ -590,7 +622,25 @@ export class Player implements Trackable {
 		if (n % 2 === 0) w.sound.play('flare', this.x, this.y, 0.7);
 	}
 
+	/** Whether any system is still damaged. */
+	get systemsDamaged(): boolean {
+		return COMPONENTS.some((c) => this.systems[c] > 0);
+	}
+
+	/** Knocks out (or worsens) a system; announces it the first time it breaks. */
+	damageSystem(c: Component, severity: number, w: World): void {
+		const was = this.systems[c];
+		this.systems[c] = Math.min(1, Math.max(was, severity));
+		if (was > 0) return;
+		if (c === 'wing') this.wingPull = rnd.sign();
+		const info = COMPONENT_INFO[c];
+		w.events.message(info.label, `${info.effect} · land to repair`, 'warn');
+	}
+
 	private rearm(dt: number, w: World): void {
+		// Only a full stop on the runway lets the ground crew get at the airframe.
+		if (this.landed && this.systemsDamaged && !repairSystems(this.systems, dt))
+			w.events.message('SYSTEMS REPAIRED', 'Engine, wings and hydraulics working', 'good');
 		const g = w.ground(this.x);
 		this.rearming = this.x > WORLD.runwayMinX && this.x < WORLD.runwayMaxX && this.y - g < 48;
 		if (!this.rearming) return;
@@ -631,6 +681,17 @@ export class Player implements Trackable {
 		if (this.trailTimer < 0.025) return;
 		this.trailTimer = 0;
 		const frac = this.hp / this.def.hp;
+		const engine = this.systems.engine;
+		if (engine > 0 && frac >= 0.5 && rnd.chance(0.35 + engine * 0.5)) {
+			// A smoking engine, even when the armour is holding up.
+			const p = this.localToWorld([-3, 0.3, 0]);
+			w.fx.trail(p[0], p[1], p[2], 0.8 + engine * 0.6, 0.12, 0.45 + engine * 0.3, 2, 0.15);
+		}
+		if (this.systems.wing > 0 && rnd.chance(0.5)) {
+			// Fuel and vapour streaming from the holed wing.
+			const p = this.localToWorld([-1.5, 0, this.def.tip[2] * this.wingPull]);
+			w.fx.trail(p[0], p[1], p[2], 0.3, 0.85, 0.3 * this.systems.wing + 0.1, 0.9, 0);
+		}
 		if (frac < 0.5) {
 			const p = this.localToWorld([-3, 0.3, 0]);
 			const dark = frac < 0.25;
@@ -722,6 +783,8 @@ export class Player implements Trackable {
 		w.events.playerHit(amount);
 		w.camera.addTrauma(Math.min(0.45, 0.06 + amount * 0.012));
 		w.sound.play('hit', this.x, this.y, Math.min(1, 0.3 + amount * 0.03));
+		const broke = this.hp > 0 ? rollComponentHit(amount, this.def.hp, cause, rnd) : null;
+		if (broke) this.damageSystem(broke.component, broke.severity, w);
 		if (this.hp <= 0) {
 			this.hp = 0;
 			this.dying = true;
