@@ -3,6 +3,7 @@ import type { AllyKind } from './allies';
 import { WORLD } from './constants';
 import { MOBILE_KINDS, STATIC_KINDS, UNITS } from './defs-units';
 import { AirUnit, type AirKind } from './enemy-air';
+import { clearOfZones } from './no-fire';
 import type { UnitKind } from './types';
 import type { World } from './world';
 
@@ -246,7 +247,8 @@ export class WaveDirector {
 		for (const s of plan.statics) {
 			const z =
 				s.kind === 'depot' || s.kind === 'radar' ? -14 : s.kind === 'searchlight' ? -9 : -11;
-			const u = w.spawnUnit(s.kind, s.x, z, -1);
+			// Emplacements never dig in among the houses of a no-fire zone.
+			const u = w.spawnUnit(s.kind, clearOfZones(s.x), z, -1);
 			u.yaw = Math.PI;
 		}
 		const column = this.opts.column?.(this.wave) ?? [];

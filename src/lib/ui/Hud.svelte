@@ -41,7 +41,9 @@
 		<ul class="feed">
 			{#each hud.feed as f, i (f.id)}
 				<li style:opacity={1 - i * 0.17} in:fly={{ x: -16, duration: 180 }}>
-					<span>{f.text}</span><b>+{f.points}</b>
+					<span>{f.text}</span><b class:penalty={f.points < 0}
+						>{f.points < 0 ? `−${-f.points}` : `+${f.points}`}</b
+					>
 				</li>
 			{/each}
 		</ul>
@@ -266,6 +268,9 @@
 			</div>
 		{/if}
 		{#if hud.ceiling}<div class="warn soft">ALTITUDE CEILING</div>{/if}
+		{#if hud.noFire}<div class="warn soft nofire">
+				NO-FIRE ZONE <small>{hud.noFire}</small>
+			</div>{/if}
 		{#if hud.braking}<div class="brake">AIRBRAKE</div>{/if}
 		{#if hud.bayJammed}<div class="warn soft">BOMB BAY JAMMED</div>{/if}
 		{#if hud.rearming}<div class="good">
@@ -374,6 +379,10 @@
 	.feed b {
 		color: var(--amber);
 		font-weight: 600;
+	}
+
+	.feed b.penalty {
+		color: var(--danger);
 	}
 
 	/* ------------------------------------------------ wave */
@@ -1175,6 +1184,10 @@
 		font-size: 16px;
 		color: #ffd27a;
 		animation: none;
+	}
+
+	.warn.nofire {
+		color: #ff8a70;
 	}
 
 	.good {

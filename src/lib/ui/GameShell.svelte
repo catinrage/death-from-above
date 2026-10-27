@@ -522,6 +522,16 @@
 		text-shadow: 0 0 18px rgba(255, 140, 40, 0.8);
 	}
 
+	.popups :global(.popup.penalty .pts) {
+		color: #ff6a50;
+		font-size: 24px;
+		text-shadow: 0 0 14px rgba(255, 50, 30, 0.7);
+	}
+
+	.popups :global(.popup.penalty .sub) {
+		color: #ff9a80;
+	}
+
 	.popups :global(.popup.supply .pts) {
 		color: var(--good);
 		font-size: 20px;

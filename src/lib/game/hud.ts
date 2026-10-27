@@ -119,6 +119,8 @@ export interface HudSnapshot {
 	flareWindow: number;
 	/** The AI wingman: current order, armour 0..1, and seconds until a replacement while down. */
 	wingman: { order: WingOrder; hp: number; down: number } | null;
+	/** Name of the no-fire zone under the bomb sight ('' = clear to drop). */
+	noFire: string;
 }
 
 export interface GameOverStats {
@@ -137,6 +139,8 @@ export interface GameOverStats {
 	score: number;
 	wave: number;
 	kills: number;
+	/** Civilians the player killed. */
+	civilians: number;
 	bestCombo: number;
 	time: number;
 	best: number;
@@ -204,6 +208,7 @@ export function emptyHud(): HudSnapshot {
 		missileDir: 0,
 		lockDir: 0,
 		flareWindow: 450,
-		wingman: null
+		wingman: null,
+		noFire: ''
 	};
 }

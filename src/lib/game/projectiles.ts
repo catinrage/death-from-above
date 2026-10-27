@@ -185,7 +185,7 @@ function bulletHitsPlayerSide(w: World, b: Bullet, x0: number, y0: number): bool
 			return true;
 		}
 	}
-	if (best > 1) return false;
+	if (best > 1) return w.civilians.bulletHit(w, x0, y0, b.x, b.y, b.damage);
 	const hx = x0 + (b.x - x0) * best,
 		hy = y0 + (b.y - y0) * best;
 	if (unit) {
@@ -204,6 +204,7 @@ function bulletHitsPlayerSide(w: World, b: Bullet, x0: number, y0: number): bool
 				damageUnit(w, u, b.damage * 0.4, b.pierce, 'player', hx, 'blast');
 			}
 		}
+		w.civilians.blast(w, hx, hy, unit?.z ?? 0, b.explosive, b.damage * 0.4, 'player');
 	}
 	return true;
 }
@@ -264,6 +265,7 @@ function updateBullets(w: World, dt: number): void {
 							damageUnit(w, u, b.damage * 0.5, b.pierce, b.owner, b.x, 'blast');
 						}
 					}
+					w.civilians.blast(w, b.x, g, b.z, b.explosive, b.damage * 0.5, b.owner);
 				}
 				dead = true;
 			}

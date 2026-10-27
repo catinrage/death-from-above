@@ -10,6 +10,7 @@ import { FireSystem } from './fires';
 import { Props } from './props';
 import { Bridge } from './bridge';
 import { BIOMES, type Biome, type BiomeId } from './biomes';
+import { Civilians } from './civilians';
 import { RIVER, type River } from './river';
 import { GasClouds } from './gas';
 import type { Strike } from './specials';
@@ -78,6 +79,8 @@ export interface WorldEvents {
 	playerHit(amount: number): void;
 	supply(x: number, y: number): void;
 	slowmo(scale: number, duration: number): void;
+	/** The player hurt civilians in a no-fire zone. */
+	penalty(name: string, points: number, x: number, y: number): void;
 }
 
 const silentSound: SoundSink = { play: () => {}, boom: () => {}, whistle: () => {} };
@@ -86,7 +89,8 @@ const silentEvents: WorldEvents = {
 	message: () => {},
 	playerHit: () => {},
 	supply: () => {},
-	slowmo: () => {}
+	slowmo: () => {},
+	penalty: () => {}
 };
 
 /** All mutable simulation state. Systems read and write it directly. */
@@ -123,6 +127,8 @@ export class World {
 	readonly gas = new GasClouds();
 	/** Wind, rain, snow and lightning. */
 	readonly weather = new Weather();
+	/** Villagers in the no-fire zones. */
+	readonly civilians = new Civilians();
 	player: Player | null = null;
 	/** The player's AI wingman (absent in training and the attract demo). */
 	wingman: Wingman | null = null;
@@ -242,6 +248,7 @@ export class World {
 		this.terrain.reset();
 		this.bridge?.rebuild(this);
 		this.props.reset();
+		this.civilians.populate(this);
 		this.base.reset();
 		this.player = null;
 		this.wingman = null;

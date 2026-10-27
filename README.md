@@ -80,6 +80,12 @@ and losing your aircraft doesn't hand you a fresh one.
   your bombs like anything else. Clear their path from the air.
 - **The river** — the road crosses a river on a steel truss bridge. Drop a span and its traffic goes
   into the water while the rest of the convoy is stranded; engineers rebuild it each wave.
+- **No-fire zones** — a field hospital and a village sit on the road between the airfield and the
+  front, marked by red boards at each edge. Their people stroll between the houses and run indoors
+  when bombs fall nearby. Killing a civilian costs 150 points, knocking down a home there costs 100,
+  and flattening the hospital costs 600; each also breaks your kill chain. Napalm and gas don't care
+  who is standing in them, and a house that comes down takes its sheltering family with it. The bomb
+  sight warns you when it is over a no-fire zone, and enemy emplacements never dig in there.
 - **Enemies** — riflemen and missile troopers (ragdolls), gun jeeps, supply trucks (drop extra
   ordnance), tanks (turrets pop off), troop carriers (unload infantry), AA gun carriers, SAM
   launchers with radar lock, howitzers, flak batteries, pillboxes, radar stations, fuel depots

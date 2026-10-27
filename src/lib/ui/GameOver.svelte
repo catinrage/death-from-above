@@ -112,6 +112,12 @@
 				<dt>Kills</dt>
 				<dd>{stats.kills}</dd>
 			</div>
+			{#if stats.civilians > 0}
+				<div>
+					<dt>Civilian casualties</dt>
+					<dd class="bad">{stats.civilians}</dd>
+				</div>
+			{/if}
 			<div>
 				<dt>Longest chain</dt>
 				<dd>{stats.bestCombo}</dd>
@@ -293,6 +299,10 @@
 		margin: 4px 0 0;
 		font-family: var(--display);
 		font-size: 28px;
+	}
+
+	dd.bad {
+		color: var(--danger);
 	}
 
 	.actions {

@@ -53,6 +53,7 @@ import { RESOLVE } from './projectiles';
 import { SHOAL } from './river';
 import { World } from './world';
 import { Wingman, WING_HP } from './wingman';
+import { zoneAt } from './no-fire';
 import { AirBase } from './base';
 import { radioState, threatInput } from './battle-audio';
 
@@ -154,6 +155,17 @@ export class Game {
 		name: string;
 		big: boolean;
 	}[] = [];
+	/** Penalties this frame, merged the same way. */
+	private readonly pendingPenalties: {
+		x: number;
+		y: number;
+		pts: number;
+		count: number;
+		name: string;
+	}[] = [];
+	private penaltyMsgTime = -10;
+	/** Where the bomb sight's arc meets the ground (NaN when hidden). */
+	private sightX = NaN;
 	private readonly post: PostFrame = {
 		flash: [0, 0, 0],
 		damage: 0,
@@ -214,8 +226,44 @@ export class Game {
 			slowmo: (scale, duration) => {
 				this.slowScale = Math.min(this.slowTimer > 0 ? this.slowScale : 1, scale);
 				this.slowTimer = Math.max(this.slowTimer, duration);
-			}
+			},
+			penalty: (name, points, x, y) => this.onPenalty(name, points, x, y)
 		};
+	}
+
+	/** Collateral damage in a no-fire zone: lose score and the kill chain. */
+	private onPenalty(name: string, points: number, x: number, y: number): void {
+		if (this.phase !== 'playing') return;
+		this.score = Math.max(0, this.score - points);
+		this.combo = 0;
+		this.comboTimer = 0;
+		const near = this.pendingPenalties.find((k) => Math.abs(k.x - x) < 40);
+		if (near) {
+			near.pts += points;
+			near.count++;
+			if (name !== 'Civilian killed') near.name = name;
+		} else {
+			this.pendingPenalties.push({ x, y, pts: points, count: 1, name });
+		}
+		const top = this.feed[0];
+		if (top && top.points < 0 && top.text.startsWith(name) && this.time - this.feedTime < 0.6) {
+			const n = Number(/×(\d+)$/.exec(top.text)?.[1] ?? 1) + 1;
+			top.text = `${name} ×${n}`;
+			top.points -= points;
+		} else {
+			this.feed.unshift({ id: this.feedId++, text: name, points: -points });
+			if (this.feed.length > 5) this.feed.length = 5;
+		}
+		this.feedTime = this.time;
+		if (this.time - this.penaltyMsgTime > 6) {
+			this.penaltyMsgTime = this.time;
+			this.cb.message({
+				id: this.msgId++,
+				text: 'NO-FIRE ZONE',
+				sub: 'Civilians are taking fire · score penalty',
+				tone: 'warn'
+			});
+		}
 	}
 
 	private onKill(name: string, score: number, x: number, y: number, by: Owner): void {
@@ -263,6 +311,11 @@ export class Game {
 			this.popups?.spawn(`+${k.pts}`, sub, k.x, k.y, k.big || k.count >= 4 ? 'big' : 'score');
 		}
 		this.pendingKills.length = 0;
+		for (const k of this.pendingPenalties) {
+			const sub = k.count > 1 ? `${k.count} casualties` : k.name;
+			this.popups?.spawn(`−${k.pts}`, sub, k.x, k.y, 'penalty');
+		}
+		this.pendingPenalties.length = 0;
 	}
 
 	private multiplier(): number {
@@ -753,6 +806,7 @@ export class Game {
 			score: this.score,
 			wave: this.waves.wave,
 			kills: this.kills,
+			civilians: this.world.civilians.killed,
 			bestCombo: this.bestCombo,
 			time: this.playTime,
 			best: this.score,
@@ -923,12 +977,14 @@ export class Game {
 		const flying = this.phase === 'playing' || this.phase === 'paused';
 		if (!flying || !p || !p.alive || p.landed) {
 			if (this.phase !== 'paused') w.camera.interest = null;
+			this.sightX = NaN;
 			return;
 		}
 		const id = p.ammo[p.selected] > 0 ? p.selected : 'gp';
 		// Guns and the radar-homing missile go where they point: no drop sight for them.
 		if (id === 'gunpod' || id === 'arm') {
 			w.camera.interest = null;
+			this.sightX = NaN;
 			return;
 		}
 		const def = BOMBS[id];
@@ -943,6 +999,7 @@ export class Game {
 			def.drag,
 			this.sightPts
 		);
+		this.sightX = hit.x;
 		let lo = hit.x,
 			hi = hit.x;
 		for (const b of w.bombs) {
@@ -1102,7 +1159,8 @@ export class Game {
 						hp: Math.max(0, w.wingman.hp / WING_HP),
 						down: w.wingman.alive ? 0 : Math.max(0, w.wingman.respawn)
 					}
-				: null
+				: null,
+			noFire: zoneAt(this.sightX)?.name ?? ''
 		};
 	}
 }
