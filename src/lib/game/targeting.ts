@@ -114,7 +114,8 @@ export class Targeting {
 		}
 		for (const [key, l] of this.engaged) {
 			const inbound =
-				w.missiles.some((m) => m.target === l.track) || !!w.player?.hasQueued(l.track);
+				w.missiles.some((m) => m.target === l.track) ||
+				w.pilots().some((p) => p.hasQueued(l.track));
 			if (!inbound || !isLive(l)) this.engaged.delete(key);
 		}
 		const cap = Math.max(0, Math.min(MAX_LOCKS, capacity));

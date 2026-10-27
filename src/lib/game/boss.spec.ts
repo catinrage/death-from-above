@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { bossStatus, CRUISER_ENTRY, CRUISER_STATION, riverPoint, spawnBoss } from './boss';
+import {
+	bossStatus,
+	CRUISER_ENTRY,
+	CRUISER_STATION,
+	RAIL_GUN_HALT,
+	riverPoint,
+	spawnBoss
+} from './boss';
 import { MissionTracker, missionById } from './campaign';
 import { inBattlePlane } from './combat';
 import { isEmitting } from './arm';
@@ -206,6 +213,62 @@ describe('river cruiser', () => {
 	});
 });
 
+describe('railway gun', () => {
+	it('runs down the line coupled into a train, pulls up short of the railhead and shells the airfield', () => {
+		const w = testWorld();
+		const u = spawnBoss(w, 'railGun');
+		const train = w.railway!.trains[0];
+		expect(train.cars.map((c) => c.def.kind)).toEqual(['locomotive', 'railGun', 'flakWagon']);
+		expect(u.def.rail).toBe(true);
+		train.x = RAIL_GUN_HALT + 250;
+		let fired = 0;
+		w.sound = {
+			play: (id) => id === 'artillery' && fired++,
+			boom: () => {},
+			whistle: () => {}
+		};
+		run(w, 90);
+		expect(train.state).toBe('run');
+		expect(train.speed).toBe(0);
+		const nose = train.x - train.cars[0].def.half[0];
+		expect(Math.abs(nose - RAIL_GUN_HALT)).toBeLessThan(3);
+		expect(fired).toBeGreaterThanOrEqual(3);
+		expect(w.base.hp).toBeLessThan(w.base.maxHp);
+		expect(u.y).toBeCloseTo(w.rail!.railY(u.x), 1);
+	});
+
+	it('holds fire while rolling and out of range', () => {
+		const w = testWorld();
+		spawnBoss(w, 'railGun');
+		let fired = 0;
+		w.sound = { play: (id) => id === 'artillery' && fired++, boom: () => {}, whistle: () => {} };
+		run(w, 20);
+		expect(fired).toBe(0);
+	});
+
+	it('can be stopped short by cutting the line, but still fires if it is in range there', () => {
+		const w = testWorld();
+		const u = spawnBoss(w, 'railGun');
+		const train = w.railway!.trains[0];
+		train.x = 2380;
+		w.railway!.cut(w, 2300, 2310, 'player');
+		// Less than the crews take to relay the track.
+		run(w, 22);
+		expect(train.x - train.cars[0].def.half[0]).toBeGreaterThan(2300);
+		expect(u.speed).toBe(0);
+		expect(u.aimPitch).toBeGreaterThan(0.7);
+	});
+
+	it('loses its barrel when destroyed', () => {
+		const w = testWorld();
+		const u = spawnBoss(w, 'railGun');
+		w.railway!.trains[0].x = RAIL_GUN_HALT + 20;
+		run(w, 8);
+		expect(bombUntilDead(w, u, 'penetrator')).toBeLessThanOrEqual(4);
+		expect(u.turretGone).toBe(true);
+	});
+});
+
 describe('boss waves', () => {
 	it('add a boss to a wave on top of its budget', () => {
 		const plain = planWave(6, 9, 0);
@@ -220,8 +283,8 @@ describe('boss waves', () => {
 			'superTank',
 			undefined,
 			'cruiser',
-			'superTank',
-			'cruiser'
+			'railGun',
+			'superTank'
 		]);
 		expect(endlessTweaks(10).boss).toBe('cruiser');
 	});
@@ -244,12 +307,15 @@ describe('boss waves', () => {
 		expect(waves.state).toBe('complete');
 	});
 
-	it('close the first two campaign acts and count toward their goals', () => {
+	it('close each campaign act and count toward their goals', () => {
 		const iron = missionById('iron-column')!;
 		expect(iron.waves.tweaks?.(1).boss).toBeUndefined();
 		expect(iron.waves.tweaks?.(2).boss).toBe('superTank');
 		const weasel = missionById('wild-weasel')!;
 		expect(weasel.waves.tweaks?.(2).boss).toBe('cruiser');
+		const finale = missionById('death-from-above')!;
+		expect(finale.waves.tweaks?.(3).boss).toBeUndefined();
+		expect(finale.waves.tweaks?.(4).boss).toBe('railGun');
 
 		const w = testWorld();
 		const tracker = new MissionTracker(weasel);

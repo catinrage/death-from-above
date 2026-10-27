@@ -3,9 +3,10 @@ import { fx as rnd } from '../engine/rng';
 import { WORLD } from './constants';
 import { ENEMY_WEAPONS, UNITS } from './defs-units';
 import { launchMissile, spawnBullet } from './projectiles';
+import type { Player } from './player';
 import type { River } from './river';
 import type { AuxMount, Unit, UnitKind } from './types';
-import { poseParts, rootMatrix } from './unit-pose';
+import { muzzlePoint, poseParts, rootMatrix } from './unit-pose';
 import type { World } from './world';
 
 /**
@@ -18,6 +19,13 @@ const SWING = 22;
 const BROADSIDE = Math.PI;
 /** Where it comes up the river into view. */
 export const CRUISER_ENTRY = -75;
+
+/** The railway gun's firing position: across the river, inside its range of the airfield. */
+export const RAIL_GUN_HALT = 1950;
+/** It only fires once the train is stopped and the airfield is this close. */
+export const RAIL_GUN_RANGE = 2700;
+const RAIL_GUN_RELOAD = 8;
+const RAIL_GUN_SHELL = 60;
 
 const AUX_RATE = 2.4;
 const AUX_ELEVATE = 1.8;
@@ -66,7 +74,18 @@ function mount(): AuxMount {
  */
 export function spawnBoss(w: World, kind: UnitKind): Unit {
 	let u: Unit;
-	if (kind === 'cruiser' && w.river) {
+	if (kind === 'railGun' && w.railway) {
+		const train = w.railway.spawnTrain(w, ['locomotive', 'railGun', 'flakWagon']);
+		train.halt = RAIL_GUN_HALT;
+		u = train.cars[1];
+		u.aux = mount();
+		u.aux.salvo = 3;
+		w.events.message(
+			'RAILWAY GUN',
+			'It will shell the airfield from across the river. Cut the line',
+			'warn'
+		);
+	} else if (kind === 'cruiser' && w.river) {
 		const at = riverPoint(w.river, CRUISER_ENTRY);
 		u = w.spawnUnit('cruiser', at.x, at.z, -1);
 		u.y = w.river.level;
@@ -148,9 +167,11 @@ export function bossWeapons(w: World, u: Unit, dt: number): void {
 	a.cooldown -= dt;
 	a.second -= dt;
 	a.salvo -= dt;
-	const p = w.player;
+	if (u.def.kind === 'railGun') bombard(w, u, a, dt);
 	const ox = u.x,
 		oy = u.y + u.def.half[1] * 2;
+	// In co-op, whichever human pilot is closer.
+	const p = w.nearestPilot(ox, oy, false);
 	const live = p && p.alive && !w.godMode && !p.landed;
 	const dist = live ? Math.hypot(p.x - ox, p.y - oy) : Infinity;
 	const elev = live ? Math.atan2(p.y - oy, Math.abs(p.x - ox)) : 0;
@@ -199,7 +220,7 @@ export function bossWeapons(w: World, u: Unit, dt: number): void {
 		w.fx.gunSmoke(m[0], m[1], m[2], 2.5);
 		w.sound.play('flak', m[0], m[1], 0.7);
 	}
-	samBattery(w, u, a, dt, dist);
+	samBattery(w, u, a, dt, dist, p);
 }
 
 function autocannon(w: World, u: Unit, a: AuxMount, dt: number, tx: number, ty: number): void {
@@ -238,9 +259,7 @@ function autocannon(w: World, u: Unit, a: AuxMount, dt: number, tx: number, ty: 
 }
 
 /** The cruiser's radar SAMs: a lock the player can see building, then a pair of missiles. */
-function samBattery(w: World, u: Unit, a: AuxMount, dt: number, dist: number): void {
-	const p = w.player;
-	if (!p) return;
+function samBattery(w: World, u: Unit, a: AuxMount, dt: number, dist: number, p: Player): void {
 	if (dist > 1300) {
 		a.lock = Math.max(0, a.lock - dt);
 		return;
@@ -284,6 +303,41 @@ function samBattery(w: World, u: Unit, a: AuxMount, dt: number, dist: number): v
 		for (let i = 0; i < 6; i++) w.fx.trail(m[0], m[1], m[2], 2.2, 0.55, 0.7, 3, 0.4);
 	}
 	w.events.message('MISSILE LAUNCH', 'Cruiser SAM salvo', 'warn');
+}
+
+/**
+ * The railway gun lobs a heavy shell at the airfield whenever its train is
+ * stopped within range: at its firing position, or held up at a break in the line.
+ */
+function bombard(w: World, u: Unit, a: AuxMount, dt: number): void {
+	const tx = (w.base.minX + w.base.maxX) / 2;
+	const inRange = u.speed < 0.3 && u.x - tx < RAIL_GUN_RANGE;
+	u.aimPitch = moveToward(u.aimPitch, inRange ? 0.78 : 0.06, dt * 0.25);
+	if (!inRange || a.salvo > 0 || u.aimPitch < 0.75) return;
+	a.salvo = RAIL_GUN_RELOAD * rnd.range(0.9, 1.15);
+	const m = muzzlePoint(u, tip);
+	const x = rnd.range(w.base.minX + 60, w.base.maxX - 20);
+	const theta = 0.78;
+	const v = Math.sqrt((13 * Math.abs(m[0] - x)) / Math.sin(2 * theta));
+	const ang = Math.PI - theta;
+	w.shells.push({
+		kind: 'artillery',
+		x: m[0],
+		y: m[1],
+		z: m[2],
+		vx: Math.cos(ang) * v,
+		vy: Math.sin(ang) * v,
+		age: 0,
+		fuse: Infinity,
+		damage: RAIL_GUN_SHELL,
+		radius: 9,
+		owner: 'enemy',
+		trail: 0
+	});
+	w.fx.muzzleFlash(m[0], m[1], m[2], Math.cos(ang), Math.sin(ang), 6, [14, 7, 2]);
+	w.fx.gunSmoke(m[0], m[1], m[2], 8);
+	w.fx.shake(m[0], m[1], 0.4);
+	w.sound.play('artillery', m[0], m[1], 1.2, 0.6);
 }
 
 /** Big wrecks keep cooking off for a few seconds after they die. */

@@ -518,13 +518,14 @@ export class Wingman implements Trackable {
 }
 
 /**
- * The friendly aircraft an enemy at (x, y) should shoot at: the player or the
- * wingman, whichever is closer (the player when both are equally placed).
+ * The friendly aircraft an enemy at (x, y) should shoot at: the player (or in
+ * co-op, player two) or the wingman, whichever is closer (the player when both are equally placed).
  */
 export function nearestFriendly(w: World, x: number, y: number): Player | Wingman | null {
-	const p = w.player;
+	// In co-op, the closer of the two human pilots.
+	const p = w.godMode ? null : w.nearestPilot(x, y);
 	const wing = w.wingman;
-	const pOk = !!p && p.alive && !w.godMode;
+	const pOk = !!p;
 	const wOk = !!wing && wing.active && !w.godMode;
 	if (!wOk) return pOk ? p : null;
 	if (!pOk) return wing;

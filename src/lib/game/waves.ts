@@ -199,10 +199,12 @@ export function endlessTweaks(wave: number): WaveTweaks {
 	};
 }
 
-/** Every fifth endless wave brings a boss, the tank and the cruiser in turn. */
+const ENDLESS_BOSSES: UnitKind[] = ['superTank', 'cruiser', 'railGun'];
+
+/** Every fifth endless wave brings a boss: the tank, the cruiser and the railway gun in turn. */
 export function endlessBoss(wave: number): UnitKind | undefined {
 	if (wave % 5 !== 0) return undefined;
-	return wave % 10 === 5 ? 'superTank' : 'cruiser';
+	return ENDLESS_BOSSES[(wave / 5 - 1) % ENDLESS_BOSSES.length];
 }
 
 /** Score for beating a wave: grows with the wave and with what is left of the airfield. */
@@ -246,7 +248,7 @@ export class WaveDirector {
 			w.bridge?.rebuild(w);
 			w.railBridge?.rebuild(w);
 			w.railway?.repair();
-			w.player?.restockWave();
+			for (const p of w.pilots()) p.restockWave();
 		}
 		this.timer = 3.5;
 		const note = this.opts.briefings?.[wave - 1] ?? briefing(this.difficulty(wave));

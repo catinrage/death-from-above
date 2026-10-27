@@ -5,7 +5,12 @@ import { fx as rnd } from '../engine/rng';
 import { Renderer, type PostFrame, type Quality } from '../engine/renderer';
 import { createModels } from '../models';
 import type { PopupLayer } from '../ui/popups';
-import type { TargetingLayer, TargetingView, ThreatMarker } from '../ui/targeting-layer';
+import type {
+	PilotTagView,
+	TargetingLayer,
+	TargetingView,
+	ThreatMarker
+} from '../ui/targeting-layer';
 import { Focus } from './focus';
 import { KillCam } from './killcam';
 import { Targeting } from './targeting';
@@ -23,9 +28,11 @@ import type {
 	HudFeedItem,
 	HudMessage,
 	HudSnapshot,
-	ModeStart
+	ModeStart,
+	Player2Hud
 } from './hud';
 import { Input } from './input';
+import { pilotTag, Squadron } from './coop';
 import { NO_INPUT, Player, type PilotInput } from './player';
 import { SceneView } from './scene-view';
 import { TerrainView } from './terrain-view';
@@ -103,9 +110,12 @@ export class Game {
 	/** Hangar upgrades on the chosen aircraft (the trainer flies stock). */
 	private upgrades: UpgradeLevels | undefined;
 	private flyingUpgrades: UpgradeLevels | undefined;
-	private aircraftLost = 0;
 	private wavesScored = 0;
 	private escortsScored = 0;
+	/** Local two-player co-op: player two flies from the first gamepad. */
+	coop = false;
+	/** Aircraft pool and respawn timers: seat 0 is the player, seat 1 player two. */
+	private squadron = new Squadron(1);
 	/** Counts down from a campaign win to the debrief. */
 	private debriefTimer = 0;
 	/** Enter / pad A pressed this frame, consumed by the first sub-step that reads it. */
@@ -122,14 +132,16 @@ export class Game {
 	private readonly terrainView: TerrainView;
 	private waves: WaveDirector;
 	private readonly autopilot = new Autopilot();
+	private readonly p2Autopilot = new Autopilot();
 	/** Bullet time. */
 	readonly focus = new Focus();
 	/** Slow-motion follow of a bomb about to drop the bridge or set off a depot chain. */
 	readonly killCam = new KillCam();
 	/** Reticle, painted locks and designations for guided weapons. */
 	readonly targeting = new Targeting();
+	/** Player two has no reticle: its missiles pick targets ahead of its nose. */
+	private readonly p2Targeting = new Targeting();
 	targetingLayer: TargetingLayer | null = null;
-	private lives = 3;
 	private readonly radioWatch = new RadioWatch();
 	private score = 0;
 	private combo = 0;
@@ -150,7 +162,6 @@ export class Game {
 	private feedTime = -10;
 	private msgId = 1;
 	private damageFlash = 0;
-	private respawnTimer = 0;
 	private attractTimer = 0;
 	private skyFlash = 0;
 	private skyFlashDir: [number, number] = [0, -1];
@@ -159,6 +170,7 @@ export class Game {
 	private fpsFrames = 0;
 	private fps = 60;
 	private readonly sightPts: number[] = [];
+	private readonly p2SightPts: number[] = [];
 	private readonly interest: [number, number] = [0, 0];
 	/** Kills this frame, merged by location so a big blast shows one popup. */
 	private readonly pendingKills: {
@@ -190,6 +202,8 @@ export class Game {
 	};
 	private pilotFrame: PilotInput = { ...NO_INPUT };
 	private pilotSub: PilotInput = { ...NO_INPUT };
+	private p2Frame: PilotInput = { ...NO_INPUT };
+	private p2Sub: PilotInput = { ...NO_INPUT };
 	private cssW = 1280;
 	private cssH = 720;
 
@@ -232,7 +246,7 @@ export class Game {
 			},
 			supply: (x, y) => {
 				if (this.phase !== 'playing') return;
-				const id = w.player?.alive ? w.player.resupply() : null;
+				const id = w.nearestPilot(x, y)?.resupply() ?? null;
 				if (!id) return;
 				this.popups?.spawn(`+1 ${BOMBS[id].short}`, 'supplies captured', x, y + 8, 'supply');
 				this.audio.play('pickup', x, y, 0.8);
@@ -379,6 +393,8 @@ export class Game {
 		this.killCam.reset();
 		this.targeting.clear();
 		w.godMode = true;
+		this.coop = this.input.coop = false;
+		this.squadron = new Squadron(1);
 		w.player = new Player(this.aircraft, 520, w.ground(520) + 80, 0, this.loadout, this.upgrades);
 		w.player.invuln = 0;
 		this.spawnDemoConvoy(760);
@@ -443,7 +459,8 @@ export class Game {
 		this.flying = this.mode === 'tutorial' ? TRAINER : aircraft;
 		this.flyingLoadout = this.mode === 'tutorial' ? undefined : loadout;
 		this.flyingUpgrades = this.mode === 'tutorial' ? undefined : upgrades;
-		this.aircraftLost = 0;
+		this.coop = this.input.coop = !!start.coop && this.mode !== 'tutorial';
+		this.squadron = new Squadron(this.coop ? 2 : 1);
 		this.wavesScored = 0;
 		this.escortsScored = 0;
 		this.debriefTimer = 0;
@@ -451,7 +468,6 @@ export class Game {
 		this.useBiome(this.biomeFor(start, mission));
 		w.reset();
 		w.godMode = false;
-		this.lives = 3;
 		this.score = 0;
 		this.combo = 0;
 		this.comboTimer = 0;
@@ -459,14 +475,16 @@ export class Game {
 		this.kills = 0;
 		this.playTime = 0;
 		this.feed.length = 0;
-		this.respawnTimer = 0;
 		this.damageFlash = 0;
 		this.popups?.clear();
 		this.focus.reset();
 		this.killCam.reset();
 		this.targeting.clear();
+		this.p2Targeting.clear();
 		this.spawnPlayer();
-		if (this.mode !== 'tutorial') {
+		// Player two takes the AI wingman's place in co-op.
+		if (this.coop) this.spawnPlayer2();
+		else if (this.mode !== 'tutorial') {
 			const x = WORLD.runwayMinX + 10;
 			w.wingman = new Wingman(x, w.ground(x) + 70);
 		}
@@ -551,8 +569,29 @@ export class Game {
 		);
 		// A spent nuke stays spent: a replacement aircraft doesn't bring a new one this wave.
 		if (lost) w.player.ammo.nuke = Math.min(w.player.ammo.nuke, lost.ammo.nuke);
+		// With player two still up, let the camera ease back over rather than cut.
+		if (w.player2?.alive) return;
 		w.camera.interest = null;
 		w.camera.snap(w.player, w.ground(x));
+	}
+
+	/** Player two takes off just behind and above the player, in the same airframe. */
+	private spawnPlayer2(): void {
+		const w = this.world;
+		const x = WORLD.runwayMinX + 10;
+		const lost = w.player2;
+		w.player2 = new Player(
+			this.flying,
+			x,
+			w.ground(x) + 60,
+			0.08,
+			this.flyingLoadout,
+			this.flyingUpgrades
+		);
+		if (lost) w.player2.ammo.nuke = Math.min(w.player2.ammo.nuke, lost.ammo.nuke);
+		if (w.player?.alive) return;
+		w.camera.interest = null;
+		w.camera.snap(w.player2, w.ground(x));
 	}
 
 	pause(): void {
@@ -607,6 +646,7 @@ export class Game {
 			const dt = raw * scale * this.timeScale;
 			const steps = Math.max(1, Math.ceil(dt / STEP - 0.01));
 			this.pilotFrame = this.phase === 'playing' ? this.input.pilot() : { ...NO_INPUT };
+			this.p2Frame = this.phase === 'playing' && this.coop ? this.input.p2Pilot() : { ...NO_INPUT };
 			this.confirm = this.input.confirmPressed();
 			this.skip = this.input.enterPressed();
 			this.aim(raw);
@@ -618,8 +658,19 @@ export class Game {
 				select: null,
 				missiles: null
 			});
+			Object.assign(this.p2Sub, this.p2Frame, {
+				bombPressed: false,
+				flare: false,
+				cycle: 0,
+				select: null,
+				missiles: null
+			});
 			for (let i = 0; i < steps; i++)
-				this.step(dt / steps, i === 0 ? this.pilotFrame : this.pilotSub);
+				this.step(
+					dt / steps,
+					i === 0 ? this.pilotFrame : this.pilotSub,
+					i === 0 ? this.p2Frame : this.p2Sub
+				);
 			if (this.killCam.active) this.killCam.drive(this.world.camera, raw);
 		}
 		this.draw(raw);
@@ -629,21 +680,23 @@ export class Game {
 	/** Focus toggling, meter and the aircraft's sharpened handling. */
 	private updateFocus(raw: number): void {
 		const w = this.world;
-		const p = w.player;
 		const playing = this.phase === 'playing';
-		const allowed = playing && !!p && p.alive && !p.landed;
+		// Focus slows the whole battle, so in co-op either pilot can call it while one is flying.
+		const allowed = playing && w.pilots().some((p) => p.alive && !p.landed);
 		const event = this.focus.update(raw, playing && this.input.focusPressed(), allowed);
 		if (event === 'start') this.audio.play('focusIn', w.camera.x, w.camera.y, 0.9);
 		else if (event === 'stop') this.audio.play('focusOut', w.camera.x, w.camera.y, 0.8);
-		if (p) p.focus = this.focus.active;
+		for (const p of w.pilots()) p.focus = this.focus.active;
 	}
 
 	/** Kill cam: only when the pilot can spare the view for a moment. */
 	private updateKillCam(raw: number): void {
 		const w = this.world;
 		const p = w.player;
+		// Not in co-op: player two still needs the shot while player one's bomb falls.
 		const allowed =
 			this.phase === 'playing' &&
+			!this.coop &&
 			!!p &&
 			p.alive &&
 			!p.landed &&
@@ -659,6 +712,7 @@ export class Game {
 	 * turns a missile key press into a salvo at the painted (or picked) targets.
 	 */
 	private aim(raw: number): void {
+		this.p2Aim();
 		const w = this.world;
 		const p = w.player;
 		if (this.phase !== 'playing' || !p || !p.alive) {
@@ -703,10 +757,24 @@ export class Game {
 			]);
 	}
 
-	private step(dt: number, pilot: PilotInput): void {
+	/** Player two's missiles go to the best target ahead of its nose. */
+	private p2Aim(): void {
+		const w = this.world;
+		const q = w.player2;
+		if (this.phase !== 'playing' || !q || !q.alive) {
+			this.p2Targeting.clear();
+			return;
+		}
+		if (!this.input.p2MissilePressed()) return;
+		if (q.missilesFree <= 0) this.audio.play('empty', q.x, q.y, 0.7);
+		else if (!q.landed) this.p2Frame.missiles = this.p2Targeting.salvo(w, q, q.missilesFree);
+	}
+
+	private step(dt: number, pilot: PilotInput, wing: PilotInput): void {
 		const w = this.world;
 		this.time += dt;
 		const p = w.player;
+		const q = w.player2;
 		const auto = this.phase === 'title' || (this.autoplay && this.phase === 'playing');
 		const inp = !p
 			? null
@@ -715,9 +783,16 @@ export class Game {
 				: this.phase === 'playing'
 					? pilot
 					: NO_INPUT;
+		const p2Inp = !q
+			? null
+			: auto
+				? this.p2Autopilot.update(w, q, dt)
+				: this.phase === 'playing'
+					? wing
+					: NO_INPUT;
 		const showcase = this.showcase && this.phase === 'title';
 		w.camera.locked = showcase || this.killCam.active;
-		simulateWorld(w, dt, inp);
+		simulateWorld(w, dt, inp, p2Inp);
 		if (showcase && p) {
 			// Hangar: hold a close, slightly trailing shot so the aircraft sits mid-screen.
 			const cam = w.camera;
@@ -762,21 +837,14 @@ export class Game {
 			w.base.hp = w.base.maxHp;
 			if (p && p.alive && !p.dying) p.hp = Math.max(p.hp, p.def.hp * 0.3);
 		}
-		if (p && p.crashed) {
-			if (this.respawnTimer <= 0) {
-				if (!training) this.lives--;
-				this.aircraftLost++;
-				this.respawnTimer = training ? 2 : 3.2;
-			} else {
-				this.respawnTimer -= dt;
-				if (this.respawnTimer <= 0) {
-					if (this.lives > 0) {
-						this.spawnPlayer();
-						this.audio.radio(['sortie']);
-					} else return this.gameOver('All aircraft lost');
-				}
-			}
+		const sq = this.squadron;
+		if (sq.update(0, !!p?.crashed, dt, training) === 'respawn') {
+			this.spawnPlayer();
+			this.audio.radio(['sortie']);
 		}
+		if (this.coop && sq.update(1, !!w.player2?.crashed, dt, training) === 'respawn')
+			this.spawnPlayer2();
+		if (sq.allOut()) return this.gameOver('All aircraft lost');
 		if (w.base.hp <= 0) return this.gameOver('The airfield has fallen');
 		if (this.waves.cleared > this.wavesScored) {
 			this.wavesScored = this.waves.cleared;
@@ -874,7 +942,8 @@ export class Game {
 		const progress = loadProgress();
 		const prevBest = progress[m.id]?.best ?? 0;
 		const baseFrac = this.world.base.hp / this.world.base.maxHp;
-		const stars = starsFor(baseFrac, this.aircraftLost);
+		const lost = this.squadron.lost;
+		const stars = starsFor(baseFrac, lost);
 		const next = nextMission(m.id);
 		const credits = pay(
 			missionCredits({
@@ -896,7 +965,7 @@ export class Game {
 			starNotes: [
 				{ label: 'Mission complete', got: outcome === 'complete' },
 				{ label: 'Airfield above 70%', got: outcome === 'complete' && baseFrac >= 0.7 },
-				{ label: 'No aircraft lost', got: outcome === 'complete' && this.aircraftLost === 0 }
+				{ label: 'No aircraft lost', got: outcome === 'complete' && lost === 0 }
 			],
 			nextMission: next?.id
 		};
@@ -958,8 +1027,10 @@ export class Game {
 		post.flash[1] = fl * fc[1];
 		post.flash[2] = fl * fc[2];
 		const p = w.player;
-		const lowHp =
-			p && p.alive && this.phase === 'playing' ? clamp(1 - p.hp / p.def.hp / 0.3, 0, 1) : 0;
+		let lowHp = 0;
+		if (this.phase === 'playing')
+			for (const q of w.pilots())
+				if (q.alive) lowHp = Math.max(lowHp, clamp(1 - q.hp / q.def.hp / 0.3, 0, 1));
 		post.damage = clamp(
 			this.damageFlash * 0.8 + lowHp * (0.25 + 0.15 * Math.sin(this.time * 6)),
 			0,
@@ -978,8 +1049,9 @@ export class Game {
 			prop: p?.def.engine === 'prop',
 			rotor: p?.def.engine === 'rotor',
 			siren: p?.alive ? p.siren : 0,
-			lock: this.phase === 'playing' && p ? p.lockProgress : 0,
-			inbound: this.phase === 'playing' && !!p && w.missiles.some((m) => m.target === p),
+			lock: this.phase === 'playing' ? Math.max(0, ...w.pilots().map((q) => q.lockProgress)) : 0,
+			inbound:
+				this.phase === 'playing' && w.missiles.some((m) => w.pilots().some((q) => m.target === q)),
 			active: this.phase === 'playing'
 		});
 		this.audio.alerts(
@@ -1010,7 +1082,7 @@ export class Game {
 		const p = w.player;
 		const flying = this.phase === 'playing' && !this.autoplay;
 		if (flying) {
-			const s = radioState(w, p, this.waves.state, this.lives);
+			const s = radioState(w, p, this.waves.state, this.squadron.lives);
 			this.audio.radio(this.radioWatch.update(s));
 		}
 		this.audio.updateRadio(dt, flying);
@@ -1022,36 +1094,42 @@ export class Game {
 	 */
 	private drawSight(): void {
 		const w = this.world;
-		const p = w.player;
 		const flying = this.phase === 'playing' || this.phase === 'paused';
-		if (!flying || !p || !p.alive || p.landed) {
+		let lo = Infinity,
+			hi = -Infinity;
+		this.sightX = NaN;
+		for (const p of flying ? w.pilots() : []) {
+			if (!p.alive || p.landed) continue;
+			const id = p.ammo[p.selected] > 0 ? p.selected : 'gp';
+			// Guns and the radar-homing missile go where they point: no drop sight for them.
+			if (id === 'gunpod' || id === 'arm') continue;
+			const def = BOMBS[id];
+			const pts = p === w.player ? this.sightPts : this.p2SightPts;
+			// Rockets leave the rails at speed and fall like a bomb thrown forward.
+			const boost = id === 'rockets' ? ROCKET_SPEED : 0;
+			const designate = p === w.player ? this.pilotFrame.designate : null;
+			const [svx, svy] = p.bombVelocity(w, def, p.x, p.y - 1.2, designate);
+			const hit = predictImpact(
+				w,
+				p.x,
+				p.y - 1.2,
+				svx + Math.cos(p.angle) * boost,
+				svy + Math.sin(p.angle) * boost,
+				def.drag,
+				pts
+			);
+			if (p === w.player) this.sightX = hit.x;
+			lo = Math.min(lo, hit.x);
+			hi = Math.max(hi, hit.x);
+			const c = hexToRgb(def.color);
+			const col: [number, number, number] = [c[0] * 2.3, c[1] * 2.3, c[2] * 2.3];
+			this.view.sight(w, pts, col);
+			this.view.marker(w, hit.x, hit.y, this.time, col);
+		}
+		if (lo > hi) {
 			if (this.phase !== 'paused') w.camera.interest = null;
-			this.sightX = NaN;
 			return;
 		}
-		const id = p.ammo[p.selected] > 0 ? p.selected : 'gp';
-		// Guns and the radar-homing missile go where they point: no drop sight for them.
-		if (id === 'gunpod' || id === 'arm') {
-			w.camera.interest = null;
-			this.sightX = NaN;
-			return;
-		}
-		const def = BOMBS[id];
-		// Rockets leave the rails at speed and fall like a bomb thrown forward.
-		const boost = id === 'rockets' ? ROCKET_SPEED : 0;
-		const [svx, svy] = p.bombVelocity(w, def, p.x, p.y - 1.2, this.pilotFrame.designate);
-		const hit = predictImpact(
-			w,
-			p.x,
-			p.y - 1.2,
-			svx + Math.cos(p.angle) * boost,
-			svy + Math.sin(p.angle) * boost,
-			def.drag,
-			this.sightPts
-		);
-		this.sightX = hit.x;
-		let lo = hit.x,
-			hi = hit.x;
 		for (const b of w.bombs) {
 			if (!b.alive || b.owner !== 'player') continue;
 			lo = Math.min(lo, b.x);
@@ -1060,10 +1138,6 @@ export class Game {
 		this.interest[0] = lo;
 		this.interest[1] = hi;
 		w.camera.interest = this.interest;
-		const c = hexToRgb(def.color);
-		const col: [number, number, number] = [c[0] * 2.3, c[1] * 2.3, c[2] * 2.3];
-		this.view.sight(w, this.sightPts, col);
-		this.view.marker(w, hit.x, hit.y, this.time, col);
 	}
 
 	private targetingView(): TargetingView {
@@ -1087,20 +1161,47 @@ export class Game {
 			focus: this.focus.blend,
 			hover,
 			locks,
-			threats: visible ? this.threatMarkers() : []
+			threats: visible ? this.threatMarkers() : [],
+			pilots: visible && this.coop ? this.pilotTags() : []
 		};
+	}
+
+	/** "P1" and "P2" over each co-op aircraft, held at the screen edge when one strays out of shot. */
+	private pilotTags(): PilotTagView[] {
+		const w = this.world;
+		const out: PilotTagView[] = [];
+		const seats: [Player | null, string][] = [
+			[w.player, 'P1'],
+			[w.player2, 'P2']
+		];
+		for (const [p, label] of seats) {
+			if (!p || p.crashed) continue;
+			const tag = pilotTag(
+				w.camera,
+				{ x: p.x, y: p.y + p.def.radius + 4, z: p.z },
+				this.cssW,
+				this.cssH
+			);
+			if (tag) out.push({ ...tag, label, wing: p === w.player2 });
+		}
+		return out;
 	}
 
 	/** Chevrons on a ring around the aircraft, each pointing at a missile or launcher hunting it. */
 	private threatMarkers(): ThreatMarker[] {
-		const w = this.world;
-		const p = w.player;
-		const cam = w.camera;
-		if (!p) return [];
-		const o = cam.project(p.x, p.y, p.z, this.cssW, this.cssH);
-		if (!o) return [];
 		const out: ThreatMarker[] = [];
-		for (const t of incomingThreats(w, p)) {
+		const pilots = this.world.pilots();
+		// Co-op splits the marker budget between the two aircraft.
+		for (const p of pilots) this.threatsAround(p, Math.floor(8 / pilots.length), out);
+		return out;
+	}
+
+	private threatsAround(p: Player, max: number, out: ThreatMarker[]): void {
+		const w = this.world;
+		const cam = w.camera;
+		const o = cam.project(p.x, p.y, p.z, this.cssW, this.cssH);
+		if (!o) return;
+		for (const t of incomingThreats(w, p, max)) {
 			const s = cam.project(t.x, t.y, 0, this.cssW, this.cssH);
 			const angle = s ? Math.atan2(s[1] - o[1], s[0] - o[0]) : Math.atan2(-(t.y - p.y), t.x - p.x);
 			// Closer missiles pull their chevron in toward the aircraft.
@@ -1115,7 +1216,6 @@ export class Game {
 				dist: t.dist
 			});
 		}
-		return out;
 	}
 
 	private updateSkyFlash(dt: number): void {
@@ -1128,6 +1228,28 @@ export class Game {
 		}
 		this.skyFlash = Math.max(damp(this.skyFlash, 0, 6, dt), this.world.weather.flash * 2);
 		this.renderer.setSkyFlash(this.skyFlashDir[0], this.skyFlashDir[1], this.skyFlash);
+	}
+
+	private player2Hud(): Player2Hud | null {
+		const q = this.world.player2;
+		if (!this.coop || !q) return null;
+		const id = q.ammo[q.selected] > 0 ? q.selected : 'gp';
+		return {
+			hp: q.alive ? q.hp : 0,
+			hpMax: q.def.hp,
+			boost: q.boostMeter,
+			flares: q.flares,
+			flaresMax: q.def.flares,
+			missiles: q.missiles,
+			missilesMax: q.def.missiles,
+			weapon: BOMBS[id].short,
+			weaponCount: q.ammo[id],
+			weaponColor: BOMBS[id].color,
+			respawn: q.crashed ? this.squadron.respawnIn(1) : 0,
+			out: !!this.squadron.seats[1]?.out,
+			threat: q.alive && (q.lockedBy > 0 || this.world.missiles.some((m) => m.target === q)),
+			noPad: !this.input.p2Ready()
+		};
 	}
 
 	private snapshot(): HudSnapshot {
@@ -1174,7 +1296,9 @@ export class Game {
 			baseUnderAttack: w.base.underAttack > 0,
 			altitude: p ? Math.max(0, p.y - g) : 0,
 			speed: p ? p.speed * 3.6 : 0,
-			lives: this.lives,
+			lives: this.squadron.lives,
+			livesMax: this.squadron.maxLives,
+			player2: this.player2Hud(),
 			lock: p?.lockProgress ?? 0,
 			inbound: !!p && w.missiles.some((m) => m.target === p),
 			stall: !!p?.stalled && !!p.alive,
@@ -1191,7 +1315,7 @@ export class Game {
 			timeOfDay: `${w.biome.name} · ${presetName(this.envPhase)}`,
 			weather: w.weather.label,
 			wind: w.weather.baseWind,
-			respawn: p?.crashed && this.lives > 0 ? Math.max(0, this.respawnTimer) : 0,
+			respawn: p?.crashed ? this.squadron.respawnIn(0) : 0,
 			feed: this.feed.slice(),
 			fps: Math.round(this.fps),
 			focus: this.focus.meter,

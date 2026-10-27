@@ -55,6 +55,7 @@ export type UnitKind =
 	| 'searchlight'
 	| 'superTank'
 	| 'cruiser'
+	| 'railGun'
 	| 'locomotive'
 	| 'gunWagon'
 	| 'flakWagon'

@@ -88,7 +88,8 @@ const MUZZLE: Partial<Record<UnitKind, number>> = {
 	flak: 6.2,
 	sam: 5.2,
 	superTank: 8.6,
-	cruiser: 5.4
+	cruiser: 5.4,
+	railGun: 19.5
 };
 
 /** World-space muzzle position for a unit's weapon (tip of the aimed barrel). */
