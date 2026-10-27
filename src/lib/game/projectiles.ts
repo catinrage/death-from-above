@@ -500,6 +500,8 @@ const REACQUIRE = 1000;
 const SEARCH_FOV = 0.9;
 /** Beyond this a seeker cannot tell a flare from the aircraft beside it (the flare window). */
 export const RESOLVE = 450;
+/** Clear-air range at which a heat seeker can hold the aircraft; rain and snow shorten it. */
+export const IR_RANGE = 1100;
 
 /** Apparent strength of a source in the seeker's view: 0 when outside the cone. */
 function apparent(
@@ -527,9 +529,16 @@ function apparent(
 function seek(w: World, m: Missile): void {
 	const t = m.target;
 	const p = w.player;
+	const ir = m.seeker === 'heat' ? w.weather.irScale() : 1;
+	if (t && t === p && ir < 1 && Math.hypot(t.x - m.x, t.y - m.y) > IR_RANGE * ir) {
+		// The aircraft's heat is lost in the rain: the seeker goes blind until it closes in.
+		m.target = null;
+		return;
+	}
 	if (!t || !t.alive) {
 		// Lost its flare: look for the aircraft again.
-		const near = p && p.alive && Math.hypot(p.x - m.x, p.y - m.y) < REACQUIRE;
+		const near =
+			p && p.alive && Math.hypot(p.x - m.x, p.y - m.y) < Math.min(REACQUIRE, IR_RANGE * ir);
 		if (p && near && apparent(m, p, 1, true, SEARCH_FOV) > 0) m.target = p;
 		return;
 	}

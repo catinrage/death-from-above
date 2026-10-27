@@ -13,6 +13,7 @@ import { GasClouds } from './gas';
 import type { Strike } from './specials';
 import { Surface } from './surface';
 import { Troops } from './troops';
+import { CLEAR, Weather } from './weather';
 import { Terrain } from './terrain';
 import type { AirUnit } from './enemy-air';
 import type { Player } from './player';
@@ -113,6 +114,8 @@ export class World {
 	readonly troops = new Troops();
 	/** Chemical clouds. */
 	readonly gas = new GasClouds();
+	/** Wind, rain, snow and lightning. */
+	readonly weather = new Weather();
 	player: Player | null = null;
 	base!: AirBase;
 	sound: SoundSink = silentSound;
@@ -220,6 +223,7 @@ export class World {
 		this.player = null;
 		this.designator = null;
 		this.time = 0;
+		this.weather.set(CLEAR, true);
 	}
 
 	clearCombat(): void {

@@ -29,6 +29,7 @@ export function simulateWorld(w: World, dt: number, input: PilotInput | null): v
 	w.fires.update(dt);
 	w.props.update(dt);
 	w.terrain.update(dt);
+	w.weather.update(w, dt);
 	w.particles.update(dt, (x, z) => w.surface.heightAtXZ(x, z));
 	w.lights.update(dt);
 	w.fx.update(dt);

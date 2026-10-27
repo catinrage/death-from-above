@@ -11,6 +11,7 @@ import { Autopilot } from './autopilot';
 import { WORLD } from './constants';
 import { BOMBS, BOMB_ORDER, ROCKET_SPEED } from './defs-bombs';
 import { environmentAt, presetName } from './environment';
+import { applyWeather, CLEAR, weatherForWave, type WeatherSpec } from './weather';
 import type {
 	GameMode,
 	GameOverStats,
@@ -301,6 +302,7 @@ export class Game {
 		w.camera.interest = null;
 		w.camera.snap(w.player, w.ground(520));
 		this.envPhase = this.envTarget = ENV_BY_WAVE[0];
+		w.weather.set(CLEAR, true);
 		this.setPhase('title');
 	}
 
@@ -370,6 +372,7 @@ export class Game {
 			mission ? mission.waves : this.mode === 'endless' ? { tweaks: endlessTweaks } : {}
 		);
 		this.envPhase = this.envTarget = this.envFor(1);
+		w.weather.set(this.weatherFor(1), true);
 		this.setPhase('playing');
 		if (this.tutorial) this.tutorial.start(w);
 		else {
@@ -395,6 +398,16 @@ export class Game {
 		return wave < ENV_BY_WAVE.length
 			? ENV_BY_WAVE[wave]
 			: 5 + (wave - ENV_BY_WAVE.length + 1) * 0.6;
+	}
+
+	/** Sky and wind for a wave of the current sortie. */
+	private weatherFor(wave: number): WeatherSpec {
+		if (this.mode === 'tutorial') return CLEAR;
+		if (this.mission) {
+			const list = this.mission.weather;
+			return list ? list[Math.min(wave - 1, list.length - 1)] : CLEAR;
+		}
+		return weatherForWave(wave);
 	}
 
 	private spawnPlayer(): void {
@@ -627,6 +640,7 @@ export class Game {
 			}
 		}
 		this.envTarget = this.envFor(Math.max(1, this.waves.wave));
+		w.weather.set(this.weatherFor(Math.max(1, this.waves.wave)));
 	}
 
 	/** Endless scores go on the leaderboard; campaign and training results are saved. */
@@ -700,6 +714,7 @@ export class Game {
 	private draw(dt: number): void {
 		const w = this.world;
 		const env = environmentAt(this.envPhase);
+		applyWeather(env, w.weather);
 		const fb = this.focus.blend;
 		if (fb > 0.001) {
 			// Bullet time: drained, cool and vignetted.
@@ -878,7 +893,7 @@ export class Game {
 			this.skyFlashDir = [Math.sin(a), -Math.cos(a)];
 			this.skyFlash = rnd.range(0.4, 1.2) * (0.3 + this.world.night);
 		}
-		this.skyFlash = damp(this.skyFlash, 0, 6, dt);
+		this.skyFlash = Math.max(damp(this.skyFlash, 0, 6, dt), this.world.weather.flash * 2);
 		this.renderer.setSkyFlash(this.skyFlashDir[0], this.skyFlashDir[1], this.skyFlash);
 	}
 
@@ -939,6 +954,8 @@ export class Game {
 			damageFlash: this.damageFlash,
 			aircraft: this.flying,
 			timeOfDay: presetName(this.envPhase),
+			weather: w.weather.label,
+			wind: w.weather.baseWind,
 			respawn: p?.crashed && this.lives > 0 ? Math.max(0, this.respawnTimer) : 0,
 			feed: this.feed.slice(),
 			fps: Math.round(this.fps),

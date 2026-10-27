@@ -154,7 +154,9 @@ function engage(w: World, u: Unit, dt: number): void {
 			dy = p.y - oy;
 		const dist = Math.hypot(dx, dy);
 		const elev = Math.atan2(dy, Math.abs(dx));
-		const range = u.def.range * (w.night > 0.5 && !w.spotted ? 0.8 : 1);
+		// Shoulder-launched heat seekers can't see as far through rain or snow.
+		const ir = kind === 'manpads' ? w.weather.irScale() : 1;
+		const range = u.def.range * ir * (w.night > 0.5 && !w.spotted ? 0.8 : 1);
 		if (dist < range && elev > spec.minElev && !p.landed) {
 			if (kind === 'sam' || kind === 'manpads')
 				return missileSite(w, u, dt, spec, p.x, p.y, ox, oy);

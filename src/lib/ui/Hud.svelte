@@ -48,6 +48,12 @@
 				<span class="sep"></span>
 			{/if}
 			<span class="tod">{hud.timeOfDay}</span>
+			<span class="sep"></span>
+			<span class="wx" title="Wind carries bombs, smoke and gas">
+				{hud.weather !== 'Clear' ? `${hud.weather} · ` : ''}wind
+				<span class="arrow">{hud.wind >= 0 ? '→' : '←'}</span>
+				{Math.round(Math.abs(hud.wind))} m/s
+			</span>
 		</div>
 		<div class="base" class:alert={hud.baseUnderAttack}>
 			<span class="lbl">{hud.baseUnderAttack ? 'AIRFIELD UNDER FIRE' : 'AIRFIELD'}</span>
@@ -368,7 +374,8 @@
 	}
 
 	.en,
-	.tod {
+	.tod,
+	.wx {
 		color: var(--ink-dim);
 	}
 
