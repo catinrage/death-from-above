@@ -12,18 +12,45 @@
 		weightOf,
 		type Loadout
 	} from '$lib/game/loadout';
+	import {
+		AIRCRAFT_PRICE,
+		UPGRADES,
+		extraPayload,
+		levelOf,
+		nextCost,
+		owns,
+		upgradeApplies,
+		upgradedDef,
+		type Progression,
+		type UpgradeId
+	} from '$lib/game/progression';
 	import type { AircraftId, BombId } from '$lib/game/types';
 
 	interface Props {
+		/** The aircraft on show: the one you fly, or one you haven't bought yet. */
 		aircraft: AircraftId;
+		/** Loadout of the aircraft you fly. */
 		loadout: Loadout;
+		wallet: Progression;
 		onSelect: (id: AircraftId) => void;
 		onLoadout: (l: Loadout) => void;
+		onBuyAircraft: (id: AircraftId) => void;
+		onBuyUpgrade: (u: UpgradeId) => void;
 		onBack: () => void;
 		onSortie: () => void;
 	}
 
-	let { aircraft, loadout, onSelect, onLoadout, onBack, onSortie }: Props = $props();
+	let {
+		aircraft,
+		loadout: flown,
+		wallet,
+		onSelect,
+		onLoadout,
+		onBuyAircraft,
+		onBuyUpgrade,
+		onBack,
+		onSortie
+	}: Props = $props();
 
 	const STATS = [
 		{ key: 'speed', label: 'Speed' },
@@ -32,13 +59,19 @@
 		{ key: 'agility', label: 'Agility' }
 	] as const;
 
-	const def = $derived(AIRCRAFT[aircraft]);
-	const cap = $derived(capacityOf(aircraft));
+	const owned = $derived(owns(wallet, aircraft));
+	const price = $derived(AIRCRAFT_PRICE[aircraft]);
+	const def = $derived(upgradedDef(AIRCRAFT[aircraft], wallet.upgrades[aircraft]));
+	const extra = $derived(extraPayload(wallet, aircraft));
+	const cap = $derived(capacityOf(aircraft, extra));
+	/** An aircraft not yet bought shows its stock racks, read-only. */
+	const loadout = $derived(owned ? flown : stockLoadout(aircraft));
 	const used = $derived(weightOf(loadout));
 	const allowed = $derived(ALLOWED[aircraft]);
+	const upgrades = $derived(UPGRADES.filter((u) => upgradeApplies(aircraft, u.id)));
 
 	function change(b: BombId, d: number): void {
-		const next = adjust(aircraft, loadout, b, d);
+		const next = adjust(aircraft, loadout, b, d, extra);
 		if (next !== loadout) onLoadout(next);
 	}
 
@@ -46,8 +79,9 @@
 		const i = AIRCRAFT_ORDER.indexOf(aircraft);
 		const n = AIRCRAFT_ORDER.length;
 		if (e.code === 'Escape') onBack();
-		else if (e.code === 'Enter') onSortie();
-		else if (e.code === 'ArrowDown' || e.code === 'KeyS') onSelect(AIRCRAFT_ORDER[(i + 1) % n]);
+		else if (e.code === 'Enter') {
+			if (owned) onSortie();
+		} else if (e.code === 'ArrowDown' || e.code === 'KeyS') onSelect(AIRCRAFT_ORDER[(i + 1) % n]);
 		else if (e.code === 'ArrowUp' || e.code === 'KeyW') onSelect(AIRCRAFT_ORDER[(i + n - 1) % n]);
 		else return;
 		e.preventDefault();
@@ -61,19 +95,28 @@
 		<header>
 			<button class="back" onclick={onBack} aria-label="Back to menu">‹ Menu</button>
 			<h2>Hangar</h2>
+			<span class="wallet" title="Credits, earned from campaign missions and endless runs">
+				{wallet.credits.toLocaleString()} <small>cr</small>
+			</span>
 		</header>
 		<ul>
 			{#each AIRCRAFT_ORDER as id, i (id)}
 				{@const a = AIRCRAFT[id]}
+				{@const locked = !owns(wallet, id)}
 				<li>
 					<button
 						class:on={id === aircraft}
+						class:locked
 						onclick={() => onSelect(id)}
 						aria-pressed={id === aircraft}
 					>
 						<span class="idx">{String(i + 1).padStart(2, '0')}</span>
 						<span class="nm">{a.name}</span>
-						<span class="sub">{a.real ?? a.role}</span>
+						{#if locked}
+							<span class="sub price">{AIRCRAFT_PRICE[id].toLocaleString()} cr</span>
+						{:else}
+							<span class="sub">{a.real ?? a.role}</span>
+						{/if}
 					</button>
 				</li>
 			{/each}
@@ -118,9 +161,38 @@
 			</div>
 		</dl>
 
+		{#if owned}
+			<h3>Upgrades</h3>
+			<ul class="upgrades">
+				{#each upgrades as u (u.id)}
+					{@const lv = levelOf(wallet, aircraft, u.id)}
+					{@const cost = nextCost(wallet, aircraft, u.id)}
+					<li>
+						<span class="un">
+							<strong>{u.name}</strong>
+							<small>{u.blurb}</small>
+						</span>
+						<span class="pips" aria-label="Level {lv} of {u.costs.length}">
+							{#each u.costs as _, k (k)}<i class:got={k < lv}></i>{/each}
+						</span>
+						<button
+							class="buy"
+							disabled={cost === null || cost > wallet.credits}
+							onclick={() => onBuyUpgrade(u.id)}
+							aria-label={cost === null ? `${u.name} maxed` : `Buy ${u.name} for ${cost} credits`}
+						>
+							{cost === null ? 'Max' : `${cost.toLocaleString()}`}
+						</button>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+
 		<div class="ld-head">
 			<h3>Loadout</h3>
-			<button class="reset" onclick={() => onLoadout(stockLoadout(aircraft))}>Stock</button>
+			{#if owned}
+				<button class="reset" onclick={() => onLoadout(stockLoadout(aircraft))}>Stock</button>
+			{/if}
 		</div>
 		<div class="payload" style:--fill={used / cap} class:full={used >= cap}>
 			<span class="bar"><span></span></span>
@@ -138,23 +210,34 @@
 					<span class="stepper">
 						<button
 							onclick={() => change(b, -1)}
-							disabled={n === 0}
+							disabled={!owned || n === 0}
 							aria-label="Fewer {BOMBS[b].short}">−</button
 						>
 						<output>{n}</output>
 						<button
 							onclick={() => change(b, 1)}
-							disabled={!canAdd(aircraft, loadout, b)}
+							disabled={!owned || !canAdd(aircraft, loadout, b, extra)}
 							aria-label="More {BOMBS[b].short}">+</button
 						>
 					</span>
 				</li>
 			{/each}
 		</ul>
-		<button class="go" onclick={onSortie}>
-			<span>Take off</span>
-			<small>Enter</small>
-		</button>
+		{#if owned}
+			<button class="go" onclick={onSortie}>
+				<span>Take off</span>
+				<small>Enter</small>
+			</button>
+		{:else}
+			<button class="go" disabled={wallet.credits < price} onclick={() => onBuyAircraft(aircraft)}>
+				<span>Buy</span>
+				<small>
+					{wallet.credits < price
+						? `${(price - wallet.credits).toLocaleString()} cr short`
+						: `${price.toLocaleString()} cr`}
+				</small>
+			</button>
+		{/if}
 	</aside>
 </div>
 
@@ -271,6 +354,99 @@
 
 	.on .nm {
 		color: var(--amber);
+	}
+
+	.locked .nm {
+		color: var(--ink-dim);
+	}
+
+	.sub.price {
+		color: var(--ink-faint);
+	}
+
+	.sub.price::before {
+		content: '🔒 ';
+		font-size: 11px;
+	}
+
+	.wallet {
+		margin-left: auto;
+		white-space: nowrap;
+		font-family: var(--display);
+		font-size: 17px;
+		color: var(--good);
+	}
+
+	.wallet small {
+		font-size: 12px;
+		color: var(--ink-faint);
+	}
+
+	.upgrades {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		gap: 4px;
+	}
+
+	.upgrades li {
+		display: grid;
+		grid-template-columns: 1fr auto 64px;
+		align-items: center;
+		gap: 10px;
+		padding: 5px 0 5px 10px;
+		background: var(--panel);
+	}
+
+	.un {
+		display: grid;
+	}
+
+	.un strong {
+		font-family: var(--display);
+		font-size: 13px;
+		letter-spacing: 0.1em;
+	}
+
+	.un small {
+		font-size: 11px;
+		letter-spacing: 0.06em;
+		color: var(--ink-faint);
+	}
+
+	.pips {
+		display: flex;
+		gap: 3px;
+	}
+
+	.pips i {
+		width: 8px;
+		height: 8px;
+		background: rgba(255, 255, 255, 0.1);
+	}
+
+	.pips i.got {
+		background: var(--amber);
+		box-shadow: 0 0 6px var(--amber-glow);
+	}
+
+	.buy {
+		height: 28px;
+		margin-right: 6px;
+		font-family: var(--display);
+		font-size: 13px;
+		color: var(--good);
+		background: rgba(255, 255, 255, 0.05);
+	}
+
+	.buy:hover:not(:disabled) {
+		background: rgba(143, 227, 136, 0.18);
+	}
+
+	.buy:disabled {
+		color: var(--ink-faint);
+		cursor: default;
 	}
 
 	.sub {
@@ -551,8 +727,13 @@
 		opacity: 0.7;
 	}
 
-	.go:hover {
+	.go:hover:not(:disabled) {
 		filter: brightness(1.1);
+	}
+
+	.go:disabled {
+		filter: grayscale(0.8) brightness(0.6);
+		cursor: default;
 	}
 
 	@media (max-width: 860px) {

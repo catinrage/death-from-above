@@ -2,6 +2,7 @@ import type { ObjectiveStatus } from './campaign';
 import type { StrikeId } from './campaign-map';
 import type { Systems } from './damage';
 import type { BigKill } from './killcam';
+import type { CreditAward } from './progression';
 import type { TutorialCard } from './tutorial';
 import type { AircraftId, BombId } from './types';
 import type { BiomeId } from './biomes';
@@ -136,6 +137,8 @@ export interface GameOverStats {
 	starNotes?: { label: string; got: boolean }[];
 	/** Campaign: the mission this win unlocked (or replays into). */
 	nextMission?: string;
+	/** Credits this sortie paid, line by line, and the wallet after it (not for training). */
+	credits?: CreditAward & { balance: number };
 	/** Endless: place on the local leaderboard (0 = off the board). */
 	rank?: number;
 	score: number;

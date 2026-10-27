@@ -26,7 +26,18 @@
 	import Hud from './Hud.svelte';
 	import TitleScreen from './TitleScreen.svelte';
 	import Hangar from './Hangar.svelte';
-	import { stockLoadout, type Loadout } from '$lib/game/loadout';
+	import { capacityOf, stockLoadout, weightOf, type Loadout } from '$lib/game/loadout';
+	import {
+		buyAircraft,
+		buyUpgrade,
+		extraPayload,
+		loadOrMigrate,
+		loadProgression,
+		owns,
+		saveProgression,
+		type Progression,
+		type UpgradeId
+	} from '$lib/game/progression';
 	import PauseMenu from './PauseMenu.svelte';
 	import GameOver from './GameOver.svelte';
 	import Controls from './Controls.svelte';
@@ -40,11 +51,22 @@
 	let hud = $state<HudSnapshot>(emptyHud());
 	let messages = $state<HudMessage[]>([]);
 	let over = $state<GameOverStats | null>(null);
-	let settings = $state<Settings>(loadSettings());
+	const saved = loadSettings();
+	// Credits and hangar purchases. Saving straight away locks in a migrated older save.
+	const savedWallet = loadOrMigrate(saved.aircraft);
+	saveProgression(savedWallet);
+	if (!owns(savedWallet, saved.aircraft)) saved.aircraft = savedWallet.owned[0];
+	let settings = $state<Settings>(saved);
+	let wallet = $state<Progression>(savedWallet);
 	let hangarOpen = $state(false);
-	const loadout = $derived<Loadout>(
-		settings.loadouts[settings.aircraft] ?? stockLoadout(settings.aircraft)
-	);
+	/** The aircraft the hangar is showing, which may be one not yet bought. */
+	let viewing = $state<AircraftId>(saved.aircraft);
+	const upgrades = $derived(wallet.upgrades[settings.aircraft]);
+	const loadout = $derived.by<Loadout>(() => {
+		const id = settings.aircraft;
+		const l = settings.loadouts[id];
+		return l && weightOf(l) <= capacityOf(id, extraPayload(wallet, id)) ? l : stockLoadout(id);
+	});
 	let best = $state(readBestScore());
 	let showControls = $state(false);
 	let modeOpen = $state(false);
@@ -78,7 +100,7 @@
 				}
 				game.audio.setVolume(settings.volume);
 				game.audio.setMusicVolume(settings.music);
-				game.preview(settings.aircraft, loadout);
+				game.preview(settings.aircraft, loadout, upgrades);
 				game.start();
 			} catch (e) {
 				error = e instanceof Error ? e.message : String(e);
@@ -106,6 +128,7 @@
 		progress = loadProgress();
 		board = readBoard();
 		trained = readTrained();
+		wallet = loadProgression();
 	}
 
 	/** Opens the mode chooser (training, campaign, endless). */
@@ -123,7 +146,7 @@
 		void game?.audio.unlock();
 		hangarOpen = false;
 		if (game) game.showcase = false;
-		game?.newGame(settings.aircraft, loadout, start);
+		game?.newGame(settings.aircraft, loadout, start, upgrades);
 		canvas.focus();
 	}
 
@@ -138,21 +161,48 @@
 		game?.toTitle();
 	}
 
+	/** Shows an aircraft in the hangar; owned ones also become the one you fly. */
 	function selectAircraft(id: AircraftId): void {
+		viewing = id;
+		if (!owns(wallet, id)) {
+			game?.preview(id, stockLoadout(id));
+			return;
+		}
 		settings = { ...settings, aircraft: id };
 		saveSettings(settings);
-		game?.preview(id, loadout);
+		game?.preview(id, loadout, upgrades);
 	}
 
 	function setLoadout(l: Loadout): void {
 		settings = { ...settings, loadouts: { ...settings.loadouts, [settings.aircraft]: l } };
 		saveSettings(settings);
-		game?.preview(settings.aircraft, l);
+		game?.preview(settings.aircraft, l, upgrades);
+	}
+
+	function spend(next: Progression): void {
+		if (next === wallet) return;
+		wallet = next;
+		saveProgression(next);
+	}
+
+	function purchaseAircraft(id: AircraftId): void {
+		spend(buyAircraft(wallet, id));
+		if (owns(wallet, id)) selectAircraft(id);
+	}
+
+	function purchaseUpgrade(u: UpgradeId): void {
+		spend(buyUpgrade(wallet, settings.aircraft, u));
+		game?.preview(settings.aircraft, loadout, upgrades);
 	}
 
 	function openHangar(open: boolean): void {
 		hangarOpen = open;
 		if (game) game.showcase = open;
+		if (viewing !== settings.aircraft) {
+			// Leaving with an unbought aircraft on show: go back to the one you fly.
+			viewing = settings.aircraft;
+			game?.preview(settings.aircraft, loadout, upgrades);
+		}
 	}
 
 	function setQuality(q: QualityLevel): void {
@@ -210,10 +260,13 @@
 	{#if phase === 'title'}
 		{#if hangarOpen}
 			<Hangar
-				aircraft={settings.aircraft}
+				aircraft={viewing}
 				{loadout}
+				{wallet}
 				onSelect={selectAircraft}
 				onLoadout={setLoadout}
+				onBuyAircraft={purchaseAircraft}
+				onBuyUpgrade={purchaseUpgrade}
 				onBack={() => openHangar(false)}
 				onSortie={chooseMode}
 			/>
@@ -222,6 +275,7 @@
 				{settings}
 				{loadout}
 				{best}
+				credits={wallet.credits}
 				onSortie={chooseMode}
 				onHangar={() => openHangar(true)}
 				onQuality={setQuality}

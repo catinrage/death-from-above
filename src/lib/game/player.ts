@@ -35,6 +35,7 @@ import { launchMissile, spawnBullet, type Flare } from './projectiles';
 import { trackUnit } from './targeting';
 import type { AircraftId, BombId, Designation, Trackable } from './types';
 import type { Loadout } from './loadout';
+import { upgradedDef, type UpgradeLevels } from './progression';
 import { dropBomb, predictImpact } from './weapons';
 import type { World } from './world';
 
@@ -224,8 +225,15 @@ export class Player implements Trackable {
 	/** What this sortie carries (the hangar may change it from stock). */
 	readonly loadout: Loadout;
 
-	constructor(id: AircraftId, x: number, y: number, angle = 0, loadout?: Loadout) {
-		this.def = AIRCRAFT[id];
+	constructor(
+		id: AircraftId,
+		x: number,
+		y: number,
+		angle = 0,
+		loadout?: Loadout,
+		upgrades?: UpgradeLevels
+	) {
+		this.def = upgradedDef(AIRCRAFT[id], upgrades);
 		this.loadout = loadout ?? this.def.loadout;
 		this.x = x;
 		this.y = y;

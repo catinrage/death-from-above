@@ -89,9 +89,9 @@ export function weightOf(l: Loadout): number {
 	return w;
 }
 
-/** Payload budget: exactly what the stock loadout weighs. */
-export function capacityOf(id: AircraftId): number {
-	return weightOf(AIRCRAFT[id].loadout);
+/** Payload budget: what the stock loadout weighs, plus any `extra` points from hangar upgrades. */
+export function capacityOf(id: AircraftId, extra = 0): number {
+	return weightOf(AIRCRAFT[id].loadout) + extra;
 }
 
 export function stockLoadout(id: AircraftId): Loadout {
@@ -104,16 +104,22 @@ export function carriedOf(l: Loadout): BombId[] {
 }
 
 /** Can one more of `bomb` go on? */
-export function canAdd(id: AircraftId, l: Loadout, bomb: BombId): boolean {
+export function canAdd(id: AircraftId, l: Loadout, bomb: BombId, extra = 0): boolean {
 	if (!ALLOWED[id].includes(bomb)) return false;
 	if ((l[bomb] ?? 0) >= MAX_COUNT[bomb]) return false;
-	return weightOf(l) + WEIGHT[bomb] <= capacityOf(id);
+	return weightOf(l) + WEIGHT[bomb] <= capacityOf(id, extra);
 }
 
 /** A new loadout with `delta` more (or fewer) of `bomb`, or the same one if not allowed. */
-export function adjust(id: AircraftId, l: Loadout, bomb: BombId, delta: number): Loadout {
+export function adjust(
+	id: AircraftId,
+	l: Loadout,
+	bomb: BombId,
+	delta: number,
+	extra = 0
+): Loadout {
 	const now = l[bomb] ?? 0;
-	if (delta > 0 && !canAdd(id, l, bomb)) return l;
+	if (delta > 0 && !canAdd(id, l, bomb, extra)) return l;
 	const next = Math.max(0, now + Math.sign(delta));
 	if (next === now) return l;
 	const out: Loadout = { ...l, [bomb]: next };
@@ -122,7 +128,7 @@ export function adjust(id: AircraftId, l: Loadout, bomb: BombId, delta: number):
 }
 
 /** Accepts a stored loadout only if every entry is legal for the aircraft; otherwise stock. */
-export function sanitize(id: AircraftId, raw: unknown): Loadout {
+export function sanitize(id: AircraftId, raw: unknown, extra = 0): Loadout {
 	if (!raw || typeof raw !== 'object') return stockLoadout(id);
 	const out: Loadout = {};
 	for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
@@ -132,6 +138,6 @@ export function sanitize(id: AircraftId, raw: unknown): Loadout {
 			return stockLoadout(id);
 		if (v > 0) out[bomb] = v;
 	}
-	if (weightOf(out) > capacityOf(id) || carriedOf(out).length === 0) return stockLoadout(id);
+	if (weightOf(out) > capacityOf(id, extra) || carriedOf(out).length === 0) return stockLoadout(id);
 	return out;
 }
