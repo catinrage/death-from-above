@@ -104,6 +104,7 @@ export const MISSIONS: readonly Mission[] = [
 		brief:
 			'Our own armour is pushing up the road to take the far bank. Clear the way ahead of it and keep the bridge standing: four of its six vehicles must reach the rally point.',
 		env: [0.6],
+		biome: 'temperate',
 		waves: {
 			last: 2,
 			offset: 2,
