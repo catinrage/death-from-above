@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { WORLD } from './constants';
 import { Player } from './player';
 import { testWorld } from './test-world';
+import { MISSIONS } from './campaign';
 import { Tutorial, type TutorialInput } from './tutorial';
 import type { World } from './world';
 
@@ -164,5 +165,36 @@ describe('Tutorial', () => {
 		expect(t.finished).toBe(true);
 		t.update(w, DT, { ...IDLE, confirm: true });
 		expect(t.finished).toBe(true);
+	});
+});
+
+describe('wingman lesson', () => {
+	it('brings Two in and passes once he is sent in and called back', () => {
+		const w = testWorld();
+		const p = new Player('kestrel', 600, w.ground(600) + 120, 0);
+		w.player = p;
+		w.wingman = null;
+		const t = new Tutorial();
+		t.start(w);
+		while (t.card().title !== 'Wingman')
+			t.update(w, 1 / 60, { focus: false, confirm: true, skip: true });
+		expect(w.wingman).not.toBeNull();
+		const wing = w.wingman!;
+		const step = t.card().step;
+		const jeep = w.units.find((u) => u.alive && u.def.kind === 'jeep') ?? null;
+		expect(wing.command(w, 'attack', { unit: jeep, air: null })).toBe(true);
+		t.update(w, 1 / 60, { focus: false, confirm: false, skip: false });
+		expect(t.card().progress).toBeCloseTo(0.5);
+		wing.command(w, 'cover', null);
+		for (let i = 0; i < 200; i++)
+			t.update(w, 1 / 60, { focus: false, confirm: false, skip: false });
+		expect(t.card().step).toBe(step + 1);
+	});
+});
+
+describe('campaign wingman', () => {
+	it('flies the opening mission solo and Two joins from the second', () => {
+		expect(MISSIONS[0].solo).toBe(true);
+		expect(MISSIONS.slice(1).every((m) => !m.solo)).toBe(true);
 	});
 });

@@ -1,5 +1,6 @@
 import { BOMB_ORDER } from './defs-bombs';
 import type { UnitKind } from './types';
+import { Wingman } from './wingman';
 import type { World } from './world';
 
 /** What the HUD shows for the current lesson. */
@@ -26,6 +27,8 @@ interface Lesson {
 	keys: string[];
 	pad: string;
 	manual?: boolean;
+	/** Bring the AI wingman into the flight when this lesson starts. */
+	joinsWingman?: boolean;
 	/** Targets placed when the lesson starts: kind and distance past the airfield. */
 	targets?: [UnitKind, number][];
 	progress(t: Tutorial, w: World): number;
@@ -157,6 +160,18 @@ const LESSONS: Lesson[] = [
 		progress: (t) => Math.min(1, t.rearmTime / 3)
 	},
 	{
+		title: 'Wingman',
+		text: 'Two, your wingman, joins you. Lock a target or put the reticle on it and press T to send him in. Then press G to call him back to cover you. H sends him after the air defences.',
+		keys: ['T', 'G', 'H'],
+		pad: 'D-pad → ↑ ↓',
+		targets: [
+			['jeep', 0],
+			['truck', 30]
+		],
+		joinsWingman: true,
+		progress: (t) => (t.flags.has('wing-attack') ? 0.5 : 0) + (t.flags.has('wing-cover') ? 0.5 : 0)
+	},
+	{
 		title: 'Ready for duty',
 		text: 'In a real sortie enemy columns drive at the airfield and shell it when they arrive. Lose the airfield or all three aircraft and the mission fails. Good hunting.',
 		keys: ['Enter'],
@@ -196,6 +211,8 @@ export class Tutorial {
 	/** Missiles that have locked on to us during this lesson. */
 	private readonly chasers = new WeakSet<object>();
 	private progressNow = 0;
+	/** The wingman's order when last checked: a change means the pilot gave one. */
+	private lastOrder: string | null = null;
 
 	get total(): number {
 		return LESSONS.length;
@@ -224,11 +241,21 @@ export class Tutorial {
 			const u = w.spawnUnit(kind, RANGE_X + dx, kind === 'rifleman' ? (dx % 3) - 1 : 0, -1);
 			this.targets.push(u.id);
 		}
+		if (this.lesson.joinsWingman && !w.wingman && w.player) {
+			const p = w.player;
+			w.wingman = new Wingman(p.x - 40, p.y + 12);
+		}
+		this.lastOrder = w.wingman?.order ?? null;
 		w.events.message(this.lesson.title.toUpperCase(), '', 'info');
 	}
 
 	update(w: World, dt: number, inp: TutorialInput): void {
 		if (this.finished) return;
+		const order = w.wingman?.order ?? null;
+		if (order && order !== this.lastOrder) {
+			this.flags.add(`wing-${order}`);
+			this.lastOrder = order;
+		}
 		const p = w.player;
 		// Targets stand their ground instead of driving on the airfield.
 		for (const u of w.units) {
