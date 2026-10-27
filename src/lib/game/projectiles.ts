@@ -6,6 +6,7 @@ import { WORLD } from './constants';
 import { BOMBS, type BlastSpec } from './defs-bombs';
 import type { Owner, Trackable, Unit } from './types';
 import { flareEmit, flareHeat } from './flare-fx';
+import { ALLY_BULLET_K } from './allies';
 import type { World } from './world';
 
 export interface Bullet {
@@ -22,6 +23,19 @@ export interface Bullet {
 	color: [number, number, number];
 	size: number;
 	explosive: number;
+	/**
+	 * Ground-to-ground fire: the x it was aimed at. The battle line is a
+	 * cross-section of a wider valley, so rounds skim the humps in between and
+	 * only meet the ground near their target.
+	 */
+	aimX?: number;
+}
+
+/** How far short of its aim point a ground-to-ground round can strike the ground. */
+const SKIM = 20;
+
+function skimming(x: number, vx: number, aimX: number | undefined): boolean {
+	return aimX !== undefined && (aimX - x) * Math.sign(vx) > SKIM;
 }
 
 /** 'ffar' is the player's unguided air-to-ground rocket. */
@@ -40,6 +54,8 @@ export interface Shell {
 	radius: number;
 	owner: Owner;
 	trail: number;
+	/** Ground-to-ground fire: the x it was aimed at (see Bullet.aimX). */
+	aimX?: number;
 }
 
 export interface Missile extends Trackable {
@@ -210,6 +226,9 @@ function updateBullets(w: World, dt: number): void {
 			} else if (w.troops.bulletHit(x0, y0, b.x, b.y, b.damage)) {
 				w.fx.impact(b.x, b.y, b.z, 'soft');
 				dead = true;
+			} else if (w.allies.bulletHit(x0, y0, b.x, b.y, b.damage * ALLY_BULLET_K)) {
+				w.fx.impact(b.x, b.y, b.z, 'metal');
+				dead = true;
 			} else if (
 				p &&
 				p.alive &&
@@ -231,7 +250,7 @@ function updateBullets(w: World, dt: number): void {
 		if (!dead) {
 			const g = w.surface.under(b.x, y0, b.z);
 			const kind = w.surface.kind;
-			if (b.y < g) {
+			if (b.y < g && !skimming(b.x, b.vx, b.aimX)) {
 				if (kind === 'water') w.fx.water.spout(b.x, g, b.z);
 				else w.fx.impact(b.x, g, b.z, kind === 'deck' ? 'metal' : 'ground', b.explosive > 0);
 				if (kind === 'deck') {
@@ -297,8 +316,21 @@ function updateShells(w: World, dt: number): void {
 				wingHit = true;
 			}
 		}
+		if (!detonate && s.kind === 'tank') {
+			if (s.owner === 'enemy') {
+				detonate = w.allies.shellHit(x0, y0, s.x, s.y) !== null;
+			} else {
+				// A friendly tank round: a direct hit does the real damage, the burst the rest.
+				for (const u of w.units) {
+					if (!u.alive || segmentVsUnit(u, x0, y0, s.x, s.y, 0.3) < 0) continue;
+					damageUnit(w, u, s.damage, 0.7, 'player', x0, 'blast');
+					detonate = true;
+					break;
+				}
+			}
+		}
 		const g = w.ground(s.x);
-		if (!detonate && s.y < g) detonate = true;
+		if (!detonate && s.y < g && !skimming(s.x, s.vx, s.aimX)) detonate = true;
 		if (!detonate && s.age > (s.kind === 'artillery' ? 30 : 12)) {
 			w.shells.splice(i, 1);
 			continue;
@@ -333,15 +365,12 @@ function updateShells(w: World, dt: number): void {
 		}
 		const spec =
 			s.kind === 'rocket' ? SHELL_BLAST : s.kind === 'artillery' ? SHELL_BLAST : SMALL_BLAST;
-		explode(
-			w,
-			s.x,
-			Math.max(s.y, g),
-			s.z,
-			{ ...spec, damage: s.owner === 'enemy' ? 0 : spec.damage },
-			s.owner,
-			{ playerScale: 0 }
-		);
+		const by = Math.max(s.y, g);
+		// Enemy shells don't hurt their own side, but they do hurt the friendly column.
+		if (s.owner === 'enemy') w.allies.blast(s.x, by, spec.radius, spec.damage, spec.pierce);
+		explode(w, s.x, by, s.z, { ...spec, damage: s.owner === 'enemy' ? 0 : spec.damage }, s.owner, {
+			playerScale: 0
+		});
 	}
 }
 

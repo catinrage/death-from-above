@@ -28,6 +28,7 @@ import { NO_INPUT, Player, type PilotInput } from './player';
 import { SceneView } from './scene-view';
 import { TerrainView } from './terrain-view';
 import type { AircraftId, Owner } from './types';
+import { endlessColumn } from './allies';
 import { endlessTweaks, planWave, waveBonus, WaveDirector } from './waves';
 import {
 	loadProgress,
@@ -86,6 +87,7 @@ export class Game {
 	private flyingLoadout: Loadout | undefined;
 	private aircraftLost = 0;
 	private wavesScored = 0;
+	private escortsScored = 0;
 	/** Counts down from a campaign win to the debrief. */
 	private debriefTimer = 0;
 	/** Enter / pad A pressed this frame, consumed by the first sub-step that reads it. */
@@ -358,6 +360,7 @@ export class Game {
 		this.flyingLoadout = this.mode === 'tutorial' ? undefined : loadout;
 		this.aircraftLost = 0;
 		this.wavesScored = 0;
+		this.escortsScored = 0;
 		this.debriefTimer = 0;
 		const w = this.world;
 		this.useBiome(this.biomeFor(start, mission));
@@ -385,7 +388,11 @@ export class Game {
 		const seed = Math.floor(Math.random() * 1e6);
 		this.waves = new WaveDirector(
 			seed,
-			mission ? mission.waves : this.mode === 'endless' ? { tweaks: endlessTweaks } : {}
+			mission
+				? mission.waves
+				: this.mode === 'endless'
+					? { tweaks: endlessTweaks, column: endlessColumn }
+					: {}
 		);
 		this.envPhase = this.envTarget = this.envFor(1);
 		w.weather.set(this.weatherFor(1), true);
@@ -683,6 +690,19 @@ export class Game {
 				'big'
 			);
 		}
+		if (w.allies.arrived > this.escortsScored) {
+			const n = w.allies.arrived - this.escortsScored;
+			this.escortsScored = w.allies.arrived;
+			const bonus = n * ESCORT_BONUS;
+			this.score += bonus;
+			this.popups?.spawn(
+				`+${bonus.toLocaleString()}`,
+				'column through',
+				w.camera.x,
+				w.camera.y + 25,
+				'big'
+			);
+		}
 		if (this.tutorial) {
 			this.tutorial.update(w, dt, {
 				focus: this.focus.active,
@@ -695,7 +715,8 @@ export class Game {
 		}
 		if (this.tracker) {
 			this.tracker.update(w);
-			if (this.tracker.failed()) return this.gameOver('The airfield was overrun');
+			const lost = this.tracker.failure();
+			if (lost) return this.gameOver(lost);
 			if (this.debriefTimer > 0) {
 				this.debriefTimer -= dt;
 				if (this.debriefTimer <= 0) return this.finish();
@@ -1008,6 +1029,7 @@ export class Game {
 			objectives: this.tracker?.status(this.waves) ?? [],
 			tutorial: this.tutorial?.card() ?? null,
 			enemies: this.waves.remaining(w),
+			column: columnStatus(w),
 			baseHp: w.base.hp,
 			baseMax: w.base.maxHp,
 			baseUnderAttack: w.base.underAttack > 0,
@@ -1057,4 +1079,14 @@ export class Game {
 function hexToRgb(hex: string): [number, number, number] {
 	const n = parseInt(hex.slice(1), 16);
 	return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+}
+
+/** Score for each friendly vehicle that reaches the rally point. */
+const ESCORT_BONUS = 250;
+
+/** "COLUMN 4 · 1.2 KM" while friendly armour is on the road. */
+function columnStatus(w: World): string {
+	const left = w.allies.distanceToGo(w);
+	if (left === null) return '';
+	return `COLUMN ${w.allies.alive()} · ${(left / 1000).toFixed(1)} KM`;
 }

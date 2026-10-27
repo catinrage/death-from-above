@@ -12,6 +12,10 @@ import type { World } from './world';
 const m3: [number, number, number] = [0, 0, 0];
 const TURRET_RATE = 2.2;
 const ELEVATE_RATE = 1.4;
+/** How close the friendly column must be before enemy ground guns switch to it. */
+const ALLY_REACH = 330;
+/** Gunners are much steadier against ground targets than against aircraft. */
+const GROUND_SPREAD = 0.3;
 
 export function updateUnits(w: World, dt: number): void {
 	w.radarCoverage = false;
@@ -90,6 +94,8 @@ function move(w: World, u: Unit, dt: number): void {
 		}
 		if (u.deployed >= 4 && u.stateTime > 3) u.state = 'advance';
 	}
+	// Friendly armour in the way: stop and fight it out instead of driving through.
+	if (u.dir < 0 && w.allies.ahead(u.x, def.weapon ? Math.min(def.range * 0.7, 240) : 260)) want = 0;
 	// Keep convoy spacing: slow behind whoever is just ahead in the lane. Bridging
 	// engineers are waved through to the front.
 	for (const o of def.kind === 'engineer' ? [] : w.units) {
@@ -123,7 +129,14 @@ function move(w: World, u: Unit, dt: number): void {
 }
 
 /** Aims the turret toward a world point. Returns true when on target. */
-function aimAt(u: Unit, dt: number, tx: number, ty: number, ox: number, oy: number): boolean {
+export function aimAt(
+	u: Unit,
+	dt: number,
+	tx: number,
+	ty: number,
+	ox: number,
+	oy: number
+): boolean {
 	const worldYaw = tx >= u.x ? 0 : Math.PI;
 	const relYaw = wrapAngle(worldYaw - u.yaw);
 	u.aimYaw += clamp(angleDiff(u.aimYaw, relYaw), -TURRET_RATE * dt, TURRET_RATE * dt);
@@ -150,6 +163,28 @@ function engage(w: World, u: Unit, dt: number): void {
 		if (t) {
 			const ty = t.y + 1.1;
 			if (aimAt(u, dt, t.x, ty, ox, oy)) fire(w, u, dt, spec, t.x, ty, 0.2);
+			return;
+		}
+	}
+	// Ground guns turn on the friendly column once it is close (mobile AA keeps watching the sky).
+	if (
+		kind === 'rifle' ||
+		kind === 'mg' ||
+		kind === 'cannon' ||
+		(kind === 'autocannon' && u.def.kind !== 'spaag')
+	) {
+		const a = w.allies.nearest(ox, oy, Math.min(u.def.range, ALLY_REACH));
+		if (a) {
+			const t = Math.abs(a.x - ox) / Math.max(spec.speed, 1);
+			const gravity = kind === 'cannon' ? WORLD.gravity : 4;
+			const ty = a.y + a.def.half[1] + 0.5 * gravity * t * t;
+			if (aimAt(u, dt, a.x, ty, ox, oy)) {
+				if (u.def.category === 'infantry' && u.state === 'advance') {
+					u.state = 'hold';
+					u.stateTime = 0;
+				}
+				fire(w, u, dt, spec, a.x, ty, t, true);
+			}
 			return;
 		}
 	}
@@ -200,7 +235,9 @@ function fire(
 	spec: EnemyWeapon,
 	tx: number,
 	ty: number,
-	t: number
+	t: number,
+	/** Shooting at the friendly column: steadier aim, and rounds skim to the target. */
+	atGround = false
 ): void {
 	const kind = u.def.weapon;
 	if (u.burst > 0) {
@@ -216,7 +253,8 @@ function fire(
 	}
 	const m = muzzlePoint(u, m3);
 	const rookie = 1.5 - Math.min(w.wave, 10) * 0.07;
-	const spread = spec.spread * rookie * (w.spotted ? 0.55 : 1);
+	const spread = spec.spread * rookie * (atGround ? GROUND_SPREAD : 1) * (w.spotted ? 0.55 : 1);
+	const aimX = atGround ? tx : undefined;
 	const a = Math.atan2(ty - m[1], tx - m[0]) + rnd.gauss(spread);
 	if (kind === 'flak') {
 		w.shells.push({
@@ -251,7 +289,8 @@ function fire(
 			damage: spec.damage,
 			radius: 6,
 			owner: 'enemy',
-			trail: 0
+			trail: 0,
+			aimX
 		});
 		w.fx.muzzleFlash(m[0], m[1], m[2], Math.cos(a), Math.sin(a), 3, [12, 6, 2]);
 		w.fx.gunSmoke(m[0], m[1], m[2], 3.5);
@@ -271,7 +310,8 @@ function fire(
 		tracer: true,
 		color: spec.tracer,
 		size: kind === 'rifle' ? 0.1 : kind === 'autocannon' ? 0.26 : 0.18,
-		explosive: 0
+		explosive: 0,
+		aimX
 	});
 	if (kind !== 'rifle' || rnd.chance(0.5)) {
 		w.fx.muzzleFlash(
@@ -425,7 +465,7 @@ function searchlight(w: World, u: Unit, dt: number): void {
 	if (!u.lamp) u.lamp = w.lights.add(ox, oy, u.z, [1, 0.95, 0.85], 6, 18, { life: Infinity });
 }
 
-function wreck(w: World, u: Unit, dt: number): void {
+export function wreck(w: World, u: Unit, dt: number): void {
 	u.deadTime += dt;
 	// Footing gone (a span fell): drop until something holds it up.
 	const rest = w.surface.support(u.x, u.y + 0.5, u.z);

@@ -1,3 +1,4 @@
+import { Allies } from './allies';
 import { LightSystem } from '../engine/lights';
 import { ParticleSystem } from '../engine/particles';
 import { Rng } from '../engine/rng';
@@ -116,6 +117,8 @@ export class World {
 	readonly strikes: Strike[] = [];
 	/** Friendly paratroopers. */
 	readonly troops = new Troops();
+	/** Friendly armoured column pushing up the road. */
+	readonly allies = new Allies();
 	/** Chemical clouds. */
 	readonly gas = new GasClouds();
 	/** Wind, rain, snow and lightning. */
@@ -257,6 +260,7 @@ export class World {
 		this.flares.length = 0;
 		this.strikes.length = 0;
 		this.troops.clear();
+		this.allies.clear();
 		this.gas.clear();
 		this.debris.clear();
 		this.fires.clear();

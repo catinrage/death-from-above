@@ -69,6 +69,8 @@ export interface HudSnapshot {
 	objectives: ObjectiveStatus[];
 	tutorial: TutorialCard | null;
 	enemies: number;
+	/** Friendly column on the road and its distance to go, or empty. */
+	column: string;
 	baseHp: number;
 	baseMax: number;
 	baseUnderAttack: boolean;
@@ -165,6 +167,7 @@ export function emptyHud(): HudSnapshot {
 		objectives: [],
 		tutorial: null,
 		enemies: 0,
+		column: '',
 		baseHp: 1,
 		baseMax: 1,
 		baseUnderAttack: false,
