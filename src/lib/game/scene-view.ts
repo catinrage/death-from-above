@@ -46,6 +46,14 @@ export class SceneView {
 		return s;
 	}
 
+	/** Multiplies a colour into the current style's tint. */
+	private tinted(s: InstanceStyle, c: readonly number[]): InstanceStyle {
+		s.r *= c[0];
+		s.g *= c[1];
+		s.b *= c[2];
+		return s;
+	}
+
 	private mesh(name: MeshName): Mesh {
 		return this.models[name];
 	}
@@ -55,7 +63,8 @@ export class SceneView {
 		const { halfW } = cam.viewExtents();
 		const nearMin = cam.x - halfW - 50,
 			nearMax = cam.x + halfW + 50;
-		for (const mesh of this.models.mountains) mesh.push(IDENTITY);
+		const hills = w.biome.mountains;
+		for (const mesh of this.models.mountains) mesh.push(IDENTITY, this.tinted(this.style(), hills));
 		this.props(w, nearMin, nearMax);
 		this.base(w, time);
 		this.bridge(w, nearMin, nearMax);
@@ -71,14 +80,15 @@ export class SceneView {
 		this.flares(w);
 	}
 
-	private pushProp(p: Prop, night: number): void {
+	private pushProp(p: Prop, night: number, foliage: readonly number[]): void {
 		const m = this.m;
 		mat4.fromTranslation(m, p.x, p.y, p.z);
 		if (p.fall > 0) mat4.rotateZ(m, m, -p.fall * p.fallDir);
 		mat4.rotateY(m, m, p.yaw);
 		mat4.scale(m, m, p.scale, p.scale, p.scale);
 		const sway = p.fall > 0 ? 0 : p.sway;
-		this.mesh(p.mesh).push(m, this.style(p.char, 0, sway, p.tint, 1, p.char > 0.6 ? 0.3 : 0));
+		const s = this.style(p.char, 0, sway, p.tint, 1, p.char > 0.6 ? 0.3 : 0);
+		this.mesh(p.mesh).push(m, p.kind === 'tree' || p.kind === 'bush' ? this.tinted(s, foliage) : s);
 		if (p.glow && night > 0.15 && !p.ruined)
 			this.mesh(p.glow).push(m, this.style(0, 0, 0, 1, night * 1.3));
 	}
@@ -86,9 +96,10 @@ export class SceneView {
 	private props(w: World, nearMin: number, nearMax: number): void {
 		const f = w.camera.frame;
 		const night = w.night;
+		const foliage = w.biome.flora.foliage;
 		const far = w.props.far;
 		for (let i = Props.lowerBound(far, f.cullMinX); i < far.length && far[i].x <= f.cullMaxX; i++)
-			this.pushProp(far[i], night);
+			this.pushProp(far[i], night, foliage);
 		const near = w.props.near;
 		const span = (nearMax - nearMin) * 0.35;
 		for (
@@ -96,7 +107,7 @@ export class SceneView {
 			i < near.length && near[i].x <= nearMax + span;
 			i++
 		) {
-			this.pushProp(near[i], night);
+			this.pushProp(near[i], night, foliage);
 		}
 		const grass = w.props.grass;
 		const m = this.m;
@@ -107,7 +118,7 @@ export class SceneView {
 			mat4.fromTranslation(m, g.x, g.y, g.z);
 			mat4.rotateY(m, m, g.yaw);
 			mat4.scale(m, m, g.scale, sy, g.scale);
-			this.mesh(g.mesh).push(m, this.style(burnt, 0, 1 - burnt, g.tint));
+			this.mesh(g.mesh).push(m, this.tinted(this.style(burnt, 0, 1 - burnt, g.tint), foliage));
 		}
 	}
 

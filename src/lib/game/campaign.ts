@@ -1,3 +1,4 @@
+import type { BiomeId } from './biomes';
 import type { AirKind } from './enemy-air';
 import type { UnitKind } from './types';
 import type { WaveDirector, WaveOptions } from './waves';
@@ -17,6 +18,8 @@ export interface Mission {
 	/** One line under the name on the mission card. */
 	tagline: string;
 	brief: string;
+	/** Map the mission is flown on. */
+	biome: BiomeId;
 	/** Time of day (environment phase) for each wave; the last entry holds for the rest. */
 	env: number[];
 	/** Weather for each wave, like `env`; omitted = clear with a light breeze. */
@@ -35,6 +38,7 @@ export const MISSIONS: readonly Mission[] = [
 		tagline: 'Infantry and trucks on the road',
 		brief:
 			'A light column is probing toward the airfield. Break it up before it reaches the wire. Rearm over the runway between passes.',
+		biome: 'temperate',
 		env: [0.9],
 		waves: {
 			last: 2,
@@ -51,6 +55,7 @@ export const MISSIONS: readonly Mission[] = [
 		tagline: 'Cut the bridge',
 		brief:
 			'Their supply line runs over the steel bridge. Drop a span to strand the column on the far bank, then mop up what made it across.',
+		biome: 'desert',
 		env: [0.2],
 		waves: {
 			last: 2,
@@ -69,6 +74,7 @@ export const MISSIONS: readonly Mission[] = [
 		tagline: 'Armour in strength',
 		brief:
 			'An armoured spearhead with mobile AA in tow. Tanks shrug off guns: use bombs, the bunker buster or missiles on their tops.',
+		biome: 'jungle',
 		env: [1.1],
 		weather: [{ kind: 'rain', wind: -6 }],
 		waves: {
@@ -95,6 +101,7 @@ export const MISSIONS: readonly Mission[] = [
 		tagline: 'Dug-in air defences',
 		brief:
 			'The enemy has fortified the valley with flak batteries and pillboxes. Take them out so the next strikes can get through.',
+		biome: 'snow',
 		env: [1.7],
 		waves: {
 			last: 2,
@@ -117,6 +124,7 @@ export const MISSIONS: readonly Mission[] = [
 		tagline: 'Hold until dawn',
 		brief:
 			'Three waves under cover of darkness. Searchlights will hunt you and the guns shoot straighter when they find you. The airfield must not fall below half strength.',
+		biome: 'city',
 		env: [2.6, 3, 3.6],
 		weather: [
 			{ kind: 'clear', wind: 3 },
@@ -141,6 +149,7 @@ export const MISSIONS: readonly Mission[] = [
 		tagline: 'Hunt the SAM sites',
 		brief:
 			'SAM launchers and their radars are shutting down the sky. Destroy them. Flare when the seeker closes, and kill the radar first to slow their locks.',
+		biome: 'snow',
 		env: [4.1],
 		weather: [{ kind: 'snow', wind: -5 }],
 		waves: {
@@ -165,6 +174,7 @@ export const MISSIONS: readonly Mission[] = [
 		tagline: 'Interceptors and gunships',
 		brief:
 			'The enemy has committed its air wing. Interceptors will chase you and gunships will rocket the airfield. Shoot them down while you hold the road.',
+		biome: 'desert',
 		env: [0.4],
 		waves: {
 			last: 3,
@@ -187,6 +197,7 @@ export const MISSIONS: readonly Mission[] = [
 		tagline: 'Everything they have left',
 		brief:
 			'The final offensive: armour, air defence and aircraft all at once, from dusk through the night. Four waves. Keep the airfield standing.',
+		biome: 'city',
 		env: [1.9, 2.6, 3.2, 4.1],
 		waves: {
 			last: 4,

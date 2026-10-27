@@ -21,6 +21,11 @@ export class TerrainView {
 		terrain.dirtyChunks.clear();
 	}
 
+	/** Uploads every modified chunk now (after the landscape was regrown). */
+	syncAll(): void {
+		this.sync(Infinity);
+	}
+
 	/** Uploads up to `budget` modified chunks this frame. */
 	sync(budget = 8): void {
 		let n = 0;

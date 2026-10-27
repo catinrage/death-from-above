@@ -1,4 +1,5 @@
 import { MeshBuilder, type Material, type P2 } from '../engine/mesh-builder';
+import { Rng } from '../engine/rng';
 import { P } from './palette';
 
 function sandbagRing(b: MeshBuilder, radius: number, count: number, layers: number, gap = 0): void {
@@ -275,6 +276,126 @@ export function crateStack(): Float32Array {
 		b.push()
 			.translate(-1.3 - i * 0.7, 0, 0.3)
 			.cylinder(0.32, 0.32, 1.0, 8, i === 1 ? P.red : P.armyLight)
+			.pop();
+	return b.build();
+}
+
+export interface BlockSpec {
+	w: number;
+	d: number;
+	floors: number;
+	wall: Material;
+	/** Glass curtain wall instead of punched windows. */
+	glass?: boolean;
+	seed: number;
+}
+
+const FLOOR_H = 3.1;
+
+/** Window grid of one city block face, as (x, y) centres, deterministic per seed. */
+function blockWindows(spec: BlockSpec, span: number): number[][] {
+	const cols = Math.max(2, Math.floor(span / 2.4));
+	const out: number[][] = [];
+	for (let f = 0; f < spec.floors; f++) {
+		for (let c = 0; c < cols; c++) {
+			const x = -span / 2 + (c + 0.5) * (span / cols);
+			out.push([x, f * FLOOR_H + 1.7, f, c]);
+		}
+	}
+	return out;
+}
+
+/** Apartment or office block with dark windows; lit panes are `blockLights`. */
+export function block(spec: BlockSpec): Float32Array {
+	const b = new MeshBuilder();
+	const { w, d, floors, wall } = spec;
+	const h = floors * FLOOR_H + 0.6;
+	b.box(w, h, d, spec.glass ? P.officeGlass : wall, 0, h / 2, 0);
+	if (spec.glass) {
+		// Concrete floor bands and corner columns over the glass.
+		for (let f = 0; f <= floors; f++)
+			b.box(w + 0.12, 0.35, d + 0.12, P.trim, 0, f * FLOOR_H + 0.2, 0);
+		for (const sx of [1, -1])
+			for (const sz of [1, -1]) b.box(0.5, h, 0.5, P.trim, (sx * w) / 2, h / 2, (sz * d) / 2);
+	} else {
+		for (const [x, y] of blockWindows(spec, w)) {
+			b.box(1.2, 1.4, 0.06, P.windowDark, x, y, d / 2 + 0.02);
+			b.box(1.2, 1.4, 0.06, P.windowDark, x, y, -d / 2 - 0.02);
+		}
+		for (const [z, y] of blockWindows(spec, d)) {
+			b.box(0.06, 1.4, 1.2, P.windowDark, w / 2 + 0.02, y, z);
+			b.box(0.06, 1.4, 1.2, P.windowDark, -w / 2 - 0.02, y, z);
+		}
+		b.box(w + 0.3, 0.4, d + 0.3, P.trim, 0, h, 0);
+	}
+	// Rooftop clutter: a stair house, a water tank and a mast.
+	const rng = new Rng(spec.seed);
+	b.box(
+		2.6,
+		2.4,
+		2.6,
+		P.concreteDark,
+		w * rng.range(-0.25, 0.25),
+		h + 1.2,
+		d * rng.range(-0.2, 0.2)
+	);
+	if (rng.chance(0.6))
+		b.push()
+			.translate(w * 0.3, h, -d * 0.25)
+			.cylinder(0.9, 0.9, 1.8, 8, P.rust)
+			.pop();
+	if (rng.chance(0.5))
+		b.push()
+			.translate(-w * 0.35, h, d * 0.3)
+			.cylinder(0.06, 0.04, 4, 4, P.steel)
+			.pop();
+	return b.build();
+}
+
+/** Lit windows of a city block, on a seeded subset of its windows. */
+export function blockLights(spec: BlockSpec): Float32Array {
+	const b = new MeshBuilder();
+	const rng = new Rng(spec.seed * 13 + 1);
+	const { w, d } = spec;
+	if (spec.glass) {
+		for (let f = 0; f < spec.floors; f++) {
+			if (!rng.chance(0.45)) continue;
+			const y = f * FLOOR_H + 1.8;
+			const span = rng.range(0.12, 0.35);
+			const x = rng.range(-0.5 + span / 2, 0.5 - span / 2) * w;
+			b.box(w * span, 1.1, 0.05, P.window, x, y, d / 2 + 0.04);
+		}
+		return b.build();
+	}
+	for (const [x, y] of blockWindows(spec, w))
+		if (rng.chance(0.35)) b.box(1.1, 1.3, 0.04, P.window, x, y, d / 2 + 0.06);
+	for (const [z, y] of blockWindows(spec, d)) {
+		if (rng.chance(0.3)) b.box(0.04, 1.3, 1.1, P.window, w / 2 + 0.06, y, z);
+		if (rng.chance(0.3)) b.box(0.04, 1.3, 1.1, P.window, -w / 2 - 0.06, y, z);
+	}
+	return b.build();
+}
+
+/** Collapsed city block: broken wall stumps over a heap of rubble. */
+export function rubble(seed: number): Float32Array {
+	const b = new MeshBuilder();
+	const rng = new Rng(seed);
+	b.push().translate(-5.2, 0, -3.5).taper(0.6, 7.5, 0.6, 3.5, 3, P.plaster, 0, -2).pop();
+	b.push().translate(4.8, 0, 1.0).taper(0.6, 5.0, 0.6, 1.5, 6.5, P.plaster, 0, 1.2).pop();
+	b.box(9, 2.2, 0.6, P.plaster, 0, 1.1, -4.6);
+	for (let i = 0; i < 10; i++) {
+		b.push()
+			.translate(rng.range(-4.5, 4.5), 0.4, rng.range(-3.5, 3.5))
+			.scale(1.5, 0.6, 1.3)
+			.blob(rng.range(0.8, 1.5), 6, 4, i % 3 ? P.concreteDark : P.concrete, 0.35, seed * 11 + i)
+			.pop();
+	}
+	for (let i = 0; i < 3; i++)
+		b.push()
+			.translate(rng.range(-3, 3), 0.8, rng.range(-2, 2))
+			.rotateY(rng.range(0, 3))
+			.rotateZ(rng.range(0.2, 0.6))
+			.box(5, 0.35, 1.6, P.concrete)
 			.pop();
 	return b.build();
 }

@@ -4,6 +4,29 @@ import { TERRAIN_ROWS, WORLD } from './constants';
 import { River, type RiverSpec } from './river';
 
 export const CHUNK_COLS = 64;
+
+/**
+ * How a biome bends the land away from the battle line. The line itself (the
+ * road, the airbase and the river banks) is the same everywhere so every map
+ * plays the same.
+ */
+export interface TerrainShape {
+	/** Scale on the rolling hills behind the road. */
+	hills: number;
+	/** Scale on the far ridges. */
+	ridges: number;
+	/** Wind-blown dune ripples (0 none). */
+	dunes: number;
+	/** Scale on the small bumps beside the road. */
+	roughness: number;
+}
+
+export const DEFAULT_SHAPE: Readonly<TerrainShape> = {
+	hills: 1,
+	ridges: 1,
+	dunes: 0,
+	roughness: 1
+};
 const MAX_DIG = 9;
 
 interface HotZone {
@@ -35,13 +58,16 @@ export class Terrain {
 	private readonly noise: Noise;
 	private hotZones: HotZone[] = [];
 	private coolTimer = 0;
+	private shape: Readonly<TerrainShape>;
 
 	constructor(
 		seed = 2024,
 		minX: number = WORLD.terrainMinX,
 		maxX: number = WORLD.terrainMaxX,
-		river: RiverSpec | null = null
+		river: RiverSpec | null = null,
+		shape: Readonly<TerrainShape> = DEFAULT_SHAPE
 	) {
+		this.shape = shape;
 		this.noise = new Noise(seed);
 		this.minX = minX;
 		this.maxX = maxX;
@@ -53,9 +79,22 @@ export class Terrain {
 		this.normals = new Float32Array(n * 3);
 		this.scorch = new Float32Array(n);
 		this.chunkCount = Math.ceil((this.cols - 1) / CHUNK_COLS);
+		this.river = river ? new River(river, (x) => this.profile(x)) : null;
+		this.build();
+	}
+
+	/** Regrows the landscape for another biome; craters and scorch are cleared. */
+	reshape(shape: Readonly<TerrainShape>): void {
+		this.shape = shape;
+		this.scorch.fill(0);
+		this.hotZones = [];
+		this.build();
+		for (let k = 0; k < this.chunkCount; k++) this.dirtyChunks.add(k);
+	}
+
+	private build(): void {
 		const prof = new Float32Array(this.cols);
 		for (let c = 0; c < this.cols; c++) prof[c] = this.profile(this.minX + c * this.dx);
-		this.river = river ? new River(river, (x) => this.profile(x)) : null;
 		for (let r = 0; r < this.rows; r++) {
 			const z = TERRAIN_ROWS[r];
 			for (let c = 0; c < this.cols; c++) {
@@ -82,18 +121,25 @@ export class Terrain {
 
 	private generate(x: number, z: number, profile: number): number {
 		const n = this.noise;
+		const s = this.shape;
 		let h = profile;
 		const road = 1 - smoothstep(3.5, 9, Math.abs(z));
 		if (z < 0) {
 			const t = smoothstep(-8, -110, z);
 			const hills = (n.fbm2(x * 0.0042, z * 0.006, 4) * 0.5 + 0.5) * 26 + 3;
 			const far = smoothstep(-110, -420, z) * (n.ridge2(x * 0.0021, z * 0.0035) * 26 + 6);
-			h += t * hills + far;
+			h += t * hills * s.hills + far * s.ridges;
 		} else {
 			const t = smoothstep(6, 80, z);
-			h += n.fbm2(x * 0.011, z * 0.021, 3) * 3.5 * t - t * 9;
+			h += n.fbm2(x * 0.011, z * 0.021, 3) * 3.5 * t * s.hills - t * 9;
 		}
-		h += n.fbm2(x * 0.05, z * 0.05, 2) * 0.7 * (1 - road);
+		if (s.dunes > 0) {
+			// Crescent ripples whose crests wander with low-frequency noise.
+			const warp = n.fbm2(x * 0.004 + 31, z * 0.004, 2) * 9;
+			const crest = Math.pow(Math.sin(x * 0.045 + z * 0.012 + warp) * 0.5 + 0.5, 2.5);
+			h += crest * 4.5 * s.dunes * smoothstep(9, 30, Math.abs(z));
+		}
+		h += n.fbm2(x * 0.05, z * 0.05, 2) * 0.7 * (1 - road) * s.roughness;
 		// Keep the airbase apron flat in depth as well.
 		const baseW =
 			smoothstep(WORLD.baseMaxX + 120, WORLD.baseMaxX, x) *

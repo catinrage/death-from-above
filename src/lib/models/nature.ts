@@ -3,7 +3,8 @@ import { Noise } from '../engine/noise';
 import { Rng } from '../engine/rng';
 import { P } from './palette';
 
-export function pine(seed: number): Float32Array {
+/** Conifer; `frost` dusts every other tier with snow. */
+export function pine(seed: number, frost = false): Float32Array {
 	const b = new MeshBuilder();
 	const rng = new Rng(seed);
 	b.cylinder(0.24, 0.17, 2.4, 6, P.bark);
@@ -15,9 +16,139 @@ export function pine(seed: number): Float32Array {
 	];
 	tiers.forEach(([r, h, y], i) => {
 		b.push().translate(rng.range(-0.1, 0.1), y, rng.range(-0.1, 0.1)).rotateY(rng.range(0, 6));
-		b.cylinder(r * rng.range(0.9, 1.1), 0, h, 7, i % 2 ? P.pineDark : P.pine);
+		const m = frost ? (i % 2 ? P.pineFrost : P.snow) : i % 2 ? P.pineDark : P.pine;
+		b.cylinder(r * rng.range(0.9, 1.1), 0, h, 7, m);
 		b.pop();
 	});
+	return b.build();
+}
+
+/** Saguaro: a ribbed trunk with one or two upturned arms. */
+export function cactus(seed: number): Float32Array {
+	const b = new MeshBuilder();
+	const rng = new Rng(seed);
+	const h = rng.range(3.6, 5.2);
+	b.cylinder(0.34, 0.3, h, 8, P.cactus);
+	b.push().translate(0, h, 0).scale(1, 0.6, 1).sphere(0.3, 8, 4, P.cactus).pop();
+	const arms = rng.int(1, 2);
+	for (let i = 0; i < arms; i++) {
+		const s = i === 0 ? 1 : -1;
+		const y = rng.range(1.4, h * 0.6);
+		const out = rng.range(0.7, 1.0);
+		b.push().translate(0, y, 0).rotateY(rng.range(-0.4, 0.4));
+		b.push()
+			.translate(0, 0, 0)
+			.rotateZ((-s * Math.PI) / 2)
+			.cylinder(0.2, 0.2, out, 6, P.cactusDark)
+			.pop();
+		const up = rng.range(1.0, 1.8);
+		b.push()
+			.translate(s * out, 0, 0)
+			.cylinder(0.2, 0.18, up, 6, P.cactusDark);
+		b.push().translate(0, up, 0).scale(1, 0.6, 1).sphere(0.18, 6, 3, P.cactusDark).pop();
+		b.pop();
+		b.pop();
+	}
+	return b.build();
+}
+
+/** Leaning palm with drooping fronds. */
+export function palm(seed: number): Float32Array {
+	const b = new MeshBuilder();
+	const rng = new Rng(seed);
+	const segs = 6;
+	const lean = rng.range(0.05, 0.12);
+	let x = 0,
+		y = 0;
+	for (let i = 0; i < segs; i++) {
+		const a = lean * (i + 1);
+		b.push()
+			.translate(x, y, 0)
+			.rotateZ(-a)
+			.cylinder(0.26 - i * 0.02, 0.24 - i * 0.02, 1.35, 6, P.palmBark)
+			.pop();
+		x += Math.sin(a) * 1.3;
+		y += Math.cos(a) * 1.3;
+	}
+	const fronds = 8;
+	for (let i = 0; i < fronds; i++) {
+		const yaw = (i / fronds) * Math.PI * 2 + rng.range(-0.2, 0.2);
+		const len = rng.range(2.6, 3.4);
+		b.push().translate(x, y, 0).rotateY(yaw);
+		// Two-segment frond: out and slightly up, then drooping down.
+		const mid: [number, number, number] = [len * 0.55, 0.45, 0];
+		const tip: [number, number, number] = [len, -0.9, 0];
+		const w = 0.55;
+		b.tri([0, 0, -0.12], [0, 0, 0.12], [mid[0], mid[1], 0], P.palmLeaf);
+		b.tri([mid[0], mid[1], -w], [0, 0, 0], [mid[0], mid[1], w], P.palmLeaf);
+		b.tri([mid[0], mid[1], -w], [mid[0], mid[1], w], tip, i % 2 ? P.palmLeaf : P.jungleLeaf);
+		b.pop();
+	}
+	b.push()
+		.translate(x, y - 0.2, 0)
+		.sphere(0.32, 6, 4, P.palmBark)
+		.pop();
+	return b.build();
+}
+
+/** Tall rainforest tree: a bare trunk with buttress roots and a broad flat crown. */
+export function jungleTree(seed: number): Float32Array {
+	const b = new MeshBuilder();
+	const rng = new Rng(seed);
+	const h = rng.range(8.5, 11);
+	b.cylinder(0.5, 0.3, h, 7, P.bark);
+	for (let i = 0; i < 4; i++) {
+		b.push()
+			.rotateY((i / 4) * Math.PI * 2 + rng.range(-0.3, 0.3))
+			.extrude(
+				[
+					[0, 0],
+					[1.3, 0],
+					[0, 2.0]
+				],
+				0.16,
+				P.bark
+			)
+			.pop();
+	}
+	if (rng.chance(0.6))
+		b.push()
+			.translate(0.35, 0, 0.1)
+			.cylinder(0.06, 0.06, h * 0.8, 4, P.vine)
+			.pop();
+	const blobs = 9;
+	for (let i = 0; i < blobs; i++) {
+		const a = (i / blobs) * Math.PI * 4;
+		const r = i === 0 ? 0 : rng.range(1.4, 2.8);
+		// A lower ring fills the crown down the trunk so it reads as a dense mass.
+		const y = i > 5 ? h - rng.range(1.6, 2.6) : h + rng.range(-0.4, 0.8);
+		b.push()
+			.translate(Math.cos(a) * r, y, Math.sin(a) * r)
+			.scale(1.3, 0.8, 1.3);
+		b.blob(rng.range(1.7, 2.3), 7, 5, i % 2 ? P.jungleLeaf : P.jungleLeafDark, 0.25, seed * 5 + i);
+		b.pop();
+	}
+	return b.build();
+}
+
+/** Broad, low tropical undergrowth: fanned leaf blades. */
+export function fern(seed: number): Float32Array {
+	const b = new MeshBuilder();
+	const rng = new Rng(seed);
+	for (let i = 0; i < 9; i++) {
+		const yaw = (i / 9) * Math.PI * 2 + rng.range(-0.25, 0.25);
+		const len = rng.range(1.0, 1.7);
+		b.push().rotateY(yaw);
+		b.tri([0, 0.1, -0.08], [0, 0.1, 0.08], [len * 0.5, 0.75, 0], P.jungleLeaf);
+		b.tri(
+			[len * 0.5, 0.75, -0.3],
+			[len * 0.5, 0.75, 0.3],
+			[len, 0.2, 0],
+			i % 2 ? P.jungleLeaf : P.leaf
+		);
+		b.tri([0, 0.1, 0], [len * 0.5, 0.75, 0.3], [len * 0.5, 0.75, -0.3], P.jungleLeafDark);
+		b.pop();
+	}
 	return b.build();
 }
 
