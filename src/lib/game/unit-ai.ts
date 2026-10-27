@@ -26,8 +26,7 @@ export function updateUnits(w: World, dt: number): void {
 		if (u.def.kind === 'radar') w.radarCoverage = true;
 		if (u.spotting) w.spotted = true;
 	}
-	const p = w.player;
-	if (p) {
+	for (const p of w.pilots()) {
 		p.lockedBy = 0;
 		p.lockProgress = 0;
 		p.lockers.length = 0;
@@ -343,17 +342,17 @@ function missileSite(
 	ox: number,
 	oy: number
 ): void {
-	const p = w.player;
+	const p = w.pilots().find((q) => q === target);
 	const px = target.x,
 		py = target.y;
 	const ready = aimAt(u, dt, px, py, ox, oy);
 	if (u.def.kind === 'sam') u.aimPitch = moveToward(u.aimPitch, 0.85, dt);
 	if (!ready && u.def.kind !== 'sam') return;
-	const stealth = p && target === p ? p.def.stealth : 1;
+	const stealth = p ? p.def.stealth : 1;
 	const lockTime = spec.lockTime * stealth * (w.radarCoverage && u.def.kind === 'sam' ? 0.65 : 1);
 	u.lock += dt;
 	const progress = Math.min(1, u.lock / lockTime);
-	if (p && target === p) {
+	if (p) {
 		p.lockedBy++;
 		p.lockProgress = Math.max(p.lockProgress, progress);
 		p.lockers.push({ x: u.x, y: u.y + u.def.half[1], progress });
@@ -453,9 +452,9 @@ function searchlight(w: World, u: Unit, dt: number): void {
 		u.lamp = null;
 		return;
 	}
-	const p = w.player;
 	const ox = u.x,
 		oy = u.y + 1.6;
+	const p = w.nearestPilot(ox, oy);
 	let candidate = false;
 	if (p && p.alive) {
 		const dist = Math.hypot(p.x - ox, p.y - oy);

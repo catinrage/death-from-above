@@ -191,3 +191,19 @@ test('the campaign map shows the front and remembers the strike for a mission', 
 	await expect(page.getByText(/radar site hit/i).first()).toBeVisible();
 	expect(errors).toEqual([]);
 });
+
+test('flies a local co-op sortie with a second aircraft for player two', async ({ page }) => {
+	const errors = await openTitle(page);
+	await page.getByRole('button', { name: /sortie/i }).click();
+	await page.getByRole('tab', { name: /endless/i }).click();
+	await page.getByRole('radio', { name: /co-op/i }).click();
+	await page.getByRole('button', { name: /start endless/i }).click();
+	const p2 = page.getByRole('region', { name: 'Player two' });
+	await expect(p2).toBeVisible();
+	// No gamepad in headless Chrome: the panel says how to join.
+	await expect(p2).toContainText('Connect a gamepad');
+	await expect(page.locator('.lives svg')).toHaveCount(6);
+	await expect(page.locator('.tl-pilot', { hasText: 'P2' })).toBeVisible();
+	await page.waitForTimeout(1500);
+	expect(errors).toEqual([]);
+});

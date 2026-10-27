@@ -10,6 +10,7 @@ import { flareGlow, flareHeat } from './flare-fx';
 import { debrisMatrix } from './debris';
 import { Props, type Prop } from './props';
 import { poseParts, poseScratch, rootMatrix } from './unit-pose';
+import type { Player } from './player';
 import type { Unit } from './types';
 import type { World } from './world';
 
@@ -79,7 +80,7 @@ export class SceneView {
 		this.ordnance(w);
 		this.air(w);
 		this.wingman(w, time);
-		this.player(w, time);
+		for (const p of w.pilots()) this.player(w, p, time);
 		this.bullets(w);
 		this.flares(w);
 	}
@@ -446,9 +447,8 @@ export class SceneView {
 		if (Math.sin(time * 7 + 1.3) > 0.9) w.fx.immediateGlow(a.x, a.y + 1.4, a.z, 1.3, 2, 5, 12);
 	}
 
-	private player(w: World, time: number): void {
-		const p = w.player;
-		if (!p || p.crashed) return;
+	private player(w: World, p: Player, time: number): void {
+		if (p.crashed) return;
 		const m = this.m;
 		const sc = p.def.scale;
 		mat4.fromTranslation(m, p.x, p.y, p.z);
@@ -500,9 +500,12 @@ export class SceneView {
 		w.fx.immediateGlow(out[0], out[1], out[2], 0.7, 0.4, 3, 0.8);
 		p.localToWorld([tipX, tipY, -span], out);
 		w.fx.immediateGlow(out[0], out[1], out[2], 0.7, 3, 0.3, 0.2);
-		if (Math.sin(time * 9) > 0.92) {
+		// Player two's beacon flashes green, and faster, so the two pilots can tell their aircraft apart.
+		const wing = p === w.player2;
+		if (Math.sin(time * (wing ? 14 : 9)) > 0.92) {
 			p.localToWorld([-6, 2.8, 0], out);
-			w.fx.immediateGlow(out[0], out[1], out[2], 1.6, 8, 8, 8);
+			if (wing) w.fx.immediateGlow(out[0], out[1], out[2], 1.8, 2, 12, 5);
+			else w.fx.immediateGlow(out[0], out[1], out[2], 1.6, 8, 8, 8);
 		}
 	}
 
