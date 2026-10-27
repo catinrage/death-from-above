@@ -6,6 +6,7 @@ import { createModels } from '../models';
 import type { PopupLayer } from '../ui/popups';
 import type { TargetingLayer, TargetingView, ThreatMarker } from '../ui/targeting-layer';
 import { Focus } from './focus';
+import { KillCam } from './killcam';
 import { Targeting } from './targeting';
 import { Autopilot } from './autopilot';
 import { WORLD } from './constants';
@@ -100,6 +101,8 @@ export class Game {
 	private readonly autopilot = new Autopilot();
 	/** Bullet time. */
 	readonly focus = new Focus();
+	/** Slow-motion follow of a bomb about to drop the bridge or set off a depot chain. */
+	readonly killCam = new KillCam();
 	/** Reticle, painted locks and designations for guided weapons. */
 	readonly targeting = new Targeting();
 	targetingLayer: TargetingLayer | null = null;
@@ -294,6 +297,7 @@ export class Game {
 		const w = this.world;
 		w.reset();
 		this.focus.reset();
+		this.killCam.reset();
 		this.targeting.clear();
 		w.godMode = true;
 		w.player = new Player(this.aircraft, 520, w.ground(520) + 80, 0, this.loadout);
@@ -364,6 +368,7 @@ export class Game {
 		this.damageFlash = 0;
 		this.popups?.clear();
 		this.focus.reset();
+		this.killCam.reset();
 		this.targeting.clear();
 		this.spawnPlayer();
 		const seed = Math.floor(Math.random() * 1e6);
@@ -467,7 +472,8 @@ export class Game {
 					? this.slowScale + (1 - this.slowScale) * Math.max(0, 1 - this.slowTimer * 4)
 					: 1;
 			this.updateFocus(raw);
-			const scale = Math.min(scripted, this.focus.timeScale());
+			this.updateKillCam(raw);
+			const scale = Math.min(scripted, this.focus.timeScale(), this.killCam.timeScale());
 			this.audio.setTimeWarp(scale);
 			const dt = raw * scale * this.timeScale;
 			const steps = Math.max(1, Math.ceil(dt / STEP - 0.01));
@@ -484,6 +490,7 @@ export class Game {
 			});
 			for (let i = 0; i < steps; i++)
 				this.step(dt / steps, i === 0 ? this.pilotFrame : this.pilotSub);
+			if (this.killCam.active) this.killCam.drive(this.world.camera, raw);
 		}
 		this.draw(raw);
 		this.input.endFrame();
@@ -499,6 +506,22 @@ export class Game {
 		if (event === 'start') this.audio.play('focusIn', w.camera.x, w.camera.y, 0.9);
 		else if (event === 'stop') this.audio.play('focusOut', w.camera.x, w.camera.y, 0.8);
 		if (p) p.focus = this.focus.active;
+	}
+
+	/** Kill cam: only when the pilot can spare the view for a moment. */
+	private updateKillCam(raw: number): void {
+		const w = this.world;
+		const p = w.player;
+		const allowed =
+			this.phase === 'playing' &&
+			!!p &&
+			p.alive &&
+			!p.landed &&
+			!this.focus.active &&
+			p.y - w.ground(p.x) > 35 &&
+			!w.missiles.some((m) => m.target === p);
+		if (this.killCam.update(raw, w, allowed))
+			this.audio.play('focusIn', w.camera.x, w.camera.y, 0.5);
 	}
 
 	/**
@@ -545,9 +568,10 @@ export class Game {
 				: this.phase === 'playing'
 					? pilot
 					: NO_INPUT;
-		w.camera.locked = this.showcase && this.phase === 'title';
+		const showcase = this.showcase && this.phase === 'title';
+		w.camera.locked = showcase || this.killCam.active;
 		simulateWorld(w, dt, inp);
-		if (w.camera.locked && p) {
+		if (showcase && p) {
 			// Hangar: hold a close, slightly trailing shot so the aircraft sits mid-screen.
 			const cam = w.camera;
 			// Carry the camera with the aircraft first so the easing never lags behind it.
@@ -727,6 +751,14 @@ export class Game {
 				lerp(env.tint[2], 1.16, fb)
 			];
 			env.bloom *= 1 + 0.35 * fb;
+		}
+		const kb = this.killCam.blend;
+		if (kb > 0.001) {
+			// Kill cam: warm, punchy and closed in.
+			env.saturation *= 1 - 0.2 * kb;
+			env.contrast *= 1 + 0.12 * kb;
+			env.vignette = lerp(env.vignette, Math.max(env.vignette, 0.7), kb);
+			env.tint = [env.tint[0] * (1 + 0.08 * kb), env.tint[1], env.tint[2] * (1 - 0.1 * kb)];
 		}
 		w.night = clamp(env.stars * 1.1, 0, 1);
 		w.fx.nightFactor = w.night;
@@ -961,6 +993,7 @@ export class Game {
 			fps: Math.round(this.fps),
 			focus: this.focus.meter,
 			focusActive: this.focus.active,
+			killCam: this.killCam.active ? this.killCam.reason : null,
 			missiles: p?.missiles ?? 0,
 			missilesMax: def?.missiles ?? 0,
 			locks: this.targeting.locks.length,
