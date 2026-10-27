@@ -28,6 +28,8 @@ export interface WaveTweaks {
 	/** Replaces the number of interceptors / gunships. */
 	fighters?: number;
 	helis?: number;
+	/** Takes this many interceptors and gunships each off the wave (never below none). */
+	airCut?: number;
 	/** Vehicles the wave must field, each leading its own convoy, whatever the budget. */
 	units?: UnitKind[];
 }
@@ -117,8 +119,15 @@ export function planWave(
 		}
 		t = at + rng.range(7, 13) - Math.min(wave, 8) * 0.4;
 	}
-	const fighters = tweaks.fighters ?? (wave >= 5 ? Math.min(1 + Math.floor((wave - 5) / 2), 4) : 0);
-	const helis = tweaks.helis ?? (wave >= 3 ? Math.min(Math.floor((wave - 1) / 2), 4) : 0);
+	const cut = tweaks.airCut ?? 0;
+	const fighters = Math.max(
+		0,
+		(tweaks.fighters ?? (wave >= 5 ? Math.min(1 + Math.floor((wave - 5) / 2), 4) : 0)) - cut
+	);
+	const helis = Math.max(
+		0,
+		(tweaks.helis ?? (wave >= 3 ? Math.min(Math.floor((wave - 1) / 2), 4) : 0)) - cut
+	);
 	for (let i = 0; i < fighters; i++)
 		orders.push({ t: rng.range(10, Math.max(20, t)), kind: 'fighter', z: 0 });
 	for (let i = 0; i < helis; i++)

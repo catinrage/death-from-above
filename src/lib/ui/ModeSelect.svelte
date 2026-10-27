@@ -2,6 +2,16 @@
 	import { fade, fly } from 'svelte/transition';
 	import { AIRCRAFT } from '$lib/game/defs-aircraft';
 	import { isUnlocked, MISSIONS, type CampaignProgress, type Objective } from '$lib/game/campaign';
+	import {
+		canStrike,
+		loadStrikes,
+		saveStrike,
+		sectorOf,
+		STRIKE_IDS,
+		STRIKES,
+		type StrikeId
+	} from '$lib/game/campaign-map';
+	import CampaignMap from './CampaignMap.svelte';
 	import type { GameMode, ModeStart } from '$lib/game/hud';
 	import type { EndlessRun } from '$lib/game/records';
 
@@ -32,6 +42,12 @@
 	);
 	const mission = $derived(MISSIONS.find((m) => m.id === missionId) ?? MISSIONS[0]);
 	const missionIndex = $derived(MISSIONS.indexOf(mission));
+	let strikes = $state(loadStrikes());
+	const strike = $derived<StrikeId | null>(strikes[mission.id] ?? null);
+
+	function pickStrike(id: StrikeId | null): void {
+		strikes = saveStrike(mission.id, id);
+	}
 	const totalStars = $derived(Object.values(progress).reduce((n, r) => n + r.stars, 0));
 	const won = $derived(Object.keys(progress).length);
 
@@ -42,7 +58,7 @@
 	];
 
 	function launch(): void {
-		if (tab === 'campaign') onLaunch({ mode: 'campaign', mission: mission.id });
+		if (tab === 'campaign') onLaunch({ mode: 'campaign', mission: mission.id, strike });
 		else onLaunch({ mode: tab });
 	}
 
@@ -129,51 +145,49 @@
 				</div>
 			{:else if tab === 'campaign'}
 				<div class="campaign" in:fade={{ duration: 140 }}>
-					<ol class="missions">
-						{#each MISSIONS as m, i (m.id)}
-							{@const open = isUnlocked(progress, m.id)}
-							{@const rec = progress[m.id]}
-							<li>
-								<button
-									class:on={m.id === mission.id}
-									class:locked={!open}
-									disabled={!open}
-									onclick={() => (picked = m.id)}
-									aria-label="Mission {i + 1}: {m.name}{open ? '' : ' (locked)'}"
-								>
-									<span class="num">{String(i + 1).padStart(2, '0')}</span>
-									<span class="nm">
-										<strong>{m.name}</strong>
-										<small>{open ? m.tagline : 'Win the previous mission'}</small>
-									</span>
-									<span class="stars" aria-label="{rec?.stars ?? 0} stars">
-										{#each [1, 2, 3] as s (s)}
-											<i class:got={(rec?.stars ?? 0) >= s}>★</i>
-										{/each}
-									</span>
-								</button>
-							</li>
-						{/each}
-					</ol>
-					<div class="detail">
-						<p class="kicker">Mission {missionIndex + 1} of {MISSIONS.length}</p>
-						<h3>{mission.name}</h3>
-						<p class="lead">{mission.brief}</p>
-						<p class="sub">Objectives</p>
-						<ul class="objectives">
-							{#each mission.objectives as o, k (k)}
-								<li>{describe(o)}</li>
-							{/each}
-							{#if mission.baseFloor}
-								<li>Keep the airfield above {Math.round(mission.baseFloor * 100)}%</li>
-							{/if}
-						</ul>
-						<p class="hint">
-							★ Win · ★ Airfield above 70% · ★ No aircraft lost
-							{#if progress[mission.id]}
-								<br />Best score {progress[mission.id].best.toLocaleString()}
-							{/if}
-						</p>
+					<CampaignMap {progress} selected={mission.id} {strike} onPick={(id) => (picked = id)} />
+					<div class="split">
+						<div class="detail">
+							<p class="kicker">
+								Mission {missionIndex + 1} of {MISSIONS.length} · {sectorOf(mission.id)?.name}
+							</p>
+							<h3>{mission.name}</h3>
+							<p class="lead">{mission.brief}</p>
+							<p class="sub">Objectives</p>
+							<ul class="objectives">
+								{#each mission.objectives as o, k (k)}
+									<li>{describe(o)}</li>
+								{/each}
+								{#if mission.baseFloor}
+									<li>Keep the airfield above {Math.round(mission.baseFloor * 100)}%</li>
+								{/if}
+							</ul>
+							<p class="hint">
+								★ Win · ★ Airfield above 70% · ★ No aircraft lost
+								{#if progress[mission.id]}
+									<br />Best score {progress[mission.id].best.toLocaleString()}
+								{/if}
+							</p>
+						</div>
+						{#if canStrike(mission.id)}
+							<aside class="strike-col">
+								<p class="sub">Strike ahead of the sortie</p>
+								<div class="strikes" role="radiogroup" aria-label="Strike target">
+									{#each STRIKE_IDS as id (id)}
+										{@const s = STRIKES[id]}
+										<button
+											role="radio"
+											aria-checked={strike === id}
+											class:on={strike === id}
+											onclick={() => pickStrike(strike === id ? null : id)}
+										>
+											<strong>{s.name}</strong>
+											<small>{s.effect}</small>
+										</button>
+									{/each}
+								</div>
+							</aside>
+						{/if}
 					</div>
 				</div>
 			{:else}
@@ -335,87 +349,61 @@
 
 	.campaign {
 		display: grid;
-		grid-template-columns: minmax(250px, 300px) 1fr;
+		gap: 16px;
+	}
+
+	.split {
+		display: grid;
+		grid-template-columns: 1fr minmax(240px, 300px);
 		gap: 22px;
 	}
 
-	.missions {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: grid;
-		gap: 4px;
-		align-content: start;
+	.strike-col .sub {
+		margin-top: 0;
 	}
 
-	.missions button {
-		width: 100%;
+	.strikes {
 		display: grid;
-		grid-template-columns: auto 1fr auto;
-		align-items: center;
-		gap: 10px;
-		padding: 5px 10px;
+		gap: 6px;
+	}
+
+	.strikes button {
+		display: grid;
+		gap: 2px;
+		align-content: start;
+		padding: 8px 10px;
 		text-align: left;
 		cursor: pointer;
-		background: rgba(255, 255, 255, 0.03);
-		border: 1px solid transparent;
+		background: rgba(255, 255, 255, 0.04);
+		border: 1px solid rgba(255, 255, 255, 0.08);
 		border-left: 2px solid transparent;
 	}
 
-	.missions button:hover:not(:disabled) {
+	.strikes button:hover {
 		background: rgba(255, 176, 74, 0.08);
 	}
 
-	.missions button.on {
+	.strikes button.on {
 		background: rgba(255, 176, 74, 0.12);
 		border-color: var(--line);
 		border-left-color: var(--amber);
 	}
 
-	.missions button.locked {
-		cursor: not-allowed;
-		opacity: 0.45;
-	}
-
-	.num {
+	.strikes strong {
 		font-family: var(--display);
 		font-size: 15px;
-		color: var(--ink-faint);
-	}
-
-	.missions button.on .num {
-		color: var(--amber);
-	}
-
-	.nm {
-		display: grid;
-		min-width: 0;
-	}
-
-	.nm strong {
-		font-family: var(--display);
-		font-size: 16px;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
 	}
 
-	.nm small {
-		font-size: 12px;
-		color: var(--ink-dim);
-	}
-
-	.stars i {
-		font-style: normal;
-		font-size: 13px;
-		color: rgba(255, 255, 255, 0.16);
-	}
-
-	.stars i.got {
+	.strikes button.on strong {
 		color: var(--amber);
-		text-shadow: 0 0 8px var(--amber-glow);
+	}
+
+	.strikes small {
+		font-size: 13px;
+		line-height: 1.3;
+		color: var(--ink-dim);
 	}
 
 	.detail {
@@ -561,7 +549,7 @@
 	}
 
 	@media (max-width: 720px) {
-		.campaign {
+		.split {
 			grid-template-columns: 1fr;
 		}
 

@@ -133,3 +133,36 @@ test('a campaign mission shows its objectives', async ({ page }) => {
 	await expect(page.getByText(/WAVE 1\/2/).first()).toBeVisible();
 	expect(errors).toEqual([]);
 });
+
+test('the campaign map shows the front and remembers the strike for a mission', async ({
+	page
+}) => {
+	await page.addInitScript(() => {
+		localStorage.setItem('dfa.trained', '1');
+		localStorage.setItem(
+			'dfa.campaign',
+			JSON.stringify({ 'first-light': { stars: 2, best: 900 } })
+		);
+	});
+	const errors = await openTitle(page);
+	await page.getByRole('button', { name: /sortie/i }).click();
+	const map = page.getByRole('group', { name: /campaign map/i });
+	await expect(map).toBeVisible();
+	await expect(map.getByText('FRONT')).toBeVisible();
+	await expect(
+		page.getByRole('button', { name: /mission 1: first light, 2 stars/i })
+	).toBeVisible();
+	await page.getByRole('button', { name: /mission 2: the crossing/i }).click();
+	const radar = page.getByRole('radio', { name: /radar site/i });
+	await radar.click();
+	await expect(radar).toHaveAttribute('aria-checked', 'true');
+	await page.keyboard.press('Escape');
+	await page.getByRole('button', { name: /sortie/i }).click();
+	await expect(page.getByRole('radio', { name: /radar site/i })).toHaveAttribute(
+		'aria-checked',
+		'true'
+	);
+	await page.getByRole('button', { name: /fly the crossing/i }).click();
+	await expect(page.getByText(/radar site hit/i).first()).toBeVisible();
+	expect(errors).toEqual([]);
+});
