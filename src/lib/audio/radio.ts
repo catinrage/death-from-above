@@ -17,7 +17,11 @@ export type RadioCue =
 	| 'enemyLock'
 	| 'missileDefeated'
 	| 'splash'
-	| 'streak';
+	| 'streak'
+	| 'wingAttack'
+	| 'wingCover'
+	| 'wingSams'
+	| 'wingmanDown';
 
 export interface RadioLine {
 	/** Clip file (static/audio/radio/<file>.mp3). */
@@ -41,6 +45,11 @@ const TIMING: Record<RadioCue, CueTiming> = {
 	lastAircraft: { priority: 5, cooldown: 30, ttl: 8 },
 	baseCritical: { priority: 5, cooldown: 60, ttl: 8 },
 	enemyLock: { priority: 4, cooldown: 14, ttl: 1.5 },
+	// Acknowledging an order the pilot just gave: quick, or not at all.
+	wingAttack: { priority: 4, cooldown: 1, ttl: 1.2 },
+	wingCover: { priority: 4, cooldown: 1, ttl: 1.2 },
+	wingSams: { priority: 4, cooldown: 1, ttl: 1.2 },
+	wingmanDown: { priority: 3, cooldown: 10, ttl: 4 },
 	baseHit: { priority: 3, cooldown: 30, ttl: 4 },
 	enemyAir: { priority: 3, cooldown: 30, ttl: 5 },
 	waveInbound: { priority: 3, cooldown: 10, ttl: 6 },
@@ -92,6 +101,8 @@ export interface RadioState {
 	enemyAir: number;
 	/** Aircraft left, this one included. */
 	lives: number;
+	/** The AI wingman is flying (false when there is none or it is down). */
+	wingman: boolean;
 }
 
 /** Turns changes in the battle into radio calls. Pure: no audio, no timing beyond edges. */
@@ -115,6 +126,7 @@ export class RadioWatch {
 		} else if (s.baseUnderAttack && !p.baseUnderAttack) out.push('baseHit');
 		if (p.alive && !s.alive) out.push('playerDown');
 		if (s.lives === 1 && p.lives > 1) out.push('lastAircraft');
+		if (p.wingman && !s.wingman) out.push('wingmanDown');
 		if (s.alive && p.landed && !s.landed) out.push('rearmed');
 		if (s.alive && s.lock >= 0.5 && p.lock < 0.5) out.push('enemyLock');
 		if (s.alive && p.inbound > 0 && s.inbound === 0) out.push('missileDefeated');

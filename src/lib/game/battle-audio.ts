@@ -52,6 +52,7 @@ export function radioState(
 		inbound: t.inbound,
 		lock: t.lock,
 		enemyAir: t.enemyAir,
-		lives
+		lives,
+		wingman: !!w.wingman && w.wingman.active
 	};
 }

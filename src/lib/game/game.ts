@@ -586,6 +586,10 @@ export class Game {
 		const pick = order === 'attack' && p && p.alive ? this.targeting.primary(w, p) : null;
 		const ok = wing.command(w, order, pick ? { unit: pick.unit, air: pick.air } : null);
 		this.audio.play(ok ? 'select' : 'empty', w.camera.x, w.camera.y, 0.6);
+		if (ok)
+			this.audio.radio([
+				order === 'attack' ? 'wingAttack' : order === 'sams' ? 'wingSams' : 'wingCover'
+			]);
 	}
 
 	private step(dt: number, pilot: PilotInput): void {

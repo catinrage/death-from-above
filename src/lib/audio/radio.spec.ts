@@ -11,7 +11,8 @@ const calm: RadioState = {
 	inbound: 0,
 	lock: 0,
 	enemyAir: 0,
-	lives: 3
+	lives: 3,
+	wingman: true
 };
 
 /** Runs the desk for `seconds`, returning every call it put on the air. */
@@ -73,6 +74,13 @@ describe('radio watch', () => {
 		w.update({ ...calm, landed: true });
 		expect(w.update(calm)).toEqual(['rearmed']);
 		expect(w.update({ ...calm, alive: false, lives: 1 })).toEqual(['playerDown', 'lastAircraft']);
+	});
+
+	it('reports the wingman going down', () => {
+		const w = new RadioWatch();
+		w.update(calm);
+		expect(w.update({ ...calm, wingman: false })).toEqual(['wingmanDown']);
+		expect(w.update({ ...calm, wingman: true })).toEqual([]);
 	});
 
 	it('says nothing on the first frame of a sortie', () => {

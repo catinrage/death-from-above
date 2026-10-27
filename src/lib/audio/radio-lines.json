@@ -107,6 +107,34 @@
 				["streak-2", "Look at him go!"],
 				["streak-3", "Column's wrecked. Great shooting, Viper."]
 			]
+		},
+		"wingAttack": {
+			"speaker": "wingman",
+			"lines": [
+				["wing-attack-1", "Copy, engaging your target."],
+				["wing-attack-2", "Rolling in on it."]
+			]
+		},
+		"wingCover": {
+			"speaker": "wingman",
+			"lines": [
+				["wing-cover-1", "Copy, on your wing."],
+				["wing-cover-2", "Forming up. I've got your six."]
+			]
+		},
+		"wingSams": {
+			"speaker": "wingman",
+			"lines": [
+				["wing-sams-1", "Going after the SAMs."],
+				["wing-sams-2", "Copy, suppressing air defences."]
+			]
+		},
+		"wingmanDown": {
+			"speaker": "tower",
+			"lines": [
+				["wing-down-1", "Your wingman is down! He'll be back up shortly."],
+				["wing-down-2", "Viper Two is hit and out of the fight."]
+			]
 		}
 	}
 }
