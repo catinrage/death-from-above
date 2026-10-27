@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { TERRAIN_ROWS } from './constants';
 import { BOMBS } from './defs-bombs';
 import { explode } from './combat';
 import { SPAN_HP, TRUSS_H } from './bridge';
@@ -34,12 +33,26 @@ describe('river valley', () => {
 	it('keeps the banks above the water wherever the water mesh reaches', () => {
 		const { w, level } = setup();
 		const r = w.river!;
-		for (const z of TERRAIN_ROWS) {
+		for (const p of r.path) {
+			if (p.depth <= 0) continue;
 			for (const s of [-1, 1]) {
-				const x = r.centerX(z) + s * (r.halfWidthAt(z) + STRIP);
-				expect(w.terrain.heightAtXZ(x, z)).toBeGreaterThan(level + 0.2);
+				const u = s * (p.hw + STRIP);
+				expect(w.terrain.heightAtXZ(p.x + p.nx * u, p.z + p.nz * u)).toBeGreaterThan(level + 0.2);
 			}
 		}
+	});
+
+	it('winds away from the straight line and thins out at its source', () => {
+		const { w, x0 } = setup();
+		const r = w.river!;
+		const xs = r.path.map((p) => p.x);
+		expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(150);
+		const src = r.path[r.path.length - 1];
+		expect(src.hw).toBeLessThan(r.halfWidth * 0.5);
+		expect(Math.abs(src.x - x0)).toBeGreaterThan(100);
+		// Straight and full width where the bridge crosses.
+		expect(r.offset(x0, 0)).toBeCloseTo(0, 5);
+		expect(r.channel(x0 + 30, 0).hw).toBeCloseTo(r.halfWidth, 5);
 	});
 });
 

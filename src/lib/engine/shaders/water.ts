@@ -4,10 +4,13 @@ export const MAX_RIPPLES = 16;
 
 export const WATER_VS = /* glsl */ `${HEADER}
 layout(location = 0) in vec3 a_pos;
+layout(location = 1) in vec3 a_chan;
 uniform mat4 u_viewProj;
 out vec3 v_wp;
+out vec3 v_chan;
 void main() {
 	v_wp = a_pos;
+	v_chan = a_chan;
 	gl_Position = u_viewProj * vec4(a_pos, 1.0);
 }
 `;
@@ -23,9 +26,10 @@ uniform vec3 u_zenith;
 uniform vec3 u_horizon;
 uniform vec4 u_ripples[MAX_RIPPLES];
 uniform int u_numRipples;
-// Channel cross-section: centre x, half width, bed depth, shoal width.
-uniform vec4 u_river;
+uniform float u_shoal;
 in vec3 v_wp;
+// Channel cross-section: signed offset from the centre line, half width, bed depth.
+in vec3 v_chan;
 out vec4 o_color;
 
 const vec3 DEEP = vec3(0.018, 0.05, 0.046);
@@ -33,9 +37,8 @@ const vec3 ABSORB = vec3(0.42, 0.17, 0.13);
 
 // Water depth straight down to the bed (negative over the banks). Analytic, so
 // the shoreline stays smooth where a depth buffer read would quantise.
-float bedDepth(vec2 p) {
-	float d = abs(p.x - u_river.x);
-	return mix(u_river.z, -0.6, smoothstep(u_river.y - u_river.w, u_river.y, d));
+float bedDepth() {
+	return mix(v_chan.z, -0.6, smoothstep(v_chan.y - u_shoal, v_chan.y, abs(v_chan.x)));
 }
 
 float linearDepth(float d) {
@@ -125,7 +128,7 @@ void main() {
 	float fres = 0.02 + 0.98 * pow(1.0 - NoV, 5.0);
 
 	// Refraction: the bed seen through tinted water, thicker water darker and greener.
-	float vert = max(bedDepth(p), 0.0);
+	float vert = max(bedDepth(), 0.0);
 	float thick = vert / max(V.y, 0.12);
 	vec2 ruv = uv + N.xz * 0.025 * clamp(vert / 3.0, 0.0, 1.0);
 	// Don't refract things standing in front of the water (piers, wrecks).
