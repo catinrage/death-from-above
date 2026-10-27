@@ -13,6 +13,8 @@ const BEHIND = 30;
 const BEYOND = 45;
 /** Furthest landing point (from the aircraft) the camera will widen out to show. */
 const MAX_REACH = 340;
+/** Lowest the ground line may sit below centre, as a fraction of the half-height (~68% down). */
+const GROUND_LINE = 0.36;
 /** Camera pitch for the usual side-on shot and for looking down on the gunship's orbit. */
 export const SIDE_PITCH = 5 * DEG;
 export const ORBIT_PITCH = 16 * DEG;
@@ -130,8 +132,11 @@ export class CameraRig {
 			y = groundY + halfH * 0.42;
 			y = Math.min(Math.max(y, top - halfH), bottom + halfH);
 		}
-		// Above even the widest shot (past the ceiling): keep the aircraft rather than the ground.
 		const halfH = dist * tanH;
+		// Down on the runway the margin below the aircraft reaches underground and centres the
+		// shot on dark foreground: keep the ground line low (~68% down) with sky above instead.
+		y = Math.max(y, groundY + halfH * GROUND_LINE - this.groundBias);
+		// Above even the widest shot (past the ceiling): keep the aircraft rather than the ground.
 		y = Math.max(y, top - halfH * 0.95);
 		return { x, y, dist, lead: x - t.x };
 	}
