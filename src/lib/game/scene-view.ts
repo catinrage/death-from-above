@@ -392,7 +392,16 @@ export class SceneView {
 		for (const s of w.shells) {
 			if (s.kind === 'flak')
 				w.fx.immediateStreak(s.x, s.y, s.z, s.vx, s.vy, 0.12, 0.006, 3, 2.4, 1.6);
-			else w.fx.immediateGlow(s.x, s.y, s.z, s.kind === 'rocket' ? 1.4 : 0.6, 10, 5, 2);
+			else
+				w.fx.immediateGlow(
+					s.x,
+					s.y,
+					s.z,
+					s.kind === 'rocket' || s.kind === 'ffar' ? 1.4 : 0.6,
+					10,
+					5,
+					2
+				);
 		}
 	}
 

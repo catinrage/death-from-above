@@ -1,7 +1,9 @@
 import { angleDiff, clamp } from '../engine/math';
 import { fx as rnd } from '../engine/rng';
 import { damageUnit, explode, segmentVsCircle, segmentVsUnit } from './combat';
-import type { BlastSpec } from './defs-bombs';
+import { homeOnEmitter } from './arm';
+import { WORLD } from './constants';
+import { BOMBS, type BlastSpec } from './defs-bombs';
 import type { Owner, Trackable, Unit } from './types';
 import { flareEmit, flareHeat } from './flare-fx';
 import type { World } from './world';
@@ -22,7 +24,8 @@ export interface Bullet {
 	explosive: number;
 }
 
-export type ShellKind = 'flak' | 'tank' | 'artillery' | 'rocket';
+/** 'ffar' is the player's unguided air-to-ground rocket. */
+export type ShellKind = 'flak' | 'tank' | 'artillery' | 'rocket' | 'ffar';
 
 export interface Shell {
 	kind: ShellKind;
@@ -40,8 +43,8 @@ export interface Shell {
 }
 
 export interface Missile extends Trackable {
-	/** 'agm' is the player's guided air-to-ground missile. */
-	kind: 'sam' | 'manpads' | 'air' | 'agm';
+	/** 'agm' is the player's guided air-to-ground missile, 'arm' its anti-radiation missile. */
+	kind: 'sam' | 'manpads' | 'air' | 'agm' | 'arm';
 	angle: number;
 	speed: number;
 	maxSpeed: number;
@@ -60,6 +63,8 @@ export interface Missile extends Trackable {
 	/** The seeker's smoothed idea of where its target is heading (lags a sudden break). */
 	trackVx: number;
 	trackVy: number;
+	/** Anti-radiation missiles: the radar they are riding (null once it goes dark). */
+	emitter?: Unit | null;
 }
 
 export interface Flare extends Trackable {
@@ -243,16 +248,21 @@ function updateShells(w: World, dt: number): void {
 		const x0 = s.x,
 			y0 = s.y;
 		s.age += dt;
-		const gravity = s.kind === 'rocket' ? 0 : s.kind === 'flak' ? 4 : 13;
+		const gravity =
+			s.kind === 'rocket' ? 0 : s.kind === 'flak' ? 4 : s.kind === 'ffar' ? WORLD.gravity : 13;
 		s.vy -= gravity * dt;
 		s.x += s.vx * dt;
 		s.y += s.vy * dt;
-		if (s.kind === 'rocket' || s.kind === 'artillery') {
+		if (s.kind === 'rocket' || s.kind === 'artillery' || s.kind === 'ffar') {
 			s.trail += dt;
 			if (s.trail > 0.03) {
 				s.trail = 0;
-				w.fx.trail(s.x, s.y, s.z, s.kind === 'rocket' ? 0.8 : 0.5, 0.5, 0.5, 1.5, 0.3);
+				w.fx.trail(s.x, s.y, s.z, s.kind === 'artillery' ? 0.5 : 0.8, 0.5, 0.5, 1.5, 0.3);
 			}
+		}
+		if (s.kind === 'ffar') {
+			if (ffarHit(w, s, x0, y0)) w.shells.splice(i, 1);
+			continue;
 		}
 		let detonate = false;
 		let air = false;
@@ -309,6 +319,33 @@ function updateShells(w: World, dt: number): void {
 	}
 }
 
+/** Our rockets burst on whatever they strike first: a vehicle, an aircraft or the ground. */
+function ffarHit(w: World, s: Shell, x0: number, y0: number): boolean {
+	let best = 2;
+	for (const u of w.units) {
+		if (!u.alive || Math.abs(u.x - s.x) > 40) continue;
+		const t = segmentVsUnit(u, x0, y0, s.x, s.y, 0.4);
+		if (t >= 0 && t < best) best = t;
+	}
+	for (const a of w.air) {
+		if (!a.alive) continue;
+		const t = segmentVsCircle(x0, y0, s.x, s.y, a.x, a.y, a.radius);
+		if (t >= 0 && t < best) best = t;
+	}
+	let x = s.x,
+		y = s.y;
+	if (best <= 1) {
+		x = x0 + (s.x - x0) * best;
+		y = y0 + (s.y - y0) * best;
+	} else {
+		const g = w.ground(s.x);
+		if (s.y >= g) return s.age > 12;
+		y = g;
+	}
+	explode(w, x, y, s.z, BOMBS.rockets.blast, s.owner, { playerScale: 0 });
+	return true;
+}
+
 /**
  * Missile flight model. A missile is fast but not magic: how hard it can turn is
  * a lateral acceleration (its G limit), so the faster it goes the wider it turns;
@@ -348,6 +385,7 @@ function updateMissiles(w: World, dt: number): void {
 		if (burning) m.speed = Math.min(m.maxSpeed, m.speed + m.accel * dt);
 		else m.speed = Math.max(MISSILE_STALL * 0.7, m.speed - 30 * dt);
 		if (m.owner === 'enemy') seek(w, m);
+		else if (m.kind === 'arm') homeOnEmitter(w, m);
 		const t = m.target;
 		if (t && t.alive) {
 			const dx = t.x - m.x,

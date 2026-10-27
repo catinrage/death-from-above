@@ -9,7 +9,7 @@ import { Focus } from './focus';
 import { Targeting } from './targeting';
 import { Autopilot } from './autopilot';
 import { WORLD } from './constants';
-import { BOMBS, BOMB_ORDER } from './defs-bombs';
+import { BOMBS, BOMB_ORDER, ROCKET_SPEED } from './defs-bombs';
 import { environmentAt, presetName } from './environment';
 import type {
 	GameMode,
@@ -785,8 +785,23 @@ export class Game {
 			return;
 		}
 		const id = p.ammo[p.selected] > 0 ? p.selected : 'gp';
+		// Guns and the radar-homing missile go where they point: no drop sight for them.
+		if (id === 'gunpod' || id === 'arm') {
+			w.camera.interest = null;
+			return;
+		}
 		const def = BOMBS[id];
-		const hit = predictImpact(w, p.x, p.y - 1.2, p.vx, p.vy, def.drag, this.sightPts);
+		// Rockets leave the rails at speed and fall like a bomb thrown forward.
+		const boost = id === 'rockets' ? ROCKET_SPEED : 0;
+		const hit = predictImpact(
+			w,
+			p.x,
+			p.y - 1.2,
+			p.vx + Math.cos(p.angle) * boost,
+			p.vy + Math.sin(p.angle) * boost,
+			def.drag,
+			this.sightPts
+		);
 		let lo = hit.x,
 			hi = hit.x;
 		for (const b of w.bombs) {
@@ -887,7 +902,8 @@ export class Game {
 						count: p.ammo[id],
 						max: p.capacity(id),
 						color: BOMBS[id].color,
-						slot: i + 1
+						slot: i + 1,
+						...(id === 'gunpod' ? { heat: p.podHeat / 100, hot: p.podOverheated } : {})
 					}))
 				: [],
 			selected: p?.selected ?? 'gp',

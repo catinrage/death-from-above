@@ -19,6 +19,9 @@ export interface HudBomb {
 	max: number;
 	color: string;
 	slot: number;
+	/** Gun pod: barrel heat 0..1 and whether it has cooked off. */
+	heat?: number;
+	hot?: boolean;
 }
 
 export interface HudFeedItem {

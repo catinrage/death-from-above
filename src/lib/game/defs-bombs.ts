@@ -1,4 +1,5 @@
 import type { MeshName } from '../models';
+import type { GunSpec } from './defs-aircraft';
 import type { BombId } from './types';
 
 export interface BlastSpec {
@@ -171,15 +172,54 @@ export const BOMBS: Record<BombId, BombDef> = {
 		blast: { radius: 150, damage: 4000, pierce: 1, crater: [30, 9], size: 6, shake: 1.6 },
 		color: '#fff27a',
 		slot: 12
+	},
+	rockets: {
+		id: 'rockets',
+		name: 'RP-7 ROCKET POD',
+		short: 'ROCKETS',
+		desc: 'Ripples seven unguided rockets along the nose. Point, shoot, walk them onto the target.',
+		mesh: 'missile',
+		drag: 0,
+		cooldown: 0.65,
+		blast: { radius: 6, damage: 70, pierce: 0.55, crater: [2, 0.6], size: 0.45, shake: 0.08 },
+		color: '#ffb14a',
+		slot: 13
+	},
+	arm: {
+		id: 'arm',
+		name: 'ARM-88 ANTI-RADIATION',
+		short: 'ARM',
+		desc: 'Homes on SAM and radar emitters, but only while they radiate. Shut-down sites are hit where they were last heard.',
+		mesh: 'missile',
+		drag: 0,
+		cooldown: 1,
+		blast: { radius: 12, damage: 340, pierce: 0.9, crater: [4, 1.3], size: 1, shake: 0.3 },
+		color: '#5affc8',
+		slot: 14
+	},
+	gunpod: {
+		id: 'gunpod',
+		name: 'GP-30 GUN POD',
+		short: 'GUN POD',
+		desc: 'Heavy 30 mm cannon under the belly. Hold to fire: shreds armour, then overheats.',
+		mesh: 'missile',
+		drag: 0,
+		cooldown: 0,
+		blast: { radius: 0, damage: 0, pierce: 0, crater: [0, 0], size: 0, shake: 0 },
+		color: '#ff6a3d',
+		slot: 15
 	}
 };
 
 export const BOMB_ORDER: BombId[] = [
 	'gp',
+	'rockets',
+	'gunpod',
 	'cluster',
 	'napalm',
 	'penetrator',
 	'guided',
+	'arm',
 	'chemical',
 	'emp',
 	'cruise',
@@ -190,6 +230,36 @@ export const BOMB_ORDER: BombId[] = [
 ];
 
 /** Ordnance that is launched or called in rather than dropped. */
-export const LAUNCHED: ReadonlySet<BombId> = new Set<BombId>(['cruise', 'ballistic', 'para']);
+export const LAUNCHED: ReadonlySet<BombId> = new Set<BombId>([
+	'cruise',
+	'ballistic',
+	'para',
+	'rockets',
+	'arm'
+]);
 
 export const BOMBLET_BLAST = BOMBS.cluster.blast;
+
+/** Unguided rockets: muzzle speed added to the aircraft's, and how many leave one pod per press. */
+export const ROCKET_SPEED = 240;
+export const ROCKETS_PER_POD = 7;
+
+/**
+ * The gun pod: a heavy cannon slung under the belly. Far harder hitting than
+ * the built-in guns, but it cooks off its heat budget in a couple of seconds.
+ */
+export const GUN_POD: GunSpec = {
+	rate: 30,
+	damage: 30,
+	pierce: 0.85,
+	speed: 820,
+	spread: 0.014,
+	heatPerShot: 1.4,
+	muzzles: [[1.2, -1.9, 0]],
+	tracerEvery: 2,
+	color: [12, 5, 1.6],
+	explosive: 2.6
+};
+/** Gun pod heat shed per second, and the level an overheated pod must cool to before it fires again. */
+export const POD_COOLING = 20;
+export const POD_RESET = 10;
