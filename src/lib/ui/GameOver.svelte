@@ -1,6 +1,15 @@
 <script lang="ts">
 	import { fade, fly } from 'svelte/transition';
 	import { missionById } from '$lib/game/campaign';
+	import {
+		canStrike,
+		loadStrikes,
+		saveStrike,
+		sectorOf,
+		STRIKE_IDS,
+		STRIKES,
+		type StrikeId
+	} from '$lib/game/campaign-map';
 	import type { GameOverStats, ModeStart } from '$lib/game/hud';
 
 	interface Props {
@@ -15,6 +24,17 @@
 
 	const won = $derived(stats.outcome === 'complete');
 	const next = $derived(stats.nextMission ? missionById(stats.nextMission) : undefined);
+	/** After a win, the strike to fly ahead of the next mission. */
+	const striking = $derived(won && stats.mode === 'campaign' && !!next && canStrike(next.id));
+	// svelte-ignore state_referenced_locally
+	let strike = $state<StrikeId | null>(next ? (loadStrikes()[next.id] ?? null) : null);
+	const nextSector = $derived(next ? sectorOf(next.id) : undefined);
+
+	function pickStrike(id: StrikeId): void {
+		if (!next) return;
+		strike = strike === id ? null : id;
+		saveStrike(next.id, strike);
+	}
 	/** The Enter / primary action. */
 	const primary = $derived.by((): { label: string; run: () => void } => {
 		if (won && stats.mode === 'tutorial')
@@ -25,7 +45,7 @@
 		if (won && next)
 			return {
 				label: `Next: ${next.name}`,
-				run: () => onLaunch({ mode: 'campaign', mission: next.id })
+				run: () => onLaunch({ mode: 'campaign', mission: next.id, strike })
 			};
 		return {
 			label: won ? 'Fly it again' : stats.mode === 'endless' ? 'Fly again' : 'Retry',
@@ -101,6 +121,26 @@
 				<dd>{minutes}:{seconds}</dd>
 			</div>
 		</dl>
+		{#if striking && next}
+			<div class="strike">
+				<p>
+					The front moves up{nextSector ? ` to ${nextSector.name}` : ''}. Pick a target to hit
+					before {next.name}:
+				</p>
+				<div class="chips" role="radiogroup" aria-label="Strike target">
+					{#each STRIKE_IDS as id (id)}
+						<button
+							role="radio"
+							aria-checked={strike === id}
+							class:on={strike === id}
+							title={STRIKES[id].effect}
+							onclick={() => pickStrike(id)}>{STRIKES[id].name}</button
+						>
+					{/each}
+				</div>
+				<small class="effect">{strike ? STRIKES[strike].effect : 'No strike: full strength'}</small>
+			</div>
+		{/if}
 		<div class="actions">
 			<button class="primary" onclick={primary.run}>{primary.label} <small>Enter</small></button>
 			{#if primary.run !== onRetry}
@@ -293,6 +333,44 @@
 		margin-left: 10px;
 		font-size: 12px;
 		opacity: 0.7;
+	}
+
+	.strike {
+		display: grid;
+		justify-items: center;
+		gap: 8px;
+		margin-top: 8px;
+	}
+
+	.strike p {
+		margin: 0;
+		font-size: 15px;
+		color: var(--ink-dim);
+	}
+
+	.chips {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 8px;
+	}
+
+	.chips button {
+		padding: 8px 14px;
+		font-size: 14px;
+	}
+
+	.chips button.on {
+		border-color: var(--amber);
+		color: var(--amber);
+		background: rgba(255, 176, 74, 0.12);
+	}
+
+	.strike .effect {
+		margin: 0;
+		font-size: 13px;
+		letter-spacing: 0.06em;
+		color: var(--ink-faint);
 	}
 
 	@media (max-width: 700px) {

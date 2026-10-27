@@ -38,6 +38,7 @@ import {
 	starsFor,
 	type Mission
 } from './campaign';
+import { canStrike, STRIKES, withStrike } from './campaign-map';
 import { Tutorial } from './tutorial';
 import { placeRun, readBest, readBoard, saveBoard, writeBest, writeTrained } from './records';
 import { predictImpact } from './weapons';
@@ -344,7 +345,9 @@ export class Game {
 	newGame(aircraft: AircraftId, loadout?: Loadout, start: ModeStart = { mode: 'endless' }): void {
 		this.aircraft = aircraft;
 		this.loadout = loadout;
-		const mission = start.mode === 'campaign' ? (missionById(start.mission) ?? null) : null;
+		const flown = start.mode === 'campaign' ? (missionById(start.mission) ?? null) : null;
+		const strike = start.mode === 'campaign' && flown && canStrike(flown.id) ? start.strike : null;
+		const mission = flown && withStrike(flown, strike);
 		this.mode = start.mode === 'campaign' && !mission ? 'endless' : start.mode;
 		this.mission = mission;
 		this.tracker = mission ? new MissionTracker(mission) : null;
@@ -390,7 +393,9 @@ export class Game {
 				this.cb.message({
 					id: this.msgId++,
 					text: mission.name.toUpperCase(),
-					sub: mission.brief,
+					sub: strike
+						? `${mission.brief} ${STRIKES[strike].name} hit: ${STRIKES[strike].effect.toLowerCase()}.`
+						: mission.brief,
 					tone: 'info'
 				});
 			this.waves.begin(w, 1);

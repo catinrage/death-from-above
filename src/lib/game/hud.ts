@@ -1,4 +1,5 @@
 import type { ObjectiveStatus } from './campaign';
+import type { StrikeId } from './campaign-map';
 import type { Systems } from './damage';
 import type { BigKill } from './killcam';
 import type { TutorialCard } from './tutorial';
@@ -9,7 +10,10 @@ import type { WingOrder } from './wingman';
 export type GameMode = 'tutorial' | 'campaign' | 'endless';
 
 export type ModeStart =
-	{ mode: 'tutorial' } | { mode: 'endless' } | { mode: 'campaign'; mission: string };
+	| { mode: 'tutorial' }
+	| { mode: 'endless' }
+	/** A campaign mission, softened by the strike flown ahead of it. */
+	| { mode: 'campaign'; mission: string; strike?: StrikeId | null };
 
 export type GamePhase = 'loading' | 'title' | 'playing' | 'paused' | 'gameover';
 export type Tone = 'info' | 'warn' | 'good';
