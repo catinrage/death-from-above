@@ -90,7 +90,7 @@ export interface Sector {
 /** The front, from the home airfield to the enemy's heartland. */
 export const SECTORS: readonly Sector[] = [
 	{ id: 'home', name: 'Home Ridge', missions: ['first-light'] },
-	{ id: 'river', name: 'River Line', missions: ['the-crossing', 'iron-column'] },
+	{ id: 'river', name: 'River Line', missions: ['the-crossing', 'iron-column', 'spearhead'] },
 	{ id: 'valley', name: 'The Valley', missions: ['flak-alley', 'night-watch'] },
 	{ id: 'heights', name: 'Radar Heights', missions: ['wild-weasel', 'contested-skies'] },
 	{ id: 'heartland', name: 'Heartland', missions: ['death-from-above'] }
