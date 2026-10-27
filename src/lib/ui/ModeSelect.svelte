@@ -12,6 +12,7 @@
 		type StrikeId
 	} from '$lib/game/campaign-map';
 	import CampaignMap from './CampaignMap.svelte';
+	import { BIOMES, BIOME_ORDER, type BiomeId } from '$lib/game/biomes';
 	import type { GameMode, ModeStart } from '$lib/game/hud';
 	import type { EndlessRun } from '$lib/game/records';
 
@@ -37,6 +38,8 @@
 	let tab = $state<GameMode>(initial?.mode ?? (trained ? 'campaign' : 'tutorial'));
 	// svelte-ignore state_referenced_locally
 	let picked = $state<string | null>(initial?.mode === 'campaign' ? initial.mission : null);
+	// svelte-ignore state_referenced_locally
+	let biome = $state<BiomeId>((initial?.mode === 'endless' && initial.biome) || 'temperate');
 	const missionId = $derived(
 		picked && isUnlocked(progress, picked) ? picked : (frontier?.id ?? MISSIONS[0].id)
 	);
@@ -59,6 +62,7 @@
 
 	function launch(): void {
 		if (tab === 'campaign') onLaunch({ mode: 'campaign', mission: mission.id, strike });
+		else if (tab === 'endless') onLaunch({ mode: 'endless', biome });
 		else onLaunch({ mode: tab });
 	}
 
@@ -149,7 +153,9 @@
 					<div class="split">
 						<div class="detail">
 							<p class="kicker">
-								Mission {missionIndex + 1} of {MISSIONS.length} · {sectorOf(mission.id)?.name}
+								Mission {missionIndex + 1} of {MISSIONS.length} · {sectorOf(mission.id)?.name} · {BIOMES[
+									mission.biome
+								].name}
 							</p>
 							<h3>{mission.name}</h3>
 							<p class="lead">{mission.brief}</p>
@@ -199,6 +205,23 @@
 						past wave eleven more interceptors and gunships join every attack. Clearing a wave pays
 						a bonus that grows with the wave and with what is left of the airfield.
 					</p>
+					<p class="sub">Theatre</p>
+					<div class="biomes" role="radiogroup" aria-label="Theatre">
+						{#each BIOME_ORDER as id (id)}
+							<button
+								role="radio"
+								aria-checked={biome === id}
+								class:on={biome === id}
+								class="biome-{id}"
+								onclick={() => (biome = id)}
+								title={BIOMES[id].blurb}
+							>
+								<i aria-hidden="true"></i>
+								<strong>{BIOMES[id].name}</strong>
+							</button>
+						{/each}
+					</div>
+					<p class="hint biome-blurb">{BIOMES[biome].blurb}</p>
 					{#if board.length > 0}
 						<p class="sub">Your best runs</p>
 						<table>
@@ -474,6 +497,73 @@
 		color: var(--ink);
 	}
 
+	.biomes {
+		display: grid;
+		grid-template-columns: repeat(5, minmax(0, 1fr));
+		gap: 6px;
+		max-width: 620px;
+	}
+
+	.biomes button {
+		display: grid;
+		gap: 6px;
+		padding: 6px 6px 8px;
+		cursor: pointer;
+		text-align: left;
+		background: rgba(255, 255, 255, 0.04);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		border-bottom: 2px solid transparent;
+	}
+
+	.biomes button:hover {
+		background: rgba(255, 176, 74, 0.08);
+	}
+
+	.biomes button.on {
+		border-color: var(--line);
+		border-bottom-color: var(--amber);
+		background: rgba(255, 176, 74, 0.12);
+	}
+
+	.biomes i {
+		display: block;
+		height: 26px;
+	}
+
+	.biomes strong {
+		font-size: 13px;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+	}
+
+	.biomes button.on strong {
+		color: var(--amber);
+	}
+
+	.biome-temperate i {
+		background: linear-gradient(#8fa4b8 0 45%, #4f5f2c 45% 70%, #6b5a34 70%);
+	}
+
+	.biome-desert i {
+		background: linear-gradient(#d9c39a 0 45%, #c49a5c 45% 70%, #a57844 70%);
+	}
+
+	.biome-snow i {
+		background: linear-gradient(#b8c4d4 0 45%, #e6eaf2 45% 70%, #3e5246 70%);
+	}
+
+	.biome-jungle i {
+		background: linear-gradient(#9fb0a0 0 45%, #2f5326 45% 70%, #5a3a22 70%);
+	}
+
+	.biome-city i {
+		background: linear-gradient(#8e96a2 0 30%, #585c64 30% 70%, #2b2c2e 70%);
+	}
+
+	.biome-blurb {
+		margin-top: 8px;
+	}
+
 	.hint {
 		margin: 16px 0 0;
 		font-size: 14px;
@@ -551,6 +641,10 @@
 	@media (max-width: 720px) {
 		.split {
 			grid-template-columns: 1fr;
+		}
+
+		.biomes {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
 		}
 
 		.tabs strong {

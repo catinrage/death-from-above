@@ -8,6 +8,7 @@ import { Effects } from './effects';
 import { FireSystem } from './fires';
 import { Props } from './props';
 import { Bridge } from './bridge';
+import { BIOMES, type Biome, type BiomeId } from './biomes';
 import { RIVER, type River } from './river';
 import { GasClouds } from './gas';
 import type { Strike } from './specials';
@@ -102,6 +103,8 @@ export class World {
 	readonly fires: FireSystem;
 	readonly props: Props;
 	readonly rng: Rng;
+	/** Landscape, scenery and colour grading of this map. */
+	biome: Biome;
 	readonly units: Unit[] = [];
 	readonly air: AirUnit[] = [];
 	readonly bombs: Bomb[] = [];
@@ -140,15 +143,29 @@ export class World {
 	readonly damageTaken: Record<string, number> = {};
 	private nextId = 1;
 
-	constructor(seed = 2024) {
+	constructor(seed = 2024, biome: BiomeId = 'temperate') {
 		this.rng = new Rng(seed);
-		this.terrain = new Terrain(seed, undefined, undefined, RIVER);
+		this.biome = BIOMES[biome];
+		this.terrain = new Terrain(seed, undefined, undefined, RIVER, this.biome.shape);
 		this.river = this.terrain.river;
 		this.bridge = this.river ? new Bridge(this.river) : null;
 		this.surface = new Surface(this.terrain, this.river, this.bridge);
 		this.fx = new Effects(this.particles, this.lights, this.camera, this.surface);
 		this.fires = new FireSystem(this.fx, this.lights, this.terrain);
-		this.props = new Props(this.terrain, seed + 7, this.river);
+		this.props = new Props(this.terrain, seed + 7, this.river, this.biome.flora);
+	}
+
+	/**
+	 * Swaps the map to another biome by regrowing the terrain and scenery.
+	 * Call reset() afterwards for a fresh battlefield. Returns false when it
+	 * already was that biome.
+	 */
+	setBiome(id: BiomeId): boolean {
+		if (this.biome.id === id) return false;
+		this.biome = BIOMES[id];
+		this.terrain.reshape(this.biome.shape);
+		this.props.rebuild(this.biome.flora);
+		return true;
 	}
 
 	/** Battle-line surface at x: ground, water or the bridge deck. */

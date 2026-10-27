@@ -2,6 +2,7 @@ import { smoothstep } from '../engine/math';
 import { Noise } from '../engine/noise';
 import { Rng } from '../engine/rng';
 import type { MeshName } from '../models';
+import { BIOMES, type Flora } from './biomes';
 import { WORLD } from './constants';
 import type { River } from './river';
 import type { Terrain } from './terrain';
@@ -25,14 +26,34 @@ export interface Prop {
 	char: number;
 	ruined: boolean;
 	tint: number;
+	/** Strength before a house or block collapses. */
+	maxHp: number;
+	/** Mesh left standing once it collapses. */
+	ruin: MeshName;
 	readonly baseMesh: MeshName;
 	readonly baseGlow: MeshName | null;
 }
 
-const TREES: MeshName[] = ['pine0', 'pine1', 'pine2', 'broad0', 'broad1', 'broad2'];
-const BUSHES: MeshName[] = ['bush0', 'bush1'];
 const ROCKS: MeshName[] = ['rock0', 'rock1', 'rock2'];
-const GRASS: MeshName[] = ['grass0', 'grass1', 'grass2'];
+
+/** City blocks: mesh, lit windows, footprint half-depth and strength. */
+const BLOCKS: readonly (readonly [MeshName, MeshName, number, number])[] = [
+	['block0', 'block0Lights', 5, 260],
+	['block1', 'block1Lights', 5, 320],
+	['block2', 'block2Lights', 7, 420],
+	['block3', 'block3Lights', 4.5, 180]
+];
+
+function pickWeighted(rng: Rng, items: Flora['trees']): MeshName {
+	let total = 0;
+	for (const [, w] of items) total += w;
+	let r = rng.next() * total;
+	for (const [m, w] of items) {
+		r -= w;
+		if (r <= 0) return m;
+	}
+	return items[items.length - 1][0];
+}
 
 /**
  * Scenery along the battlefield. `near` holds everything close to the battle
@@ -43,17 +64,33 @@ export class Props {
 	readonly near: Prop[] = [];
 	readonly far: Prop[] = [];
 	readonly grass: Prop[] = [];
+	private flora: Flora;
 
 	constructor(
 		private readonly terrain: Terrain,
-		seed = 99,
-		river: River | null = null
+		private readonly seed = 99,
+		private readonly river: River | null = null,
+		flora: Flora = BIOMES.temperate.flora
 	) {
-		const rng = new Rng(seed);
-		const noise = new Noise(seed + 1);
+		this.flora = flora;
+		this.populate();
+	}
+
+	/** Replants the scenery for another biome (after the terrain was reshaped). */
+	rebuild(flora: Flora): void {
+		this.flora = flora;
+		this.populate();
+	}
+
+	private populate(): void {
+		const rng = new Rng(this.seed);
+		const noise = new Noise(this.seed + 1);
+		const river = this.river;
+		this.near.length = this.far.length = this.grass.length = 0;
 		this.forests(rng, noise);
 		this.foreground(rng);
-		this.villages(rng);
+		if (this.flora.settlement === 'city') this.city(rng);
+		else this.villages(rng);
 		this.roadside(rng);
 		for (const list of [this.near, this.far, this.grass]) {
 			if (river) {
@@ -93,6 +130,8 @@ export class Props {
 			char: 0,
 			ruined: false,
 			tint: rng.range(0.85, 1.1),
+			maxHp: kind === 'house' ? 120 : 30,
+			ruin: 'ruin',
 			baseMesh: mesh,
 			baseGlow: glow
 		};
@@ -106,26 +145,25 @@ export class Props {
 
 	private forests(rng: Rng, noise: Noise): void {
 		const { terrainMinX: x0, terrainMaxX: x1 } = WORLD;
+		const fl = this.flora;
 		for (let x = x0; x < x1; x += 2.2) {
-			const density = smoothstep(0.0, 0.5, noise.fbm1(x * 0.0045, 3)) * 1.6;
+			const density = Math.max(fl.cover, smoothstep(0.0, 0.5, noise.fbm1(x * 0.0045, 3)) * 1.6);
 			for (const [zMin, zMax, chance, list] of [
 				[-38, -11, 0.28, this.near],
 				[-95, -38, 0.42, this.far],
 				[-190, -95, 0.5, this.far]
 			] as const) {
-				if (!rng.chance(chance * (0.05 + density))) continue;
+				if (!rng.chance(chance * (0.05 + density) * fl.forest)) continue;
 				const z = rng.range(zMin, zMax);
 				const tx = x + rng.range(-1, 1);
 				if (this.inBase(tx, z)) continue;
-				const roll = rng.next();
-				const mesh: MeshName =
-					roll < 0.07 ? 'deadTree' : roll < 0.6 ? TREES[rng.int(0, 2)] : TREES[rng.int(3, 5)];
+				const mesh = pickWeighted(rng, fl.trees);
 				const s = rng.range(0.8, 1.25) * (z < -95 ? 1.3 : 1);
 				this.add(list, mesh, 'tree', tx, z, s, rng);
-				if (rng.chance(0.3))
+				if (fl.bushes.length > 0 && rng.chance(0.3 * fl.undergrowth))
 					this.add(
 						list,
-						rng.pick(BUSHES),
+						rng.pick(fl.bushes),
 						'bush',
 						tx + rng.range(-3, 3),
 						z + rng.range(-2, 2),
@@ -138,13 +176,17 @@ export class Props {
 
 	private foreground(rng: Rng): void {
 		const { terrainMinX: x0, terrainMaxX: x1 } = WORLD;
+		const fl = this.flora;
+		const tries = Math.floor(fl.grassDensity);
+		const extra = fl.grassDensity - tries;
 		for (let x = x0; x < x1; x += 1.7) {
-			for (let k = 0; k < 3; k++) {
+			const n = fl.grass.length === 0 ? 0 : tries + (rng.chance(extra) ? 1 : 0);
+			for (let k = 0; k < n; k++) {
 				const z = rng.range(-13, 22);
 				if (Math.abs(z) < 4.6 || this.inBase(x, z)) continue;
 				this.add(
 					this.grass,
-					rng.pick(GRASS),
+					rng.pick(fl.grass),
 					'grass',
 					x + rng.range(-0.8, 0.8),
 					z,
@@ -152,12 +194,12 @@ export class Props {
 					rng
 				);
 			}
-			if (rng.chance(0.05)) {
+			if (fl.bushes.length > 0 && rng.chance(0.05 * fl.undergrowth)) {
 				const z = rng.range(9, 40);
 				if (!this.inBase(x, z))
-					this.add(this.near, rng.pick(BUSHES), 'bush', x, z, rng.range(0.8, 1.5), rng);
+					this.add(this.near, rng.pick(fl.bushes), 'bush', x, z, rng.range(0.8, 1.5), rng);
 			}
-			if (rng.chance(0.03)) {
+			if (rng.chance(0.03 * fl.rocks)) {
 				const z = rng.chance(0.5) ? rng.range(7, 45) : rng.range(-30, -7);
 				if (!this.inBase(x, z))
 					this.add(this.near, rng.pick(ROCKS), 'rock', x, z, rng.range(0.6, 1.8), rng);
@@ -188,6 +230,42 @@ export class Props {
 					this.add(this.near, 'fence', 'fence', x + rng.range(-6, 6), z + 5, 1, rng).yaw =
 						rng.range(-0.2, 0.2);
 				if (rng.chance(0.4)) this.add(this.near, 'crates', 'decor', x + 5, z + 3, 1, rng);
+			}
+		}
+	}
+
+	/** Blocks along the road and a skyline of towers behind them. */
+	private city(rng: Rng): void {
+		const { terrainMinX: x0, terrainMaxX: x1 } = WORLD;
+		for (const [zMin, zMax, gap, scale, list] of [
+			[-30, -21, 0.2, 1, this.near],
+			[-80, -50, 0.45, 1, this.far],
+			[-190, -110, 0.35, 1.3, this.far]
+		] as const) {
+			for (let x = x0 + rng.range(0, 10); x < x1;) {
+				let pick = rng.pick(BLOCKS);
+				// Glass towers stand at the back; the street front stays mid-rise.
+				if (list === this.near && pick[0] === 'block2') pick = BLOCKS[0];
+				const width = pick[2] * 2.4 * scale;
+				const z = rng.range(zMin, zMax);
+				if (!rng.chance(gap) && !this.inBase(x, z) && !this.inBase(x + width, z)) {
+					const p = this.add(
+						list,
+						pick[0],
+						'house',
+						x + width / 2,
+						z,
+						scale * rng.range(0.9, 1.1),
+						rng,
+						pick[1]
+					);
+					p.yaw = rng.pick([0, Math.PI]) + rng.range(-0.04, 0.04);
+					p.sway = 0;
+					p.hp = p.maxHp = pick[3];
+					p.ruin = 'rubble';
+					p.tint = rng.range(0.8, 1.15);
+				}
+				x += width + rng.range(4, 12);
 			}
 		}
 	}
@@ -248,7 +326,7 @@ export class Props {
 				p.hp -= damage * k;
 				if (p.hp <= 0) {
 					p.ruined = true;
-					p.mesh = 'ruin';
+					p.mesh = p.ruin;
 					p.glow = null;
 					collapsed.push(p);
 				}
@@ -269,7 +347,7 @@ export class Props {
 			p.falling = false;
 			p.char = 0;
 			p.ruined = false;
-			p.hp = p.kind === 'house' ? 120 : 30;
+			p.hp = p.maxHp;
 			p.mesh = p.baseMesh;
 			p.glow = p.baseGlow;
 		}

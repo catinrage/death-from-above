@@ -15,6 +15,7 @@ import { WORLD } from './constants';
 import { BOMBS, BOMB_ORDER, ROCKET_SPEED } from './defs-bombs';
 import { environmentAt, presetName } from './environment';
 import { applyWeather, CLEAR, weatherForWave, type WeatherSpec } from './weather';
+import { climateWeather, gradeEnvironment, type BiomeId } from './biomes';
 import type {
 	GameMode,
 	GameOverStats,
@@ -183,6 +184,7 @@ export class Game {
 			this.renderer.water.shoal = SHOAL;
 		}
 		this.world.sound = this.audio;
+		this.renderer.ground = this.world.biome.ground;
 		this.terrainView = new TerrainView(this.renderer, this.world.terrain);
 		this.view = new SceneView(models);
 		this.waves = new WaveDirector(1);
@@ -364,6 +366,7 @@ export class Game {
 		this.wavesScored = 0;
 		this.debriefTimer = 0;
 		const w = this.world;
+		this.useBiome(this.biomeFor(start, mission));
 		w.reset();
 		w.godMode = false;
 		this.lives = 3;
@@ -411,6 +414,21 @@ export class Game {
 		void this.audio.unlock();
 	}
 
+	/** Map a sortie is flown on: training stays in the valley. */
+	private biomeFor(start: ModeStart, mission: Mission | null): BiomeId {
+		if (start.mode === 'tutorial') return 'temperate';
+		if (mission) return mission.biome;
+		return start.mode === 'endless' ? (start.biome ?? 'temperate') : 'temperate';
+	}
+
+	/** Regrows the battlefield for a biome and pushes the new ground to the GPU. */
+	private useBiome(id: BiomeId): void {
+		const w = this.world;
+		if (!w.setBiome(id)) return;
+		this.renderer.ground = w.biome.ground;
+		this.terrainView.syncAll();
+	}
+
 	/** Time of day for a wave of the current sortie. */
 	private envFor(wave: number): number {
 		if (this.mode === 'tutorial') return ENV_BY_WAVE[0];
@@ -430,7 +448,7 @@ export class Game {
 			const list = this.mission.weather;
 			return list ? list[Math.min(wave - 1, list.length - 1)] : CLEAR;
 		}
-		return weatherForWave(wave);
+		return climateWeather(weatherForWave(wave), this.world.biome);
 	}
 
 	private spawnPlayer(): void {
@@ -775,7 +793,7 @@ export class Game {
 
 	private draw(dt: number): void {
 		const w = this.world;
-		const env = environmentAt(this.envPhase);
+		const env = gradeEnvironment(environmentAt(this.envPhase), w.biome);
 		applyWeather(env, w.weather);
 		const fb = this.focus.blend;
 		if (fb > 0.001) {
@@ -1040,7 +1058,7 @@ export class Game {
 			damageDir: p?.damageDir ?? 0,
 			damageFlash: this.damageFlash,
 			aircraft: this.flying,
-			timeOfDay: presetName(this.envPhase),
+			timeOfDay: `${w.biome.name} · ${presetName(this.envPhase)}`,
 			weather: w.weather.label,
 			wind: w.weather.baseWind,
 			respawn: p?.crashed && this.lives > 0 ? Math.max(0, this.respawnTimer) : 0,

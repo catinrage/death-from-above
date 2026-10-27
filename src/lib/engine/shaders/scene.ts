@@ -101,6 +101,12 @@ export const TERRAIN_FS = /* glsl */ `${HEADER}
 ${LIGHTING}
 uniform vec4 u_road; // x: half width, y: start x, z: end x, w: unused
 uniform vec2 u_roadGap; // no road between these x (it is on the bridge)
+// Biome ground colours.
+uniform vec3 u_lush;
+uniform vec3 u_dry;
+uniform vec3 u_dirt;
+uniform vec3 u_rock;
+uniform vec3 u_roadCol;
 in vec3 v_wp;
 in vec3 v_n;
 in float v_scorch;
@@ -114,10 +120,10 @@ void main() {
 	float n3 = texture(u_noise, p * 0.13).b;
 	float n4 = texture(u_noise, p * 0.71).a;
 
-	vec3 dry = vec3(0.2, 0.15, 0.072);
-	vec3 lush = vec3(0.085, 0.1, 0.045);
-	vec3 dirt = vec3(0.13, 0.095, 0.065);
-	vec3 rock = vec3(0.17, 0.155, 0.135);
+	vec3 dry = u_dry;
+	vec3 lush = u_lush;
+	vec3 dirt = u_dirt;
+	vec3 rock = u_rock;
 
 	vec3 grass = mix(lush, dry, smoothstep(0.3, 0.7, n1 + (n2 - 0.5) * 0.5));
 	grass *= 0.8 + 0.35 * n3 * (0.7 + 0.6 * n4);
@@ -132,7 +138,7 @@ void main() {
 		smoothstep(u_road.y, u_road.y + 20.0, v_wp.x) * (1.0 - smoothstep(u_road.z - 20.0, u_road.z, v_wp.x)) *
 		(1.0 - smoothstep(u_roadGap.x - 1.0, u_roadGap.x + 2.0, v_wp.x) * (1.0 - smoothstep(u_roadGap.y - 2.0, u_roadGap.y + 1.0, v_wp.x)));
 	float ruts = smoothstep(0.35, 0.0, abs(abs(v_wp.z) - 1.2)) * 0.35;
-	vec3 roadCol = vec3(0.19, 0.135, 0.08) * (0.85 + 0.3 * n4) * (1.0 - ruts);
+	vec3 roadCol = u_roadCol * (0.85 + 0.3 * n4) * (1.0 - ruts);
 	albedo = mix(albedo, roadCol, onRoad * 0.92);
 
 	// Scorch: >1 encodes still-hot ground that glows.

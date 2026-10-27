@@ -90,8 +90,9 @@ function move(w: World, u: Unit, dt: number): void {
 		}
 		if (u.deployed >= 4 && u.stateTime > 3) u.state = 'advance';
 	}
-	// Keep convoy spacing: slow behind whoever is just ahead in the lane.
-	for (const o of w.units) {
+	// Keep convoy spacing: slow behind whoever is just ahead in the lane. Bridging
+	// engineers are waved through to the front.
+	for (const o of def.kind === 'engineer' ? [] : w.units) {
 		if (o === u || !o.alive || o.def.isStatic || Math.abs(o.z - u.z) > 2.6) continue;
 		const ahead = (o.x - u.x) * u.dir;
 		const gap = o.def.half[0] + def.half[0] + (def.category === 'infantry' ? 1.2 : 4);

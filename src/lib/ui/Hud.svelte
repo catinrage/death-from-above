@@ -899,11 +899,10 @@
 
 	.killcam-tag {
 		position: absolute;
-		left: 50%;
-		top: calc(7vh + 14px);
-		transform: translateX(-50%);
+		right: 28px;
+		top: 34%;
 		display: grid;
-		justify-items: center;
+		justify-items: end;
 		gap: 4px;
 	}
 
@@ -911,8 +910,8 @@
 		font-family: var(--display);
 		font-size: 18px;
 		font-weight: 700;
-		letter-spacing: 0.6em;
-		margin-right: -0.6em;
+		letter-spacing: 0.5em;
+		margin-right: -0.5em;
 		color: #ffd9a0;
 		text-shadow: 0 0 16px rgba(255, 150, 60, 0.8);
 	}
