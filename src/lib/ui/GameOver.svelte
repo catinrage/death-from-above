@@ -29,6 +29,7 @@
 	// svelte-ignore state_referenced_locally
 	let strike = $state<StrikeId | null>(next ? (loadStrikes()[next.id] ?? null) : null);
 	const nextSector = $derived(next ? sectorOf(next.id) : undefined);
+	const balance = $derived(stats.credits?.balance ?? 0);
 
 	function pickStrike(id: StrikeId): void {
 		if (!next) return;
@@ -154,12 +155,19 @@
 							role="radio"
 							aria-checked={strike === id}
 							class:on={strike === id}
+							disabled={balance < STRIKES[id].cost && strike !== id}
 							title={STRIKES[id].effect}
-							onclick={() => pickStrike(id)}>{STRIKES[id].name}</button
+							onclick={() => pickStrike(id)}>{STRIKES[id].name} <b>{STRIKES[id].cost} cr</b></button
 						>
 					{/each}
 				</div>
-				<small class="effect">{strike ? STRIKES[strike].effect : 'No strike: full strength'}</small>
+				<small class="effect"
+					>{strike
+						? balance < STRIKES[strike].cost
+							? `Not enough credits: flies at full strength`
+							: STRIKES[strike].effect
+						: 'No strike: full strength'}</small
+				>
 			</div>
 		{/if}
 		<div class="actions">
@@ -428,6 +436,16 @@
 	.chips button {
 		padding: 8px 14px;
 		font-size: 14px;
+	}
+
+	.chips button b {
+		font-weight: 400;
+		opacity: 0.6;
+	}
+
+	.chips button:disabled {
+		cursor: not-allowed;
+		opacity: 0.4;
 	}
 
 	.chips button.on {

@@ -3,6 +3,9 @@ import { MISSIONS, type CampaignProgress } from './campaign';
 import {
 	advance,
 	canStrike,
+	captureCredits,
+	captureLine,
+	payForStrike,
 	frontX,
 	loadStrikes,
 	missionX,
@@ -13,8 +16,10 @@ import {
 	sectorSpan,
 	sectorState,
 	STRIKE_IDS,
+	STRIKES,
 	withStrike
 } from './campaign-map';
+import { grant, newProgression } from './progression';
 import { planWave } from './waves';
 
 function memoryStorage(): Storage {
@@ -210,5 +215,32 @@ describe('strike plan', () => {
 		});
 		expect(loadStrikes()).toEqual({});
 		expect(saveStrike(MISSIONS[1].id, 'radar')).toEqual({ [MISSIONS[1].id]: 'radar' });
+	});
+});
+
+describe('credits', () => {
+	it('strikes cost credits and are refused when the wallet is short', () => {
+		const p = grant(newProgression(), 300);
+		const paid = payForStrike(p, 'depot');
+		expect(paid.credits).toBe(300 - STRIKES.depot.cost);
+		expect(paid.earned).toBe(p.earned);
+		const broke = newProgression();
+		expect(payForStrike(broke, 'radar')).toBe(broke);
+		for (const id of STRIKE_IDS) expect(STRIKES[id].cost).toBeGreaterThan(0);
+	});
+
+	it('pays a capture bonus for the first win of a sector, growing with depth', () => {
+		const bonuses = SECTORS.map(captureCredits);
+		for (let i = 1; i < bonuses.length; i++) expect(bonuses[i]).toBeGreaterThan(bonuses[i - 1]);
+		for (const s of SECTORS) {
+			const last = s.missions[s.missions.length - 1];
+			expect(captureLine(last, false)).toEqual({
+				label: `${s.name} captured`,
+				amount: captureCredits(s)
+			});
+			expect(captureLine(last, true)).toBeNull();
+			for (const id of s.missions.slice(0, -1)) expect(captureLine(id, false)).toBeNull();
+		}
+		expect(captureLine('nope', false)).toBeNull();
 	});
 });

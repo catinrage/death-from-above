@@ -21,13 +21,15 @@
 		board: EndlessRun[];
 		best: number;
 		trained: boolean;
+		/** Credits in the wallet, to pay for strikes. */
+		credits: number;
 		/** Mode and mission to open on. */
 		initial: ModeStart | null;
 		onLaunch: (start: ModeStart) => void;
 		onClose: () => void;
 	}
 
-	let { progress, board, best, trained, initial, onLaunch, onClose }: Props = $props();
+	let { progress, board, best, trained, credits, initial, onLaunch, onClose }: Props = $props();
 
 	/** Furthest mission the pilot may fly. */
 	const frontier = $derived(
@@ -182,18 +184,21 @@
 						</div>
 						{#if canStrike(mission.id)}
 							<aside class="strike-col">
-								<p class="sub">Strike ahead of the sortie</p>
+								<p class="sub">Strike ahead of the sortie · {credits.toLocaleString()} cr</p>
 								<div class="strikes" role="radiogroup" aria-label="Strike target">
 									{#each STRIKE_IDS as id (id)}
 										{@const s = STRIKES[id]}
+										{@const short = credits < s.cost}
 										<button
 											role="radio"
 											aria-checked={strike === id}
 											class:on={strike === id}
+											class:short
+											disabled={short && strike !== id}
 											onclick={() => pickStrike(strike === id ? null : id)}
 										>
-											<strong>{s.name}</strong>
-											<small>{s.effect}</small>
+											<strong>{s.name} <em>{s.cost} cr</em></strong>
+											<small>{short ? `Needs ${s.cost} credits. ` : ''}{s.effect}</small>
 										</button>
 									{/each}
 								</div>
@@ -420,7 +425,7 @@
 		border-left: 2px solid transparent;
 	}
 
-	.strikes button:hover {
+	.strikes button:hover:not(:disabled) {
 		background: rgba(255, 176, 74, 0.08);
 	}
 
@@ -435,6 +440,22 @@
 		font-size: 15px;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
+	}
+
+	.strikes button:disabled {
+		cursor: not-allowed;
+		opacity: 0.45;
+	}
+
+	.strikes button.on.short {
+		border-left-color: var(--danger);
+	}
+
+	.strikes em {
+		float: right;
+		font-style: normal;
+		font-size: 13px;
+		color: var(--ink-dim);
 	}
 
 	.strikes button.on strong {
