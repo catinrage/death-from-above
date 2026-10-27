@@ -17,6 +17,7 @@ import { CLEAR, Weather } from './weather';
 import { Terrain } from './terrain';
 import type { AirUnit } from './enemy-air';
 import type { Player } from './player';
+import type { Wingman } from './wingman';
 import type { Bomb } from './weapons';
 import type { Bullet, Flare, Missile, Shell } from './projectiles';
 import type { Owner, Unit, UnitKind } from './types';
@@ -117,6 +118,8 @@ export class World {
 	/** Wind, rain, snow and lightning. */
 	readonly weather = new Weather();
 	player: Player | null = null;
+	/** The player's AI wingman (absent in training and the attract demo). */
+	wingman: Wingman | null = null;
 	base!: AirBase;
 	sound: SoundSink = silentSound;
 	events: WorldEvents = silentEvents;
@@ -221,6 +224,7 @@ export class World {
 		this.props.reset();
 		this.base.reset();
 		this.player = null;
+		this.wingman = null;
 		this.designator = null;
 		this.time = 0;
 		this.weather.set(CLEAR, true);

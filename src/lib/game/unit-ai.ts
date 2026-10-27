@@ -3,8 +3,10 @@ import { fx as rnd } from '../engine/rng';
 import { WORLD } from './constants';
 import { ENEMY_WEAPONS, type EnemyWeapon } from './defs-units';
 import { launchMissile, spawnBullet } from './projectiles';
+import type { Player } from './player';
 import type { Unit } from './types';
 import { muzzlePoint } from './unit-pose';
+import { nearestFriendly, type Wingman } from './wingman';
 import type { World } from './world';
 
 const m3: [number, number, number] = [0, 0, 0];
@@ -137,9 +139,10 @@ function engage(w: World, u: Unit, dt: number): void {
 	const spec = ENEMY_WEAPONS[u.def.weapon ?? 'rifle'];
 	const kind = u.def.weapon;
 	u.cooldown -= dt;
-	const p = w.player;
 	const ox = u.x,
 		oy = u.y + u.def.half[1] * 2;
+	// Air defences shoot at whichever friendly aircraft is closer: the player or the wingman.
+	const p = nearestFriendly(w, ox, oy);
 	// Small arms turn on paratroopers that land close by.
 	if (kind === 'rifle' || kind === 'mg' || kind === 'autocannon') {
 		const t = w.troops.nearest(ox, oy, 95);
@@ -149,7 +152,7 @@ function engage(w: World, u: Unit, dt: number): void {
 			return;
 		}
 	}
-	if (p && p.alive && !w.godMode) {
+	if (p) {
 		const dx = p.x - ox,
 			dy = p.y - oy;
 		const dist = Math.hypot(dx, dy);
@@ -158,8 +161,7 @@ function engage(w: World, u: Unit, dt: number): void {
 		const ir = kind === 'manpads' ? w.weather.irScale() : 1;
 		const range = u.def.range * ir * (w.night > 0.5 && !w.spotted ? 0.8 : 1);
 		if (dist < range && elev > spec.minElev && !p.landed) {
-			if (kind === 'sam' || kind === 'manpads')
-				return missileSite(w, u, dt, spec, p.x, p.y, ox, oy);
+			if (kind === 'sam' || kind === 'manpads') return missileSite(w, u, dt, spec, p, ox, oy);
 			if (kind === 'cannon' && (p.y - u.y > 140 || dist > 460)) {
 				if (u.state === 'siege') siege(w, u, dt);
 				return;
@@ -289,23 +291,25 @@ function missileSite(
 	u: Unit,
 	dt: number,
 	spec: EnemyWeapon,
-	px: number,
-	py: number,
+	target: Player | Wingman,
 	ox: number,
 	oy: number
 ): void {
 	const p = w.player;
-	if (!p) return;
+	const px = target.x,
+		py = target.y;
 	const ready = aimAt(u, dt, px, py, ox, oy);
 	if (u.def.kind === 'sam') u.aimPitch = moveToward(u.aimPitch, 0.85, dt);
 	if (!ready && u.def.kind !== 'sam') return;
-	const lockTime =
-		spec.lockTime * p.def.stealth * (w.radarCoverage && u.def.kind === 'sam' ? 0.65 : 1);
+	const stealth = p && target === p ? p.def.stealth : 1;
+	const lockTime = spec.lockTime * stealth * (w.radarCoverage && u.def.kind === 'sam' ? 0.65 : 1);
 	u.lock += dt;
-	p.lockedBy++;
 	const progress = Math.min(1, u.lock / lockTime);
-	p.lockProgress = Math.max(p.lockProgress, progress);
-	p.lockers.push({ x: u.x, y: u.y + u.def.half[1], progress });
+	if (p && target === p) {
+		p.lockedBy++;
+		p.lockProgress = Math.max(p.lockProgress, progress);
+		p.lockers.push({ x: u.x, y: u.y + u.def.half[1], progress });
+	}
 	if (u.lock < lockTime || u.cooldown > 0) return;
 	u.lock = 0;
 	u.cooldown = spec.interval * rnd.range(0.85, 1.2);
@@ -324,7 +328,7 @@ function missileSite(
 		maxSpeed: sam ? 265 : 205,
 		accel: sam ? 230 : 270,
 		turnRate: sam ? 2.25 : 2.8,
-		target: p,
+		target,
 		burn: sam ? 3.4 : 2.3,
 		life: sam ? 9 : 5.5,
 		damage: spec.damage,
@@ -333,7 +337,7 @@ function missileSite(
 	});
 	w.fx.muzzleFlash(m[0], m[1], m[2], Math.cos(angle), Math.sin(angle), 2.5, [12, 7, 3]);
 	for (let i = 0; i < 6; i++) w.fx.trail(m[0], m[1], m[2], 2.2, 0.55, 0.7, 3, 0.4);
-	w.events.message('MISSILE LAUNCH', '', 'warn');
+	if (p && target === p) w.events.message('MISSILE LAUNCH', '', 'warn');
 }
 
 /** Units parked at the siege line bombard the airbase. */

@@ -5,6 +5,7 @@ import { WORLD } from './constants';
 import type { BlastSpec } from './defs-bombs';
 import { launchMissile, spawnBullet } from './projectiles';
 import type { Owner, Trackable } from './types';
+import { nearestFriendly } from './wingman';
 import type { World } from './world';
 
 export type AirKind = 'fighter' | 'heli';
@@ -91,13 +92,13 @@ export class AirUnit implements Trackable {
 	}
 
 	private fly(w: World, dt: number): void {
-		const p = w.player;
+		const p = nearestFriendly(w, this.x, this.y);
 		this.stateTime += dt;
 		this.gunCd -= dt;
 		this.missileCd -= dt;
 		let target = this.angle;
 		const ground = w.surface.clearance(this.x);
-		if (p && p.alive && !w.godMode) {
+		if (p) {
 			const dx = p.x - this.x,
 				dy = p.y - this.y;
 			const dist = Math.hypot(dx, dy);
@@ -126,7 +127,7 @@ export class AirUnit implements Trackable {
 						owner: 'enemy',
 						seeker: 'heat'
 					});
-					w.events.message('MISSILE LAUNCH', '', 'warn');
+					if (p === w.player) w.events.message('MISSILE LAUNCH', '', 'warn');
 				}
 				if (dist < 110) {
 					this.state = 'extend';
@@ -200,11 +201,11 @@ export class AirUnit implements Trackable {
 	}
 
 	private hover(w: World, dt: number): void {
-		const p = w.player;
+		const p = nearestFriendly(w, this.x, this.y);
 		this.gunCd -= dt;
 		this.rocketCd -= dt;
 		const ground = w.surface.clearance(this.x);
-		const near = p && p.alive && !w.godMode ? Math.hypot(p.x - this.x, p.y - this.y) : Infinity;
+		const near = p ? Math.hypot(p.x - this.x, p.y - this.y) : Infinity;
 		const atBase = this.x < WORLD.baseMaxX + 520;
 		let wantVx = atBase ? 0 : -24;
 		if (near < 420) wantVx *= 0.3;
@@ -214,7 +215,7 @@ export class AirUnit implements Trackable {
 		this.x += this.vx * dt;
 		this.y += this.vy * dt;
 		this.tilt = damp(this.tilt, this.vx * 0.012, 2, dt);
-		if (p && p.alive && near < 380 && this.gunCd <= 0) {
+		if (p && near < 380 && this.gunCd <= 0) {
 			this.gunCd = this.burst > 0 ? 0.09 : rnd.range(1.4, 2.2);
 			this.burst = this.burst > 0 ? this.burst - 1 : 6;
 			const t = near / 520;

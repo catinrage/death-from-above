@@ -18,6 +18,9 @@
 		['Flares (break missile locks)', 'F  /  L  /  C  /  B'],
 		['Afterburner', 'Shift  /  X button'],
 		['Airbrake', 'V  /  View button'],
+		['Wingman: attack my target', 'T  /  D-pad right'],
+		['Wingman: cover me', 'G  /  D-pad up'],
+		['Wingman: hit the SAMs', 'H  /  D-pad down'],
 		['Pause', 'Esc  /  P  /  Start']
 	];
 
@@ -32,7 +35,8 @@
 		'Radar stations speed up SAM locks — take them out first.',
 		'Thunderclap levels everything nearby, including you if you are low.',
 		'Flares only work between you and the missile: drop them as it closes from behind, not when it launches.',
-		'The nuke comes back once per wave. The airfield will not rearm it.'
+		'The nuke comes back once per wave. The airfield will not rearm it.',
+		'Your wingman attacks whatever you have locked or under the reticle. Order it onto the SAMs before you go in low.'
 	];
 
 	// Runs in the capture phase so the dialog swallows Esc/Enter before the game
