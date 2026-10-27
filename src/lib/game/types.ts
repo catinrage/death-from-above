@@ -16,7 +16,10 @@ export type BombId =
 	| 'cruise'
 	| 'ballistic'
 	| 'para'
-	| 'nuke';
+	| 'nuke'
+	| 'rockets'
+	| 'arm'
+	| 'gunpod';
 export type AircraftId =
 	'kestrel' | 'wraith' | 'grizzly' | 'albatross' | 'a10' | 'f16' | 'su25' | 'f4' | 'b1';
 

@@ -17,7 +17,10 @@ export const WEIGHT: Record<BombId, number> = {
 	ballistic: 5,
 	para: 3,
 	thunder: 6,
-	nuke: 10
+	nuke: 10,
+	rockets: 1,
+	arm: 3,
+	gunpod: 4
 };
 
 /** Hard caps per type, whatever the payload left. */
@@ -33,19 +36,44 @@ export const MAX_COUNT: Record<BombId, number> = {
 	ballistic: 2,
 	para: 3,
 	thunder: 2,
-	nuke: 1
+	nuke: 1,
+	rockets: 8,
+	arm: 4,
+	gunpod: 1
 };
 
 /** What each airframe can physically carry (the stock loadout is always a subset). */
 export const ALLOWED: Record<AircraftId, readonly BombId[]> = {
-	kestrel: ['gp', 'cluster', 'napalm', 'penetrator', 'guided', 'chemical', 'emp', 'cruise'],
-	wraith: ['gp', 'penetrator', 'guided', 'emp', 'cruise', 'nuke'],
-	grizzly: ['gp', 'cluster', 'napalm', 'penetrator', 'guided', 'chemical', 'para'],
+	kestrel: [
+		'gp',
+		'cluster',
+		'napalm',
+		'penetrator',
+		'guided',
+		'chemical',
+		'emp',
+		'cruise',
+		'rockets',
+		'arm',
+		'gunpod'
+	],
+	wraith: ['gp', 'penetrator', 'guided', 'emp', 'cruise', 'nuke', 'arm'],
+	grizzly: [
+		'gp',
+		'cluster',
+		'napalm',
+		'penetrator',
+		'guided',
+		'chemical',
+		'para',
+		'rockets',
+		'gunpod'
+	],
 	albatross: ['gp', 'cluster', 'napalm', 'penetrator', 'chemical', 'ballistic', 'para', 'thunder'],
-	a10: ['gp', 'cluster', 'napalm', 'penetrator', 'guided', 'chemical', 'para'],
-	f16: ['gp', 'cluster', 'penetrator', 'guided', 'emp', 'cruise'],
-	su25: ['gp', 'cluster', 'napalm', 'penetrator', 'guided', 'chemical'],
-	f4: ['gp', 'cluster', 'napalm', 'penetrator', 'guided', 'ballistic'],
+	a10: ['gp', 'cluster', 'napalm', 'penetrator', 'guided', 'chemical', 'para', 'rockets', 'gunpod'],
+	f16: ['gp', 'cluster', 'penetrator', 'guided', 'emp', 'cruise', 'rockets', 'arm', 'gunpod'],
+	su25: ['gp', 'cluster', 'napalm', 'penetrator', 'guided', 'chemical', 'rockets', 'arm', 'gunpod'],
+	f4: ['gp', 'cluster', 'napalm', 'penetrator', 'guided', 'ballistic', 'rockets', 'arm', 'gunpod'],
 	b1: ['gp', 'cluster', 'penetrator', 'cruise', 'ballistic', 'thunder', 'nuke']
 };
 

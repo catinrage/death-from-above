@@ -177,7 +177,13 @@
 			>
 				<span class="key">{b.slot}</span>
 				<span class="nm">{b.short}</span>
-				<span class="ct">{b.count}<em>/{b.max}</em></span>
+				{#if b.heat !== undefined}
+					<span class="ct pod" class:hot={b.hot}
+						>{b.hot ? 'HOT' : `${Math.round(b.heat * 100)}%`}</span
+					>
+				{:else}
+					<span class="ct">{b.count}<em>/{b.max}</em></span>
+				{/if}
 			</div>
 		{/each}
 		{#if hud.missilesMax > 0}
@@ -884,6 +890,14 @@
 		font-style: normal;
 		font-size: 11px;
 		color: var(--ink-faint);
+	}
+
+	.ct.pod {
+		font-size: 15px;
+	}
+
+	.ct.pod.hot {
+		color: var(--danger);
 	}
 
 	/* ------------------------------------------------ warnings */

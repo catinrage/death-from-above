@@ -15,10 +15,22 @@ import {
 	type Systems
 } from './damage';
 import { WORLD } from './constants';
-import { AIRCRAFT, type AircraftDef } from './defs-aircraft';
-import { BOMBS, BOMB_ORDER, LAUNCHED, type BlastSpec } from './defs-bombs';
+import { AIRCRAFT, type AircraftDef, type GunSpec } from './defs-aircraft';
+import { isEmitterKind, pickEmitter } from './arm';
+import {
+	BOMBS,
+	BOMB_ORDER,
+	GUN_POD,
+	LAUNCHED,
+	POD_COOLING,
+	POD_RESET,
+	ROCKETS_PER_POD,
+	ROCKET_SPEED,
+	type BlastSpec
+} from './defs-bombs';
 import { launchSpecial } from './specials';
 import { launchMissile, spawnBullet, type Flare } from './projectiles';
+import { trackUnit } from './targeting';
 import type { AircraftId, BombId, Designation, Trackable } from './types';
 import type { Loadout } from './loadout';
 import { dropBomb } from './weapons';
@@ -124,6 +136,16 @@ export class Player implements Trackable {
 	firing = false;
 	private gunTimer = 0;
 	private shot = 0;
+	/** Gun pod: its own heat budget, separate from the built-in guns. */
+	podHeat = 0;
+	podOverheated = false;
+	podFiring = false;
+	private podTimer = 0;
+	private podShot = 0;
+	/** Rockets still to leave the pods in the current ripple, and the rail they leave from. */
+	private rocketQueue = 0;
+	private rocketGap = 0;
+	private rocketRail = 0;
 	readonly ammo: Record<BombId, number>;
 	selected: BombId = 'gp';
 	private bombTimer = 0;
@@ -227,7 +249,9 @@ export class Player implements Trackable {
 		this.fly(dt, inp, w);
 		if (!this.alive) return;
 		this.guns(dt, inp, w);
+		this.gunPod(dt, inp, w);
 		this.ordnance(dt, inp, w);
+		this.rippleRockets(dt, w);
 		this.launchers(dt, inp, w);
 		this.countermeasures(dt, inp, w);
 		this.rearm(dt, w);
@@ -400,38 +424,9 @@ export class Player implements Trackable {
 			this.gunTimer = Math.max(this.gunTimer, 0);
 			return;
 		}
-		const m: [number, number, number] = [0, 0, 0];
 		while (this.gunTimer <= 0) {
 			this.gunTimer += 1 / gun.rate;
-			const muzzle = gun.muzzles[this.shot % gun.muzzles.length];
-			this.shot++;
-			this.localToWorld(muzzle, m);
-			const a = this.angle + rnd.gauss(gun.spread);
-			spawnBullet(w, {
-				x: m[0],
-				y: m[1],
-				z: m[2],
-				vx: Math.cos(a) * gun.speed + this.vx,
-				vy: Math.sin(a) * gun.speed + this.vy,
-				life: 1.25,
-				damage: gun.damage,
-				pierce: gun.pierce,
-				owner: 'player',
-				tracer: this.shot % gun.tracerEvery === 0,
-				color: gun.color,
-				size: gun.explosive > 0 ? 0.32 : 0.2,
-				explosive: gun.explosive
-			});
-			w.fx.muzzleFlash(
-				m[0],
-				m[1],
-				m[2],
-				Math.cos(this.angle),
-				Math.sin(this.angle),
-				gun.explosive > 0 ? 1.5 : 1,
-				gun.color
-			);
-			w.sound.play(gun.explosive > 0 ? 'cannon' : 'gun', m[0], m[1], 0.5);
+			this.shoot(w, gun, this.shot++);
 			this.gunHeat += gun.heatPerShot;
 			if (this.gunHeat >= 100) {
 				this.overheated = true;
@@ -439,6 +434,68 @@ export class Player implements Trackable {
 				break;
 			}
 		}
+	}
+
+	/** Holding the bomb button with the gun pod selected hoses the heavy cannon. */
+	private gunPod(dt: number, inp: PilotInput, w: World): void {
+		this.podTimer -= dt;
+		const wants = this.selected === 'gunpod' && (inp.bomb || inp.bombPressed);
+		this.podFiring = wants && this.capacity('gunpod') > 0 && !this.podOverheated && !this.landed;
+		if (!this.podFiring) {
+			this.podHeat = Math.max(0, this.podHeat - dt * POD_COOLING);
+			if (this.podOverheated && this.podHeat < POD_RESET) this.podOverheated = false;
+			this.podTimer = Math.max(this.podTimer, 0);
+			return;
+		}
+		while (this.podTimer <= 0) {
+			this.podTimer += 1 / GUN_POD.rate;
+			this.shoot(w, GUN_POD, this.podShot++);
+			this.podHeat += GUN_POD.heatPerShot;
+			if (this.podHeat >= 100) {
+				this.podHeat = 100;
+				this.podOverheated = true;
+				w.sound.play('empty', this.x, this.y, 0.8);
+				w.events.message('GUN POD OVERHEAT', 'Let the barrels cool', 'warn');
+				break;
+			}
+		}
+		// The recoil of a heavy cannon checks the aircraft's speed.
+		const sp = this.speed;
+		if (sp > this.def.stallSpeed * 1.2) {
+			const k = 1 - Math.min(0.01, dt * 0.08);
+			this.vx *= k;
+			this.vy *= k;
+		}
+	}
+
+	private shoot(w: World, gun: GunSpec, shot: number): void {
+		const m = this.localToWorld(gun.muzzles[shot % gun.muzzles.length]);
+		const a = this.angle + rnd.gauss(gun.spread);
+		spawnBullet(w, {
+			x: m[0],
+			y: m[1],
+			z: m[2],
+			vx: Math.cos(a) * gun.speed + this.vx,
+			vy: Math.sin(a) * gun.speed + this.vy,
+			life: 1.25,
+			damage: gun.damage,
+			pierce: gun.pierce,
+			owner: 'player',
+			tracer: shot % gun.tracerEvery === 0,
+			color: gun.color,
+			size: gun.explosive > 0 ? 0.32 : 0.2,
+			explosive: gun.explosive
+		});
+		w.fx.muzzleFlash(
+			m[0],
+			m[1],
+			m[2],
+			Math.cos(this.angle),
+			Math.sin(this.angle),
+			gun.explosive > 0 ? 1.5 : 1,
+			gun.color
+		);
+		w.sound.play(gun.explosive > 0 ? 'cannon' : 'gun', m[0], m[1], 0.5);
 	}
 
 	private ordnance(dt: number, inp: PilotInput, w: World): void {
@@ -457,6 +514,8 @@ export class Player implements Trackable {
 		} else {
 			this.regenTimer = 0;
 		}
+		// The gun pod is a trigger, not a rack: gunPod() handles it.
+		if (this.selected === 'gunpod') return;
 		// One bomb per press; holding the button keeps them coming at the rack's pace.
 		const wants = inp.bombPressed || inp.bomb;
 		if (!wants || this.landed) return;
@@ -498,6 +557,14 @@ export class Player implements Trackable {
 	private releaseBomb(w: World, designate: Designation | null): void {
 		const def = BOMBS[this.selected];
 		this.ammo[this.selected]--;
+		if (def.id === 'rockets') {
+			this.rocketQueue += ROCKETS_PER_POD;
+			return;
+		}
+		if (def.id === 'arm') {
+			this.launchArm(w, designate);
+			return;
+		}
 		if (LAUNCHED.has(def.id)) {
 			launchSpecial(w, this, def.id, designate);
 			return;
@@ -518,6 +585,77 @@ export class Player implements Trackable {
 			this.vy - ca * 2.5 * down,
 			this.angle,
 			designate
+		);
+	}
+
+	/** Ripples the queued rockets off alternate pods, straight along the nose. */
+	private rippleRockets(dt: number, w: World): void {
+		if (this.rocketQueue <= 0) return;
+		this.rocketGap -= dt;
+		if (this.rocketGap > 0) return;
+		this.rocketGap = 0.055;
+		this.rocketQueue--;
+		const side = this.rocketRail++ % 2 === 0 ? 1 : -1;
+		const p = this.localToWorld([0.6, -1.1, 2.4 * side]);
+		const a = this.angle + rnd.gauss(0.022);
+		const ca = Math.cos(a),
+			sa = Math.sin(a);
+		w.shells.push({
+			kind: 'ffar',
+			x: p[0],
+			y: p[1],
+			z: p[2],
+			vx: this.vx + ca * ROCKET_SPEED,
+			vy: this.vy + sa * ROCKET_SPEED,
+			age: 0,
+			fuse: 0,
+			damage: 0,
+			radius: 0,
+			owner: 'player',
+			trail: 0
+		});
+		w.fx.muzzleFlash(p[0], p[1], p[2], ca, sa, 1.1, [12, 7, 3]);
+		w.fx.gunSmoke(p[0], p[1], p[2], 1.4);
+		w.sound.play('missileLaunch', p[0], p[1], 0.45);
+	}
+
+	/**
+	 * Anti-radiation missile: rides the designated emitter or the strongest one
+	 * ahead. With nothing radiating it flies out and keeps listening.
+	 */
+	private launchArm(w: World, designate: Designation | null): void {
+		const u = designate?.unit;
+		const emitter = u && isEmitterKind(u) ? u : pickEmitter(w, this.x, this.y, this.angle, false);
+		const side = this.missileRail++ % 2 === 0 ? 1 : -1;
+		const p = this.localToWorld([0.2, -1.0, 2.0 * side]);
+		const dir = Math.cos(this.angle) >= 0 ? 1 : -1;
+		const ca = Math.cos(this.angle),
+			sa = Math.sin(this.angle);
+		launchMissile(w, {
+			kind: 'arm',
+			x: p[0],
+			y: p[1],
+			z: p[2],
+			angle: this.angle - 0.08 * dir,
+			speed: Math.max(55, this.speed * 0.95),
+			maxSpeed: 310,
+			accel: 200,
+			turnRate: 2.6,
+			target: emitter ? trackUnit(emitter) : null,
+			emitter,
+			burn: 6,
+			life: 14,
+			damage: 0,
+			owner: 'player',
+			seeker: 'radar',
+			blast: BOMBS.arm.blast
+		});
+		w.fx.muzzleFlash(p[0], p[1], p[2], ca, sa, 1.8, [6, 12, 9]);
+		w.fx.gunSmoke(p[0], p[1], p[2], 2.6);
+		w.events.message(
+			'MAGNUM',
+			emitter ? `Riding the ${emitter.def.name.toLowerCase()}` : 'No emitter: seeker listening',
+			'info'
 		);
 	}
 
