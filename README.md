@@ -75,6 +75,9 @@ and losing your aircraft doesn't hand you a fresh one.
   drops helicopters, blinds missiles), terrain-hugging cruise missiles, a ballistic missile that
   climbs out of sight and comes down at Mach 6, paratroopers who land and fight, the Thunderclap,
   the tactical nuke, and guided air-to-ground missiles fired in salvos.
+- **Friendly column** — your own tanks, APCs, trucks and jeeps push up the road toward the far bank.
+  They halt to trade fire with whatever blocks the way, wait at a dropped span, and take damage from
+  your bombs like anything else. Clear their path from the air.
 - **The river** — the road crosses a river on a steel truss bridge. Drop a span and its traffic goes
   into the water while the rest of the convoy is stranded; engineers rebuild it each wave.
 - **Enemies** — riflemen and missile troopers (ragdolls), gun jeeps, supply trucks (drop extra
@@ -86,12 +89,13 @@ and losing your aircraft doesn't hand you a fresh one.
   - **Training**: twelve guided lessons, each with its own practice targets, covering steering,
     guns, bombs, ordnance selection, guided missiles, focus, flares, afterburner and airbrake, and
     rearming. You can't be shot down for good, and Enter skips a lesson.
-  - **Campaign**: eight missions that get harder as you go, each with its own objectives (drop the
-    bridge, kill the tanks, silence the flak, hunt the SAM sites, clear the sky, hold until dawn).
+  - **Campaign**: nine missions that get harder as you go, each with its own objectives (drop the
+    bridge, kill the tanks, escort your own armour across the river, silence the flak, hunt the SAM sites, clear the sky, hold until dawn).
     Winning one unlocks the next and earns up to three stars (win, airfield above 70%, no aircraft
     lost). Progress and best scores are saved in the browser.
   - **Endless**: waves until you fall, with a budget that grows each wave and more aircraft joining
-    past wave eleven. Clearing a wave pays a bonus; your five best runs are kept on a local
+    past wave eleven. Every third wave a friendly column rolls out from the airfield; each vehicle you
+    get to the far bank pays a bonus, as does clearing a wave; your five best runs are kept on a local
     leaderboard. The sky moves from golden hour through sunset, dusk and night to dawn.
 - **Physics** — lift/drag/stall flight model, ballistic and guided ordnance, a rigid-body solver for
   wreckage tumbling across deformable terrain, craters and scorch marks that cool from glowing

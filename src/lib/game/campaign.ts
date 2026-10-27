@@ -10,7 +10,9 @@ export type Target = UnitKind | AirKind;
 export type Objective =
 	| { type: 'waves'; count: number }
 	| { type: 'destroy'; kinds: Target[]; count: number; label: string }
-	| { type: 'bridge' };
+	| { type: 'bridge' }
+	/** Get this many vehicles of the friendly column to the rally point. */
+	| { type: 'escort'; count: number };
 
 export interface Mission {
 	id: string;
@@ -92,6 +94,28 @@ export const MISSIONS: readonly Mission[] = [
 		},
 		objectives: [
 			{ type: 'destroy', kinds: ['tank'], count: 6, label: 'Destroy tanks' },
+			{ type: 'waves', count: 2 }
+		]
+	},
+	{
+		id: 'spearhead',
+		name: 'Spearhead',
+		tagline: 'Escort the armoured column',
+		brief:
+			'Our own armour is pushing up the road to take the far bank. Clear the way ahead of it and keep the bridge standing: four of its six vehicles must reach the rally point.',
+		env: [0.6],
+		biome: 'temperate',
+		waves: {
+			last: 2,
+			offset: 2,
+			column: (wave) => (wave === 1 ? ['tank', 'apc', 'tank', 'truck', 'apc', 'jeep'] : []),
+			briefings: [
+				'Friendly armour rolling out. Hit what stands in its way',
+				'Enemy reinforcements coming down the road at the column'
+			]
+		},
+		objectives: [
+			{ type: 'escort', count: 4 },
 			{ type: 'waves', count: 2 }
 		]
 	},
@@ -244,6 +268,12 @@ export class MissionTracker {
 	bridgeDown = false;
 	/** Lowest the airfield has been, as a fraction. */
 	baseLow = 1;
+	/** Friendly vehicles through to the rally point. */
+	escorted = 0;
+	/** Friendly vehicles through or still on the road. */
+	escortLeft = 0;
+	/** The friendly column has rolled out. */
+	escortOut = false;
 	private readonly seen = new Set<number>();
 	/** Ground units last seen alive, so ones cleared away in the same step they died still count. */
 	private living = new Map<number, Target>();
@@ -270,6 +300,9 @@ export class MissionTracker {
 		}
 		if (w.bridge && w.bridge.downCount > 0) this.bridgeDown = true;
 		this.baseLow = Math.min(this.baseLow, w.base.hp / w.base.maxHp);
+		this.escorted = w.allies.arrived;
+		this.escortLeft = w.allies.arrived + w.allies.alive();
+		this.escortOut = w.allies.deployed > 0;
 	}
 
 	count(kinds: Target[]): number {
@@ -289,6 +322,15 @@ export class MissionTracker {
 				}
 				case 'bridge':
 					return { label: 'Drop a bridge span', count: '', done: this.bridgeDown };
+				case 'escort': {
+					const n = Math.min(this.escorted, o.count);
+					return {
+						label: 'Get the column through',
+						count: `${n}/${o.count}`,
+						done: n >= o.count,
+						failed: this.escortFailed(o.count)
+					};
+				}
 			}
 		});
 		const floor = this.mission.baseFloor;
@@ -309,8 +351,20 @@ export class MissionTracker {
 	}
 
 	failed(): boolean {
+		return this.failure() !== null;
+	}
+
+	/** Why the mission can no longer be won, or null while it still can. */
+	failure(): string | null {
 		const floor = this.mission.baseFloor;
-		return floor !== undefined && this.baseLow < floor;
+		if (floor !== undefined && this.baseLow < floor) return 'The airfield was overrun';
+		for (const o of this.mission.objectives)
+			if (o.type === 'escort' && this.escortFailed(o.count)) return 'The column was destroyed';
+		return null;
+	}
+
+	private escortFailed(count: number): boolean {
+		return this.escortOut && this.escorted < count && this.escortLeft < count;
 	}
 }
 

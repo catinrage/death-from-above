@@ -54,6 +54,10 @@
 			{#if hud.mode !== 'tutorial'}
 				<span class="en">{hud.enemies} hostile{hud.enemies === 1 ? '' : 's'}</span>
 				<span class="sep"></span>
+				{#if hud.column}
+					<span class="col">{hud.column}</span>
+					<span class="sep"></span>
+				{/if}
 			{/if}
 			<span class="tod">{hud.timeOfDay}</span>
 			<span class="sep"></span>
@@ -401,6 +405,10 @@
 	.tod,
 	.wx {
 		color: var(--ink-dim);
+	}
+
+	.col {
+		color: #8ec5ff;
 	}
 
 	.sep {

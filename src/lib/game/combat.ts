@@ -200,6 +200,7 @@ export function explode(
 
 	w.bridge?.blast(w, x, y, z, r, b.damage, b.pierce, by);
 	w.troops.blast(x, y, r, b.damage * 0.6);
+	w.allies.blast(x, y, r, b.damage, b.pierce);
 	w.debris.impulse(x, y, z, r * 1.5, 16 * Math.sqrt(b.size));
 	if (wet) {
 		// The river swallows the blast: a towering column of water, no crater.

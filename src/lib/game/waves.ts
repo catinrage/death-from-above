@@ -1,4 +1,5 @@
 import { Rng } from '../engine/rng';
+import type { AllyKind } from './allies';
 import { WORLD } from './constants';
 import { MOBILE_KINDS, STATIC_KINDS, UNITS } from './defs-units';
 import { AirUnit, type AirKind } from './enemy-air';
@@ -45,6 +46,8 @@ export interface WaveOptions {
 	statics?: UnitKind[];
 	/** Briefing lines for each wave (falls back to the stock ones). */
 	briefings?: string[];
+	/** A friendly column that rolls out from the airfield as the wave launches. */
+	column?: (wave: number) => readonly AllyKind[];
 }
 
 const AIR: AirKind[] = ['fighter', 'heli'];
@@ -246,6 +249,8 @@ export class WaveDirector {
 			const u = w.spawnUnit(s.kind, s.x, z, -1);
 			u.yaw = Math.PI;
 		}
+		const column = this.opts.column?.(this.wave) ?? [];
+		if (column.length > 0) w.allies.deploy(w, column);
 		this.state = 'active';
 	}
 

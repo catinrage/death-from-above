@@ -69,6 +69,7 @@ export class SceneView {
 		this.base(w, time);
 		this.bridge(w, nearMin, nearMax);
 		this.units(w, nearMin - 30, nearMax + 30);
+		this.units(w, nearMin - 30, nearMax + 30, w.allies.list, true);
 		this.troops(w);
 		this.strikes(w);
 		this.debris(w);
@@ -233,7 +234,7 @@ export class SceneView {
 			const embers = u.alive ? 0 : Math.max(0, 1 - u.deadTime / 35);
 			const style = this.style(u.char, u.flash * 0.7, 0, 1, u.alive ? 1 : 0, embers);
 			if (friend) {
-				// Friendly paratroopers wear lighter, bluer kit.
+				// Friendly paratroopers and armour wear lighter, bluer paint.
 				style.r = 0.95;
 				style.g = 1.05;
 				style.b = 1.35;
