@@ -109,13 +109,17 @@ and losing your aircraft doesn't hand you a fresh one.
   - **River cruiser**: steams up the river and anchors across it just below the bridge, then fills
     the sky with twin flak mounts, a close-in gun and radar SAM pairs. It can't be hit until it
     drops anchor, and sinks onto the river bed when it dies.
+  - **Railway gun**: coupled between a locomotive and a flak wagon, it runs down the railway, pulls
+    up across the river and lobs heavy shells onto the airfield. Cut the line or drop the viaduct to
+    hold it out of range; it fires from wherever it stops once the airfield is in reach.
 - **Three ways to play** — pick one from the Sortie menu:
   - **Training**: twelve guided lessons, each with its own practice targets, covering steering,
     guns, bombs, ordnance selection, guided missiles, focus, flares, afterburner and airbrake, and
     rearming. You can't be shot down for good, and Enter skips a lesson.
   - **Campaign**: nine missions that get harder as you go, each with its own objectives (drop the
     bridge, kill the tanks, escort your own armour across the river, silence the flak, hunt the SAM sites, clear the sky, hold until dawn).
-    Iron Column ends with the Behemoth and Wild Weasel with the river cruiser.
+    Iron Column ends with the Behemoth, Wild Weasel with the river cruiser and the final mission
+    with the railway gun.
     Winning one unlocks the next and earns up to three stars (win, airfield above 70%, no aircraft
     lost). Progress and best scores are saved in the browser.
   - **Endless**: waves until you fall, with a budget that grows each wave and more aircraft joining

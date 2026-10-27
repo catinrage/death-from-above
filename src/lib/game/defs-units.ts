@@ -499,11 +499,38 @@ export const UNITS: Record<UnitKind, UnitDef> = {
 		boom: 2.6,
 		siege: 0,
 		boss: true
+	},
+	railGun: {
+		kind: 'railGun',
+		name: 'Railway Gun',
+		hp: 900,
+		armor: 0.8,
+		speed: 11,
+		half: [10.6, 2.6, 1.7],
+		score: 1800,
+		cost: 0,
+		minWave: 99,
+		isStatic: false,
+		category: 'armor',
+		weapon: null,
+		range: 0,
+		parts: [
+			{ mesh: 'railGunBody', at: [0, 0, 0] },
+			...bogies([9.4, 8.2, 7.0, -7.0, -8.2, -9.4]),
+			{ mesh: 'railGunBarrel', at: [1.2, 4.1, 0], drive: 'pitch', detach: true },
+			{ mesh: 'superTankAA', at: [-7.6, 2.0, 0], drive: 'auxYaw' },
+			{ mesh: 'superTankAAGuns', parent: 14, at: [0.2, 1.3, 0], drive: 'auxPitch' }
+		],
+		death: 'turretPop',
+		boom: 2.4,
+		siege: 0,
+		boss: true,
+		rail: true
 	}
 };
 
 /** One-off heavy units that lead a campaign act's last wave. */
-export const BOSS_KINDS: UnitKind[] = ['superTank', 'cruiser'];
+export const BOSS_KINDS: UnitKind[] = ['superTank', 'cruiser', 'railGun'];
 
 export interface EnemyWeapon {
 	/** Seconds between bursts. */

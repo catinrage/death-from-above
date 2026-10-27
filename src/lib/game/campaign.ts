@@ -227,22 +227,29 @@ export const MISSIONS: readonly Mission[] = [
 		name: 'Death From Above',
 		tagline: 'Everything they have left',
 		brief:
-			'The final offensive: armour, air defence and aircraft all at once, from dusk through the night. Four waves. Keep the airfield standing.',
+			'The final offensive: armour, air defence and aircraft all at once, from dusk through the night, and a railway gun coming down the line to shell the airfield. Four waves. Keep the airfield standing.',
 		biome: 'city',
 		env: [1.9, 2.6, 3.2, 4.1],
 		waves: {
 			last: 4,
 			offset: 6,
 			statics: ['flak', 'radar'],
-			tweaks: (wave) => ({ budget: 1 + wave * 0.05 }),
+			// The campaign's last boss closes the final wave.
+			tweaks: (wave) => ({
+				budget: 1 + wave * 0.05,
+				boss: wave === 4 ? 'railGun' : undefined
+			}),
 			briefings: [
 				'The offensive begins. Everything is coming',
 				'Heavy armour and SAMs behind the first line',
 				'Night falls. Their air wing joins the attack',
-				'Final wave. Hold the airfield'
+				'Final wave. Their railway gun is on the line: cut the track or drop the viaduct'
 			]
 		},
-		objectives: [{ type: 'waves', count: 4 }],
+		objectives: [
+			{ type: 'destroy', kinds: ['railGun'], count: 1, label: 'Destroy the railway gun' },
+			{ type: 'waves', count: 4 }
+		],
 		baseFloor: 0.4
 	}
 ];

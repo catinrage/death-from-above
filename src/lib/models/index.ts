@@ -80,6 +80,8 @@ const BUILDERS = {
 	cruiserCiws: [boss.cruiserCiws, true],
 	cruiserCiwsGuns: [boss.cruiserCiwsGuns, true],
 	cruiserSam: [boss.cruiserSam, true],
+	railGunBody: [boss.railGunBody, true],
+	railGunBarrel: [boss.railGunBarrel, true],
 
 	soldierBody: [() => inf.soldierBody(false), true],
 	soldierBodyAA: [() => inf.soldierBody(true), true],

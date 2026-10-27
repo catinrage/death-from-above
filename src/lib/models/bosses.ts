@@ -266,3 +266,57 @@ export function cruiserSam(): Float32Array {
 	b.pop();
 	return b.build();
 }
+
+/**
+ * Railway gun carriage: a long girder flatcar with outriggers and a gun
+ * cradle. Origin on the rail top, like the other train cars.
+ */
+export function railGunBody(): Float32Array {
+	const b = new MeshBuilder();
+	// Girder underframe over the bogies, then the deck.
+	b.box(21.6, 0.7, 2.6, P.armyDark, 0, 1.25, 0);
+	b.box(21.2, 0.2, 3.2, P.army, 0, 1.7, 0);
+	for (const s of [1, -1]) {
+		b.box(21.2, 0.5, 0.12, P.armyLight, 0, 1.2, 1.35 * s);
+		// Folded outrigger jacks for firing.
+		for (const x of [-5.4, 5.4]) b.box(0.4, 0.4, 1.4, P.gunMetal, x, 1.1, 2.0 * s);
+	}
+	// Cradle: two cheek plates carrying the trunnions, and a breech house behind.
+	for (const s of [1, -1]) {
+		b.push().translate(0, 1.8, 1.2 * s);
+		b.extrude(
+			[
+				[-3.4, 0],
+				[3.0, 0],
+				[2.4, 2.6],
+				[-1.4, 2.6]
+			],
+			0.35,
+			P.armyLight
+		);
+		b.pop();
+	}
+	b.box(3.6, 2.2, 2.9, P.army, -4.6, 2.9, 0);
+	b.box(3.7, 0.2, 3.0, P.armyDark, -4.6, 4.05, 0);
+	b.box(0.9, 0.3, 2.94, P.red, -3.4, 3.4, 0);
+	b.box(1.6, 0.9, 1.6, P.armyDark, 7.6, 2.25, 0);
+	b.box(0.25, 0.25, 0.25, P.lamp, 10.6, 1.4, 0.9);
+	b.box(0.25, 0.25, 0.25, P.lamp, 10.6, 1.4, -0.9);
+	return b.build();
+}
+
+/** The gun itself: a very long tapered barrel and recoil cylinders, pivoting at the trunnions. */
+export function railGunBarrel(): Float32Array {
+	const b = new MeshBuilder();
+	b.box(3.4, 1.5, 1.9, P.armyDark, -0.6, 0, 0);
+	b.push().translate(-2.4, 0, 0).cylinder(0.85, 0.85, 3.2, 14, P.armyLight, { axis: 'x' }).pop();
+	b.push().translate(0.8, 0, 0).cylinder(0.72, 0.42, 18, 14, P.armyLight, { axis: 'x' }).pop();
+	b.push().translate(18.6, 0, 0).cylinder(0.5, 0.5, 0.9, 12, P.gunMetal, { axis: 'x' }).pop();
+	for (const s of [1, -1]) {
+		b.push()
+			.translate(0.6, 0.65, 0.5 * s)
+			.cylinder(0.18, 0.18, 5.5, 8, P.gunMetal, { axis: 'x' })
+			.pop();
+	}
+	return b.build();
+}
