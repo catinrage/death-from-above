@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { Player } from './player';
-import { launchMissile, spawnBullet, updateProjectiles, type Flare } from './projectiles';
+import { NO_INPUT, Player } from './player';
+import {
+	launchMissile,
+	missileTurnLimit,
+	spawnBullet,
+	updateProjectiles,
+	type Flare,
+	type Missile
+} from './projectiles';
 import { testWorld } from './test-world';
-import type { Trackable } from './types';
+import type { AircraftId, Trackable } from './types';
 
 const target = (x: number, y: number): Trackable => ({
 	x,
@@ -132,6 +139,152 @@ describe('missiles', () => {
 			w.player = p;
 			updateProjectiles(w, 1 / 60);
 			expect(m.target).toBe(p);
+		});
+	});
+
+	describe('can be outmaneuvered', () => {
+		/**
+		 * An air-to-air missile fired from 400 behind an aircraft in level flight.
+		 * The pilot breaks hard across the missile's path once it is `breakAt` away
+		 * (or never, for -1). Returns whether it hit and what became of it.
+		 */
+		const engage = (id: AircraftId, breakAt: number) => {
+			const w = testWorld();
+			const x0 = 2000;
+			const p = new Player(id, x0, w.ground(x0) + 260, 0);
+			p.invuln = 0;
+			w.player = p;
+			const m = launchMissile(w, {
+				kind: 'air',
+				x: x0 - 400,
+				y: p.y + 20,
+				angle: Math.atan2(-20, 400),
+				speed: 90,
+				maxSpeed: 230,
+				accel: 200,
+				turnRate: 2.4,
+				target: p,
+				burn: 2.6,
+				life: 6,
+				damage: 30,
+				owner: 'enemy',
+				seeker: 'heat'
+			});
+			const hp = p.hp;
+			let broke = false;
+			for (let i = 0; i < 60 * 8 && w.missiles.includes(m); i++) {
+				if (Math.hypot(m.x - p.x, m.y - p.y) < breakAt) broke = true;
+				const sp = Math.hypot(m.vx, m.vy) || 1;
+				const steer = broke ? { steerX: -m.vy / sp, steerY: m.vx / sp } : { steerX: 1, steerY: 0 };
+				p.update(1 / 60, { ...NO_INPUT, ...steer }, w);
+				updateProjectiles(w, 1 / 60);
+			}
+			return { hit: p.hp < hp, lostLock: m.target === null };
+		};
+
+		it('never by an aircraft flying straight', () => {
+			expect(engage('f16', -1).hit).toBe(true);
+		});
+
+		it('by an agile jet breaking hard as the missile closes: it overshoots and loses the lock', () => {
+			const r = engage('f16', 140);
+			expect(r.hit).toBe(false);
+			expect(r.lostLock).toBe(true);
+			expect(engage('wraith', 140).hit).toBe(false);
+		});
+
+		it('only with the right timing: break too early and the missile just follows', () => {
+			expect(engage('f16', 450).hit).toBe(true);
+		});
+
+		it('not by a heavy aircraft making the same break', () => {
+			expect(engage('grizzly', 140).hit).toBe(true);
+			expect(engage('b1', 140).hit).toBe(true);
+		});
+	});
+
+	describe('flight model', () => {
+		const missile = (speed: number, owner: 'enemy' | 'player' = 'enemy'): Missile =>
+			launchMissile(testWorld(), {
+				kind: owner === 'enemy' ? 'sam' : 'agm',
+				x: 1500,
+				y: 400,
+				angle: 0,
+				speed,
+				maxSpeed: 265,
+				accel: 0,
+				turnRate: 2.25,
+				target: null,
+				burn: 3,
+				life: 9,
+				damage: 50,
+				owner,
+				seeker: 'radar'
+			});
+
+		it('turns tighter slow than fast (a G limit, not a fixed turn rate)', () => {
+			const slow = missileTurnLimit(missile(60), true);
+			const fast = missileTurnLimit(missile(265), true);
+			expect(fast).toBeLessThan(slow * 0.6);
+			// Fast, it can pull less lateral acceleration than a hard-turning fighter at cruise.
+			expect(fast * 265).toBeLessThan(2.7 * 90);
+			// Coasting after burnout it has even less authority.
+			expect(missileTurnLimit(missile(265), false)).toBeLessThan(fast);
+		});
+
+		it('keeps simple guidance for the player’s own missiles', () => {
+			expect(missileTurnLimit(missile(265, 'player'), true)).toBe(2.25);
+		});
+
+		it('bleeds speed in turns', () => {
+			const run = (tx: number, ty: number) => {
+				const w = testWorld();
+				const t: Trackable = { ...target(tx, ty), alive: true };
+				const m = launchMissile(w, {
+					kind: 'sam',
+					x: 1500,
+					y: w.ground(1500) + 300,
+					angle: 0,
+					speed: 200,
+					maxSpeed: 265,
+					accel: 0,
+					turnRate: 2.25,
+					target: t,
+					burn: 0,
+					life: 9,
+					damage: 50,
+					owner: 'enemy',
+					seeker: 'radar'
+				});
+				for (let i = 0; i < 30; i++) updateProjectiles(w, 1 / 60);
+				return m.speed;
+			};
+			const straight = run(2500, testWorld().ground(1500) + 300);
+			const turning = run(1700, testWorld().ground(1500) + 700);
+			expect(turning).toBeLessThan(straight - 10);
+		});
+
+		it('loses its lock once a coasting missile runs out of speed', () => {
+			const w = testWorld();
+			const t = target(1900, w.ground(1500) + 300);
+			const m = launchMissile(w, {
+				kind: 'air',
+				x: 1500,
+				y: w.ground(1500) + 300,
+				angle: 0,
+				speed: 50,
+				maxSpeed: 230,
+				accel: 0,
+				turnRate: 2.4,
+				target: t,
+				burn: 0,
+				life: 6,
+				damage: 30,
+				owner: 'enemy',
+				seeker: 'heat'
+			});
+			updateProjectiles(w, 1 / 60);
+			expect(m.target).toBeNull();
 		});
 	});
 

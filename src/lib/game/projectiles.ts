@@ -57,6 +57,9 @@ export interface Missile extends Trackable {
 	trail: number;
 	/** Warhead for missiles that blow up what they hit (the player's); others damage directly. */
 	blast?: BlastSpec;
+	/** The seeker's smoothed idea of where its target is heading (lags a sudden break). */
+	trackVx: number;
+	trackVy: number;
 }
 
 export interface Flare extends Trackable {
@@ -98,11 +101,18 @@ export function spawnBullet(w: World, b: Bullet): void {
 
 export function launchMissile(
 	w: World,
-	m: Omit<Missile, 'age' | 'trail' | 'alive' | 'z' | 'heat' | 'vx' | 'vy'> & { z?: number }
+	m: Omit<
+		Missile,
+		'age' | 'trail' | 'alive' | 'z' | 'heat' | 'vx' | 'vy' | 'trackVx' | 'trackVy'
+	> & {
+		z?: number;
+	}
 ): Missile {
 	const missile: Missile = {
 		...m,
 		z: m.z ?? 0,
+		trackVx: m.target?.vx ?? 0,
+		trackVy: m.target?.vy ?? 0,
 		vx: Math.cos(m.angle) * m.speed,
 		vy: Math.sin(m.angle) * m.speed,
 		age: 0,
@@ -299,33 +309,80 @@ function updateShells(w: World, dt: number): void {
 	}
 }
 
+/**
+ * Missile flight model. A missile is fast but not magic: how hard it can turn is
+ * a lateral acceleration (its G limit), so the faster it goes the wider it turns;
+ * every turn bleeds speed it only gets back while the motor burns; and its seeker
+ * sees the target's motion a beat late and can only look so far off its nose.
+ * A pilot who breaks hard as it closes makes it overshoot, and once the aircraft
+ * slides out of the seeker's view the lock is gone. Agile aircraft make that
+ * break sharper, so they shake missiles that a bomber never could.
+ */
+/** Speed at which a missile pulls its full rated turn rate; above it the G limit takes over. */
+export const MISSILE_CORNER_SPEED = 60;
+/** Below this speed fins lose bite and the missile can pull less. */
+const MISSILE_CONTROL_SPEED = 150;
+/** Fraction of speed lost per radian of heading change (induced drag). */
+export const MISSILE_TURN_BLEED = 0.3;
+/** Seeker tracking lag (s): how long it takes to notice the target changed direction. */
+export const SEEKER_LAG = 0.4;
+/** Seeker gimbal limit (rad): a target further off the nose than this breaks the lock. */
+export const SEEKER_GIMBAL = 1.05;
+/** Too slow to fly: a coasting missile below this falls out of the sky. */
+const MISSILE_STALL = 55;
+
+/** The tightest turn (rad/s) a missile can pull at its current speed. */
+export function missileTurnLimit(m: Missile, burning: boolean): number {
+	// The player's own missiles keep their simple, reliable guidance.
+	if (m.owner === 'player') return m.turnRate * (burning ? 1 : 0.35);
+	const v = Math.max(m.speed, 1);
+	const lateral = m.turnRate * MISSILE_CORNER_SPEED * clamp(v / MISSILE_CONTROL_SPEED, 0.35, 1);
+	return Math.min(m.turnRate, lateral / v) * (burning ? 1 : 0.7);
+}
+
 function updateMissiles(w: World, dt: number): void {
 	for (let i = w.missiles.length - 1; i >= 0; i--) {
 		const m = w.missiles[i];
 		m.age += dt;
 		const burning = m.age < m.burn;
 		if (burning) m.speed = Math.min(m.maxSpeed, m.speed + m.accel * dt);
-		else m.speed = Math.max(40, m.speed - 30 * dt);
+		else m.speed = Math.max(MISSILE_STALL * 0.7, m.speed - 30 * dt);
 		if (m.owner === 'enemy') seek(w, m);
 		const t = m.target;
 		if (t && t.alive) {
 			const dx = t.x - m.x,
 				dy = t.y - m.y;
 			const dist = Math.hypot(dx, dy);
-			const tGo = dist / Math.max(m.speed, 60);
-			const desired = Math.atan2(t.y + t.vy * tGo * 0.75 - m.y, t.x + t.vx * tGo * 0.75 - m.x);
-			const authority = burning ? 1 : 0.35;
-			m.angle += clamp(
-				angleDiff(m.angle, desired),
-				-m.turnRate * dt * authority,
-				m.turnRate * dt * authority
-			);
 			if (dist < 6.5) {
 				detonateMissile(w, m, t);
 				w.missiles.splice(i, 1);
 				continue;
 			}
+			const enemy = m.owner === 'enemy';
+			if (
+				enemy &&
+				m.age > 0.5 &&
+				Math.abs(angleDiff(m.angle, Math.atan2(dy, dx))) > SEEKER_GIMBAL
+			) {
+				// Overshot: the target slid out of the seeker's view and the lock is lost.
+				m.target = null;
+				if (t === w.player) w.events.message('MISSILE EVADED', '', 'good');
+			} else {
+				const k = enemy ? 1 - Math.exp(-dt / SEEKER_LAG) : 1;
+				m.trackVx += (t.vx - m.trackVx) * k;
+				m.trackVy += (t.vy - m.trackVy) * k;
+				const tGo = dist / Math.max(m.speed, 60);
+				const desired = Math.atan2(
+					t.y + m.trackVy * tGo * 0.75 - m.y,
+					t.x + m.trackVx * tGo * 0.75 - m.x
+				);
+				const limit = missileTurnLimit(m, burning) * dt;
+				const turn = clamp(angleDiff(m.angle, desired), -limit, limit);
+				m.angle += turn;
+				if (enemy) m.speed -= m.speed * Math.abs(turn) * MISSILE_TURN_BLEED;
+			}
 		}
+		if (m.owner === 'enemy' && !burning && m.speed < MISSILE_STALL) m.target = null;
 		m.vx = Math.cos(m.angle) * m.speed;
 		m.vy = Math.sin(m.angle) * m.speed - (burning ? 0 : Math.min(m.age - m.burn, 3) * 6);
 		m.x += m.vx * dt;
