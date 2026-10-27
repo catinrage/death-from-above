@@ -1,0 +1,15 @@
+{
+	"name": "Death From Above",
+	"short_name": "DFA",
+	"description": "Side-view 3D bomber: break the column, hold the airfield.",
+	"start_url": ".",
+	"display": "fullscreen",
+	"orientation": "landscape",
+	"background_color": "#06070b",
+	"theme_color": "#0b0d14",
+	"icons": [
+		{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+		{ "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+		{ "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+	]
+}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { assets } from '$app/paths';
 	import { onMount } from 'svelte';
 	import { Game } from '$lib/game/game';
 	import { QUALITY_PRESETS } from '$lib/engine/renderer';
@@ -173,7 +174,13 @@
 
 	{#if phase === 'loading' && !error}
 		<div class="loading">
-			<div class="mark">DFA</div>
+			<img
+				class="mark"
+				src="{assets}/brand/logo-512.png"
+				alt="Death From Above"
+				width="220"
+				height="220"
+			/>
 			<div class="bar"><span></span></div>
 			<p>Building the battlefield…</p>
 		</div>
@@ -523,12 +530,16 @@
 	}
 
 	.mark {
-		font-family: var(--display);
-		font-size: 64px;
-		font-weight: 700;
-		letter-spacing: 0.3em;
-		color: var(--amber);
-		text-shadow: 0 0 30px var(--amber-glow);
+		width: 220px;
+		height: 220px;
+		filter: drop-shadow(0 0 24px var(--amber-glow));
+		animation: breathe 2.4s ease-in-out infinite alternate;
+	}
+
+	@keyframes breathe {
+		from {
+			filter: drop-shadow(0 0 12px var(--amber-glow));
+		}
 	}
 
 	.bar {
