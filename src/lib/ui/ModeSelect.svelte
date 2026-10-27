@@ -40,6 +40,9 @@
 	let picked = $state<string | null>(initial?.mode === 'campaign' ? initial.mission : null);
 	// svelte-ignore state_referenced_locally
 	let biome = $state<BiomeId>((initial?.mode === 'endless' && initial.biome) || 'temperate');
+	/** Local two-player co-op: a second aircraft on a gamepad. Training is always solo. */
+	// svelte-ignore state_referenced_locally
+	let coop = $state(!!initial?.coop);
 	const missionId = $derived(
 		picked && isUnlocked(progress, picked) ? picked : (frontier?.id ?? MISSIONS[0].id)
 	);
@@ -61,8 +64,8 @@
 	];
 
 	function launch(): void {
-		if (tab === 'campaign') onLaunch({ mode: 'campaign', mission: mission.id, strike });
-		else if (tab === 'endless') onLaunch({ mode: 'endless', biome });
+		if (tab === 'campaign') onLaunch({ mode: 'campaign', mission: mission.id, strike, coop });
+		else if (tab === 'endless') onLaunch({ mode: 'endless', biome, coop });
 		else onLaunch({ mode: tab });
 	}
 
@@ -253,6 +256,19 @@
 		</div>
 
 		<footer>
+			{#if tab !== 'tutorial'}
+				<div class="players" role="radiogroup" aria-label="Players">
+					<button role="radio" aria-checked={!coop} class:on={!coop} onclick={() => (coop = false)}>
+						<strong>1P</strong><small>Solo</small>
+					</button>
+					<button role="radio" aria-checked={coop} class:on={coop} onclick={() => (coop = true)}>
+						<strong>2P</strong><small>Co-op</small>
+					</button>
+					{#if coop}
+						<p class="hint">P1 keyboard and mouse · P2 gamepad. Six aircraft shared, one score.</p>
+					{/if}
+				</div>
+			{/if}
 			<button class="launch" onclick={launch}>
 				<span>
 					{tab === 'tutorial'
@@ -608,7 +624,58 @@
 	footer {
 		display: flex;
 		justify-content: flex-end;
+		align-items: center;
+		gap: 16px;
 		padding: 10px 24px 20px;
+	}
+
+	.players {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-right: auto;
+	}
+
+	.players button {
+		display: grid;
+		gap: 1px;
+		padding: 8px 14px;
+		cursor: pointer;
+		text-align: left;
+		background: rgba(255, 255, 255, 0.04);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		border-bottom: 2px solid transparent;
+		color: var(--ink);
+	}
+
+	.players button.on {
+		background: rgba(255, 176, 74, 0.12);
+		border-color: var(--line);
+		border-bottom-color: var(--amber);
+	}
+
+	.players strong {
+		font-family: var(--display);
+		font-size: 18px;
+		letter-spacing: 0.14em;
+	}
+
+	.players button.on strong {
+		color: var(--amber);
+	}
+
+	.players small {
+		font-size: 11px;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--ink-dim);
+	}
+
+	.players .hint {
+		max-width: 220px;
+		margin: 0 0 0 8px;
+		font-size: 12px;
+		line-height: 1.4;
 	}
 
 	.launch {
@@ -659,6 +726,14 @@
 
 		h3 {
 			font-size: 24px;
+		}
+
+		footer {
+			flex-wrap: wrap;
+		}
+
+		.players .hint {
+			display: none;
 		}
 	}
 </style>

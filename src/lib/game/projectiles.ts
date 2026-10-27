@@ -4,6 +4,7 @@ import { damageUnit, explode, inBattlePlane, segmentVsCircle, segmentVsUnit } fr
 import { homeOnEmitter } from './arm';
 import { WORLD } from './constants';
 import { BOMBS, type BlastSpec } from './defs-bombs';
+import type { Player } from './player';
 import type { Owner, Trackable, Unit } from './types';
 import { flareEmit, flareHeat } from './flare-fx';
 import { ALLY_BULLET_K } from './allies';
@@ -210,7 +211,7 @@ function bulletHitsPlayerSide(w: World, b: Bullet, x0: number, y0: number): bool
 }
 
 function updateBullets(w: World, dt: number): void {
-	const p = w.player;
+	const pilots = w.pilots();
 	const wing = w.wingman;
 	for (let i = w.bullets.length - 1; i >= 0; i--) {
 		const b = w.bullets[i];
@@ -230,22 +231,25 @@ function updateBullets(w: World, dt: number): void {
 			} else if (w.allies.bulletHit(x0, y0, b.x, b.y, b.damage * ALLY_BULLET_K)) {
 				w.fx.impact(b.x, b.y, b.z, 'metal');
 				dead = true;
-			} else if (
-				p &&
-				p.alive &&
-				segmentVsCircle(x0, y0, b.x, b.y, p.x, p.y, p.def.radius * 0.6) >= 0
-			) {
-				p.hit(b.damage, w, x0, y0, false, `bullet:${b.size}`);
-				w.fx.impact(p.x, p.y, 0, 'metal');
-				dead = true;
-			} else if (
-				wing &&
-				wing.active &&
-				segmentVsCircle(x0, y0, b.x, b.y, wing.x, wing.y, WING_RADIUS) >= 0
-			) {
-				wing.hit(w, b.damage);
-				w.fx.impact(wing.x, wing.y, 0, 'metal');
-				dead = true;
+			} else {
+				for (const p of pilots) {
+					if (!p.alive) continue;
+					if (segmentVsCircle(x0, y0, b.x, b.y, p.x, p.y, p.def.radius * 0.6) < 0) continue;
+					p.hit(b.damage, w, x0, y0, false, `bullet:${b.size}`);
+					w.fx.impact(p.x, p.y, 0, 'metal');
+					dead = true;
+					break;
+				}
+				if (
+					!dead &&
+					wing &&
+					wing.active &&
+					segmentVsCircle(x0, y0, b.x, b.y, wing.x, wing.y, WING_RADIUS) >= 0
+				) {
+					wing.hit(w, b.damage);
+					w.fx.impact(wing.x, wing.y, 0, 'metal');
+					dead = true;
+				}
 			}
 		}
 		if (!dead) {
@@ -275,7 +279,7 @@ function updateBullets(w: World, dt: number): void {
 }
 
 function updateShells(w: World, dt: number): void {
-	const p = w.player;
+	const pilots = w.pilots();
 	const wing = w.wingman;
 	for (let i = w.shells.length - 1; i >= 0; i--) {
 		const s = w.shells[i];
@@ -305,10 +309,16 @@ function updateShells(w: World, dt: number): void {
 			detonate = true;
 			air = true;
 		}
-		if (!detonate && p && p.alive && s.owner === 'enemy' && s.kind !== 'artillery') {
-			if (segmentVsCircle(x0, y0, s.x, s.y, p.x, p.y, p.def.radius * 0.8) >= 0) {
-				detonate = true;
-				air = true;
+		let struck: Player | null = null;
+		if (!detonate && s.owner === 'enemy' && s.kind !== 'artillery') {
+			for (const p of pilots) {
+				if (!p.alive) continue;
+				if (segmentVsCircle(x0, y0, s.x, s.y, p.x, p.y, p.def.radius * 0.8) >= 0) {
+					detonate = true;
+					air = true;
+					struck = p;
+					break;
+				}
 			}
 		}
 		if (!detonate && wing?.active && s.owner === 'enemy' && s.kind !== 'artillery') {
@@ -342,7 +352,8 @@ function updateShells(w: World, dt: number): void {
 		if (s.kind === 'flak') {
 			w.fx.airburst(s.x, s.y, s.z, 1);
 			w.sound.play('flakBurst', s.x, s.y, 0.8);
-			if (p && p.alive) {
+			for (const p of pilots) {
+				if (!p.alive) continue;
 				const d = Math.hypot(p.x - s.x, p.y - s.y);
 				if (d < s.radius) p.hit(s.damage * (1 - d / s.radius) ** 1.4, w, s.x, s.y, false, 'flak');
 			}
@@ -362,7 +373,7 @@ function updateShells(w: World, dt: number): void {
 			w.fx.airburst(s.x, s.y, s.z, 0.8);
 			w.sound.play('flakBurst', s.x, s.y, 0.7);
 			if (wingHit) wing?.hit(w, s.damage);
-			else if (p && p.alive) p.hit(s.damage, w, s.x, s.y, false, `shell:${s.kind}`);
+			else if (struck?.alive) struck.hit(s.damage, w, s.x, s.y, false, `shell:${s.kind}`);
 			continue;
 		}
 		const spec =
@@ -461,7 +472,7 @@ function updateMissiles(w: World, dt: number): void {
 			) {
 				// Overshot: the target slid out of the seeker's view and the lock is lost.
 				m.target = null;
-				if (t === w.player) w.events.message('MISSILE EVADED', '', 'good');
+				if (w.pilots().some((p) => p === t)) w.events.message('MISSILE EVADED', '', 'good');
 			} else {
 				const k = enemy ? 1 - Math.exp(-dt / SEEKER_LAG) : 1;
 				m.trackVx += (t.vx - m.trackVx) * k;
@@ -517,8 +528,8 @@ function detonateMissile(w: World, m: Missile, t: Trackable): void {
 		return;
 	}
 	explode(w, m.x, m.y, m.z, MISSILE_BLAST, m.owner, { playerScale: 0 });
-	const p = w.player;
-	if (p && t === p) {
+	const p = w.pilots().find((q) => q === t);
+	if (p) {
 		p.hit(m.damage, w, m.x, m.y, false, `missile:${m.kind}`);
 	} else if (w.wingman && t === w.wingman) {
 		w.wingman.hit(w, m.damage);
@@ -587,14 +598,19 @@ function apparent(
  */
 function seek(w: World, m: Missile): void {
 	const t = m.target;
-	const p = w.player;
 	const ir = m.seeker === 'heat' ? w.weather.irScale() : 1;
-	if (t && t === p && ir < 1 && Math.hypot(t.x - m.x, t.y - m.y) > IR_RANGE * ir) {
+	if (
+		t &&
+		ir < 1 &&
+		w.pilots().some((p) => p === t) &&
+		Math.hypot(t.x - m.x, t.y - m.y) > IR_RANGE * ir
+	) {
 		// The aircraft's heat is lost in the rain: the seeker goes blind until it closes in.
 		m.target = null;
 		return;
 	}
 	if (!t || !t.alive) {
+		const p = w.nearestPilot(m.x, m.y);
 		// Lost its flare: look for the aircraft again.
 		const near =
 			p && p.alive && Math.hypot(p.x - m.x, p.y - m.y) < Math.min(REACQUIRE, IR_RANGE * ir);

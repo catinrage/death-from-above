@@ -24,6 +24,7 @@
 		type Settings
 	} from './settings';
 	import Hud from './Hud.svelte';
+	import Player2Hud from './Player2Hud.svelte';
 	import TitleScreen from './TitleScreen.svelte';
 	import Hangar from './Hangar.svelte';
 	import { capacityOf, stockLoadout, weightOf, type Loadout } from '$lib/game/loadout';
@@ -255,6 +256,7 @@
 
 	{#if phase === 'playing' || phase === 'paused'}
 		<Hud {hud} {messages} />
+		{#if hud.player2}<Player2Hud wing={hud.player2} />{/if}
 	{/if}
 
 	{#if phase === 'title'}
@@ -308,7 +310,12 @@
 	{/if}
 
 	{#if phase === 'gameover' && over}
-		<GameOver stats={over} onRetry={sortie} onTitle={toTitle} onLaunch={launch} />
+		<GameOver
+			stats={over}
+			onRetry={sortie}
+			onTitle={toTitle}
+			onLaunch={(start) => launch({ ...start, coop: lastStart?.coop })}
+		/>
 	{/if}
 
 	{#if showControls}
@@ -508,6 +515,36 @@
 		text-shadow:
 			0 0 6px var(--glow),
 			0 1px 2px #000;
+	}
+
+	/* Co-op name tags: amber P1, blue P2. */
+	.targeting :global(.tl-pilot) {
+		position: absolute;
+		left: 0;
+		top: 0;
+		translate: -50% -100%;
+		padding: 1px 6px;
+		font-family: var(--display);
+		font-size: 12px;
+		letter-spacing: 0.12em;
+		color: #1a1206;
+		background: var(--amber);
+		clip-path: polygon(0 0, 100% 0, 100% 75%, 58% 75%, 50% 100%, 42% 75%, 0 75%);
+		padding-bottom: 6px;
+		opacity: 0.85;
+	}
+
+	.targeting :global(.tl-pilot.wing) {
+		background: #5fe3a1;
+		color: #04170e;
+	}
+
+	.targeting :global(.tl-pilot.off) {
+		translate: -50% -50%;
+		clip-path: none;
+		padding-bottom: 1px;
+		opacity: 1;
+		animation: tl-threat 0.5s ease-in-out infinite alternate;
 	}
 
 	@keyframes tl-threat {

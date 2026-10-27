@@ -48,6 +48,8 @@ export class CameraRig {
 	interest: [number, number] | null = null;
 	/** Someone else is driving the shot (the hangar showcase): `follow` does nothing. */
 	locked = false;
+	/** Co-op player2: kept in the shot alongside the main target while it flies. */
+	second: FollowTarget | null = null;
 
 	readonly frame: CameraFrame = {
 		view: mat4.create(),
@@ -83,24 +85,39 @@ export class CameraRig {
 		groundY: number
 	): { x: number; y: number; dist: number; lead: number } {
 		const tanH = Math.tan(this.fovY / 2);
+		const wing = this.second;
 		// Lead the climb or dive a little so the easing doesn't trail off-screen.
-		const low = Math.min(groundY, t.y - 16 + Math.min(0, t.vy) * 0.6);
+		let low = Math.min(groundY, t.y - 16 + Math.min(0, t.vy) * 0.6);
+		let high = t.y + Math.max(0, t.vy) * 0.6;
+		if (wing) {
+			low = Math.min(low, wing.y - 16 + Math.min(0, wing.vy) * 0.6);
+			high = Math.max(high, wing.y + Math.max(0, wing.vy) * 0.6);
+		}
 		// High up the shot widens a lot: grow the margins with it so the battle line clears the
 		// bottom HUD and the aircraft clears the top one.
-		const extra = Math.max(0, t.y - low - 100);
-		const top = t.y + 15 + Math.max(0, t.vy) * 0.6 + extra * 0.1;
+		const extra = Math.max(0, high - low - 100);
+		const top = high + 15 + extra * 0.1;
 		const bottom = low - 19 - this.groundBias - extra * 0.28;
 		const distV = ((top - bottom) * 0.5 * 1.08) / tanH;
 
 		let x = t.x + clamp(t.vx, -90, 90);
 		let distH = 0;
 		const span = this.interest;
-		if (span) {
-			const lo = clamp(Math.min(span[0], span[1]), t.x - MAX_REACH, t.x + MAX_REACH);
-			const hi = clamp(Math.max(span[0], span[1]), t.x - MAX_REACH, t.x + MAX_REACH);
-			const ahead = (lo + hi) / 2 >= t.x ? 1 : -1;
-			const left = Math.min(t.x - (ahead > 0 ? BEHIND : 10), lo - (ahead > 0 ? 15 : BEYOND));
-			const right = Math.max(t.x + (ahead > 0 ? 10 : BEHIND), hi + (ahead > 0 ? BEYOND : 15));
+		if (span || wing) {
+			let left = Infinity,
+				right = -Infinity;
+			if (span) {
+				const lo = clamp(Math.min(span[0], span[1]), t.x - MAX_REACH, t.x + MAX_REACH);
+				const hi = clamp(Math.max(span[0], span[1]), t.x - MAX_REACH, t.x + MAX_REACH);
+				const ahead = (lo + hi) / 2 >= t.x ? 1 : -1;
+				left = Math.min(t.x - (ahead > 0 ? BEHIND : 10), lo - (ahead > 0 ? 15 : BEYOND));
+				right = Math.max(t.x + (ahead > 0 ? 10 : BEHIND), hi + (ahead > 0 ? BEYOND : 15));
+			}
+			if (wing) {
+				// Both aircraft, with room behind each to see what is chasing it.
+				left = Math.min(left, t.x - BEHIND, wing.x - BEHIND);
+				right = Math.max(right, t.x + BEHIND, wing.x + BEHIND);
+			}
 			x = (left + right) / 2;
 			distH = ((right - left) * 0.5 * 1.03) / (tanH * this.aspect);
 		}

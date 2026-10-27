@@ -88,7 +88,7 @@
 	</section>
 
 	<section class="lives" aria-label="Reserve aircraft">
-		{#each [0, 1, 2] as i (i)}
+		{#each Array.from({ length: hud.livesMax }, (_, k) => k) as i (i)}
 			<svg viewBox="0 0 24 24" class:lost={i >= hud.lives} aria-hidden="true">
 				<path
 					d="M12 2 L14 9 L22 12 L14 13.5 L13.5 19 L16.5 21 L12 20.5 L7.5 21 L10.5 19 L10 13.5 L2 12 L10 9 Z"

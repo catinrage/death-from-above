@@ -13,10 +13,17 @@ import type { World } from './world';
  * rendering, audio or DOM — so whole battles can run headlessly in tests.
  * Pass `null` input to leave the player's aircraft untouched.
  */
-export function simulateWorld(w: World, dt: number, input: PilotInput | null): void {
+export function simulateWorld(
+	w: World,
+	dt: number,
+	input: PilotInput | null,
+	p2Input: PilotInput | null = null
+): void {
 	w.time += dt;
 	const p = w.player;
 	if (p && input) p.update(dt, input, w);
+	const q = w.player2;
+	if (q && p2Input) q.update(dt, p2Input, w);
 	w.railway?.update(w, dt);
 	updateUnits(w, dt);
 	updateAir(w, dt);
@@ -40,10 +47,26 @@ export function simulateWorld(w: World, dt: number, input: PilotInput | null): v
 	w.particles.update(dt, (x, z) => w.surface.heightAtXZ(x, z));
 	w.lights.update(dt);
 	w.fx.update(dt);
-	if (p) {
-		const target = p.crashed ? { x: p.x, y: p.y + 20, vx: 0, vy: 0 } : p.cameraTarget;
-		// The gunship looks down on its orbit; everything else gets the flat side-on view.
-		w.camera.pitchTarget = p.flight === 'orbit' && !p.crashed ? ORBIT_PITCH : SIDE_PITCH;
-		w.camera.follow(dt, target, w.ground(target.x));
-	}
+	followPilots(w, dt);
+}
+
+/**
+ * Points the camera at the aircraft. In co-op it frames both, and stays on
+ * whichever is still flying while the other waits to respawn.
+ */
+export function followPilots(w: World, dt: number): void {
+	const p = w.player;
+	if (!p) return;
+	const q = w.player2;
+	const flying = q && !q.crashed && p.crashed ? q : p;
+	const other = flying === p ? q : null;
+	w.camera.second = other && !other.crashed ? other.cameraTarget : null;
+	const target = flying.crashed
+		? { x: flying.x, y: flying.y + 20, vx: 0, vy: 0 }
+		: flying.cameraTarget;
+	// The gunship looks down on its orbit; everything else gets the flat side-on view.
+	w.camera.pitchTarget = flying.flight === 'orbit' && !flying.crashed ? ORBIT_PITCH : SIDE_PITCH;
+	let ground = w.ground(target.x);
+	if (w.camera.second) ground = Math.min(ground, w.ground(w.camera.second.x));
+	w.camera.follow(dt, target, ground);
 }

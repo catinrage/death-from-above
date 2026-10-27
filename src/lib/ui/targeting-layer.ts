@@ -10,6 +10,18 @@ export interface TargetingView {
 	locks: ScreenMarker[];
 	/** Direction markers ringing the aircraft, one per incoming missile or locking launcher. */
 	threats: ThreatMarker[];
+	/** Co-op name tags over each aircraft (empty when flying solo). */
+	pilots: PilotTagView[];
+}
+
+export interface PilotTagView {
+	x: number;
+	y: number;
+	label: string;
+	/** Player two's tag (green). */
+	wing: boolean;
+	/** The aircraft is out of shot: the tag sits on the screen edge. */
+	off: boolean;
 }
 
 export interface ThreatMarker {
@@ -29,6 +41,7 @@ export interface ThreatMarker {
 
 const SLOTS = 6;
 const THREAT_SLOTS = 8;
+const PILOT_SLOTS = 2;
 
 /** DOM overlay for the aiming reticle, the target under it and painted locks. */
 export class TargetingLayer {
@@ -37,6 +50,7 @@ export class TargetingLayer {
 	private readonly locks: HTMLDivElement[] = [];
 	private readonly shown: boolean[] = [];
 	private readonly threats: HTMLDivElement[] = [];
+	private readonly pilots: HTMLDivElement[] = [];
 
 	constructor(private readonly root: HTMLElement) {
 		this.reticle = this.el(
@@ -50,6 +64,7 @@ export class TargetingLayer {
 		}
 		for (let i = 0; i < THREAT_SLOTS; i++)
 			this.threats.push(this.el('tl-threat', '<i class="chev"></i><b></b>'));
+		for (let i = 0; i < PILOT_SLOTS; i++) this.pilots.push(this.el('tl-pilot', ''));
 	}
 
 	private el(cls: string, html: string): HTMLDivElement {
@@ -108,6 +123,17 @@ export class TargetingLayer {
 			el.style.setProperty('--lv', t.level.toFixed(2));
 			const label = el.lastElementChild as HTMLElement;
 			label.textContent = t.kind === 'missile' ? `${Math.round(t.dist)}m` : 'LOCK';
+		}
+		for (let i = 0; i < PILOT_SLOTS; i++) {
+			const el = this.pilots[i];
+			const t = v.pilots[i];
+			if (!t) {
+				el.style.display = 'none';
+				continue;
+			}
+			this.place(el, t.x, t.y);
+			el.className = `tl-pilot${t.wing ? ' wing' : ''}${t.off ? ' off' : ''}`;
+			if (el.textContent !== t.label) el.textContent = t.label;
 		}
 	}
 }
