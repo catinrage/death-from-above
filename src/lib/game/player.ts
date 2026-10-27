@@ -30,6 +30,17 @@ import {
 	type BlastSpec,
 	type BombDef
 } from './defs-bombs';
+import {
+	GEAR_HEIGHT,
+	GROUND_PITCH,
+	Gear,
+	LIFTOFF_PITCH,
+	ROLLING_DRAG,
+	WHEEL_BRAKE,
+	groundPitch,
+	releasesBrakes,
+	rotationSpeed
+} from './gear';
 import { launchSpecial } from './specials';
 import { launchMissile, spawnBullet, type Flare } from './projectiles';
 import { trackUnit } from './targeting';
@@ -55,6 +66,8 @@ export interface PilotInput {
 	missiles: Designation[] | null;
 	/** Where a guided bomb released this frame should go (reticle / lock). */
 	designate: Designation | null;
+	/** Gear up / down toggle, set only on the frame it is pressed. */
+	gear: boolean;
 }
 
 export const NO_INPUT: Readonly<PilotInput> = {
@@ -69,7 +82,8 @@ export const NO_INPUT: Readonly<PilotInput> = {
 	cycle: 0,
 	select: null,
 	missiles: null,
-	designate: null
+	designate: null,
+	gear: false
 };
 
 const G = 11;
@@ -117,6 +131,9 @@ const AUTO_AIM_RANGE = 450;
 /** Dive bombing: how steep counts as a dive, and how far the release may be corrected. */
 const DIVE_SIN = 0.5;
 const DIVE_CORRECTION = 0.35;
+/** Leaving the combat area: seconds of grace, then armour lost per second (the turn-back does the real work). */
+export const BOUNDS_GRACE = 8;
+const BOUNDS_DAMAGE = 2;
 const CRASH_BLAST: BlastSpec = {
 	radius: 16,
 	damage: 160,
@@ -199,6 +216,10 @@ export class Player implements Trackable {
 	/** Seconds left on the "bay jammed" warning after a release sticks. */
 	bayJammed = 0;
 	landed = false;
+	/** Undercarriage (fixed wing only); airborne aircraft start with it up. */
+	readonly gear = new Gear();
+	/** Has left the ground since it was parked (or was built in the air). */
+	hasFlown = true;
 	rearming = false;
 	private rearmTimer = 0;
 	outOfBounds = 0;
@@ -309,6 +330,7 @@ export class Player implements Trackable {
 		if (this.flight === 'orbit') this.orbit(dt, inp, w);
 		else if (this.flight === 'rotor') this.hover(dt, inp, w);
 		else {
+			this.undercarriage(dt, inp, w);
 			this.steer(dt, inp, w);
 			this.fly(dt, inp, w);
 		}
@@ -324,7 +346,8 @@ export class Player implements Trackable {
 		if (this.def.tailGun) this.tailGunner(dt, w);
 		const out = this.x < WORLD.arenaMinX || this.x > WORLD.arenaMaxX;
 		this.outOfBounds = out ? this.outOfBounds + dt : 0;
-		if (this.outOfBounds > 4) this.hit(10 * dt, w, this.x, this.y, true, 'bounds');
+		if (this.outOfBounds > BOUNDS_GRACE)
+			this.hit(BOUNDS_DAMAGE * dt, w, this.x, this.y, true, 'bounds');
 	}
 
 	/** Side (+1 past the far edge, -1 past the near edge) if beyond the turn-back line, else 0. */
@@ -388,12 +411,45 @@ export class Player implements Trackable {
 		return braking;
 	}
 
+	/** Sits the aircraft on the runway where it is, wheels down and brakes on, ready to take off. */
+	park(w: World): void {
+		this.gear.extend();
+		this.gear.parked = true;
+		this.landed = true;
+		this.hasFlown = false;
+		this.vx = this.vy = this.angVel = this.bank = 0;
+		this.angle = GROUND_PITCH;
+		this.roll = this.rollTarget = 0;
+		this.throttle = 0.3;
+		this.y = w.surface.clearance(this.x) + GEAR_HEIGHT;
+	}
+
+	/** Gear lever and motor, and the wheel brakes that hold a parked aircraft. */
+	private undercarriage(dt: number, inp: PilotInput, w: World): void {
+		const g = this.gear;
+		if (inp.gear) {
+			const ev = g.toggle(this.landed);
+			w.sound.play(ev === 'refused' ? 'empty' : 'gearMotor', this.x, this.y, 0.7);
+		}
+		if (g.update(dt)) w.sound.play('gearLock', this.x, this.y, 0.8);
+		if (g.parked && releasesBrakes(inp)) g.parked = false;
+	}
+
 	private fly(dt: number, inp: PilotInput, w: World): void {
 		const d = this.def;
+		if (this.gear.parked) {
+			// Brakes on: the engine idles and nothing moves until the pilot asks.
+			this.throttle = damp(this.throttle, 0.3, 3, dt);
+			this.vx = this.vy = this.angVel = 0;
+			this.angle = Math.cos(this.angle) >= 0 ? GROUND_PITCH : Math.PI - GROUND_PITCH;
+			this.y = w.surface.clearance(this.x) + GEAR_HEIGHT;
+			return;
+		}
 		const braking = this.power(dt, inp, w, true);
+		const wheelBrakes = this.landed && inp.brake;
 		// Idle while braking, but keep enough power to hold the floor speed rather than sink into a stall.
 		const slowEnough = this.speed < d.stallSpeed * BRAKE_FLOOR * 1.08;
-		const idle = braking && !slowEnough;
+		const idle = (braking && !slowEnough) || wheelBrakes;
 		this.throttle = damp(this.throttle, idle ? 0.15 : this.boosting ? 1 : 0.8, idle ? 3 : 6, dt);
 		const ca = Math.cos(this.angle),
 			sa = Math.sin(this.angle);
@@ -429,8 +485,9 @@ export class Player implements Trackable {
 			this.vy = Math.sin(va + rot) * sp;
 		}
 		speed = this.speed;
-		this.vx -= this.vx * speed * d.drag * dt;
-		this.vy -= this.vy * speed * d.drag * dt;
+		const drag = d.drag * this.gear.drag;
+		this.vx -= this.vx * speed * drag * dt;
+		this.vy -= this.vy * speed * drag * dt;
 		// Airbrake: the reverse of boost. Bleeds speed hard, but holds you just above the stall.
 		const floor = d.stallSpeed * BRAKE_FLOOR;
 		if (this.brakeLevel > 0.01 && speed > floor) {
@@ -446,29 +503,50 @@ export class Player implements Trackable {
 		this.y += this.vy * dt;
 
 		const g = w.surface.clearance(this.x);
-		const onRunway = this.x > WORLD.runwayMinX && this.x < WORLD.runwayMaxX;
-		if (this.y - g < 1.7) {
-			const level = Math.abs(Math.sin(this.angle)) < 0.3 && this.vy > -11;
-			if (onRunway && level) {
-				this.landed = true;
-				this.y = g + 1.7;
-				this.vy = Math.max(this.vy, 0);
-				this.vx *= Math.exp(-0.35 * dt);
-				const lvl = Math.cos(this.angle) >= 0 ? 0.03 : Math.PI - 0.03;
-				this.angle +=
-					angleDiff(this.angle, lvl) * Math.min(1, dt * 4) * (Math.abs(this.angVel) < 0.3 ? 1 : 0);
-			} else {
-				this.crash(w);
-				return;
-			}
+		if (this.y - g < GEAR_HEIGHT) {
+			if (!this.groundRoll(dt, inp, w, g)) return;
 		} else {
 			this.landed = false;
+			this.hasFlown = true;
 		}
 		const c = Math.cos(this.angle);
 		if (c > 0.2) this.rollTarget = 0;
 		else if (c < -0.2) this.rollTarget = Math.PI;
 		this.roll = moveToward(this.roll, this.rollTarget, dt * 3.4);
 		this.bank = damp(this.bank, -this.angVel * 0.32 * (this.rollTarget > 1 ? -1 : 1), 6, dt);
+	}
+
+	/**
+	 * Wheels on the runway: touchdown, the take-off and landing roll, wheel
+	 * brakes and rotation. Anywhere else, too steep, or with the gear not
+	 * locked down, it is a crash. Returns false if the aircraft crashed.
+	 */
+	private groundRoll(dt: number, inp: PilotInput, w: World, g: number): boolean {
+		const onRunway = this.x > WORLD.runwayMinX && this.x < WORLD.runwayMaxX;
+		const level = this.landed || (Math.abs(Math.sin(this.angle)) < 0.3 && this.vy > -11);
+		if (!onRunway || !level) {
+			this.crash(w);
+			return false;
+		}
+		if (!this.landed && !this.gear.locked) {
+			this.crash(w, 'BELLY LANDING', 'Lower the gear with B before touching down');
+			return false;
+		}
+		if (!this.landed) touchdown(w, this, g);
+		this.landed = true;
+		this.y = g + GEAR_HEIGHT;
+		const dir = Math.cos(this.angle) >= 0 ? 1 : -1;
+		const raw = dir > 0 ? this.angle : wrapAngle(Math.PI - this.angle);
+		// Not pulling: the nose settles back onto its wheel.
+		const settle = Math.abs(this.angVel) < 0.3 ? Math.min(1, dt * 4) : 0;
+		const speed = this.speed;
+		const pitch = groundPitch(raw + (GROUND_PITCH - raw) * settle, speed, rotationSpeed(this.def));
+		this.angle = dir > 0 ? pitch : Math.PI - pitch;
+		// Glued to the runway until the nose is up at rotation speed.
+		this.vy = pitch > LIFTOFF_PITCH ? Math.max(this.vy, 0) : 0;
+		this.vx *= Math.exp(-ROLLING_DRAG * dt);
+		if (inp.brake) this.vx = Math.sign(this.vx) * Math.max(0, Math.abs(this.vx) - WHEEL_BRAKE * dt);
+		return true;
 	}
 
 	/**
@@ -1270,7 +1348,7 @@ export class Player implements Trackable {
 		if (this.y <= w.surface.clearance(this.x) + 1) this.crash(w);
 	}
 
-	private crash(w: World): void {
+	private crash(w: World, title = 'AIRCRAFT LOST', sub = ''): void {
 		const g = Math.min(this.y, w.surface.clearance(this.x));
 		this.alive = false;
 		this.dying = false;
@@ -1281,7 +1359,18 @@ export class Player implements Trackable {
 		w.fires.add(this.x, g, 0, 2, 20, { radius: 3 });
 		w.sound.play('crash', this.x, g, 1.2);
 		w.damageTaken.crash = (w.damageTaken.crash ?? 0) + 1;
-		w.events.message('AIRCRAFT LOST', '', 'warn');
+		w.events.message(title, sub, 'warn');
+	}
+}
+
+/** Tyre chirp and a puff of rubber smoke off each main wheel as they meet the runway. */
+function touchdown(w: World, p: Player, g: number): void {
+	const hard = Math.min(1, Math.max(0.3, -p.vy / 6));
+	w.sound.play('tyre', p.x, g, 0.5 + hard * 0.5);
+	const span = Math.min(p.def.radius * 0.3, 3);
+	for (const s of [1, -1]) {
+		for (let i = 0; i < 3; i++)
+			w.fx.trail(p.x - i * 0.8, g + 0.3, span * s, 0.9 + hard * 0.6, 0.8, 0.45 * hard, 1.4, 0.25);
 	}
 }
 

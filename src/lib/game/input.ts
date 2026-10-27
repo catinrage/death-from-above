@@ -17,6 +17,7 @@ const PREV = ['KeyQ'];
 const PAUSE = ['Escape', 'KeyP'];
 const MISSILE = ['KeyE', 'KeyU', 'Mouse1'];
 const FOCUS = ['KeyR', 'KeyI'];
+const GEAR = ['KeyB'];
 /** Wingman orders. */
 const ORDERS: [WingOrder, string[]][] = [
 	['attack', ['KeyT']],
@@ -44,6 +45,7 @@ const PAD = {
 	view: 8,
 	start: 9,
 	l3: 10,
+	r3: 11,
 	up: 12,
 	down: 13,
 	left: 14,
@@ -95,7 +97,8 @@ class Pad {
 			cycle: this.pressed(PAD.lb) ? -1 : this.pressed(PAD.rb) ? 1 : 0,
 			select: null,
 			missiles: null,
-			designate: null
+			designate: null,
+			gear: this.pressed(PAD.r3)
 		};
 	}
 }
@@ -337,7 +340,8 @@ export class Input {
 			cycle,
 			select,
 			missiles: null,
-			designate: null
+			designate: null,
+			gear: this.anyPressed(GEAR) || pad.gear
 		};
 	}
 

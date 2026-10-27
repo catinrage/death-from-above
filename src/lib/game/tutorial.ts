@@ -56,6 +56,17 @@ const LESSONS: Lesson[] = [
 		progress: () => 0
 	},
 	{
+		title: 'Take off',
+		text: 'You start on the runway with the brakes on. Press D (or Shift) to roll, and once you are fast enough pull up with W to lift off. Then press B to raise the gear: it drags.',
+		keys: ['D', 'W', 'B'],
+		pad: 'Left stick · R3',
+		progress: (t, w) => {
+			const p = w.player;
+			if (!p || p.landed || !p.hasFlown) return 0;
+			return p.gear.down || p.gear.moving ? 0.5 : 1;
+		}
+	},
+	{
 		title: 'Climb',
 		text: 'Steering is directional: press the way you want to fly. Hold W and D together to climb at an angle, and get above 120 m. Straight up bleeds speed fast.',
 		keys: ['W', 'D'],
@@ -154,8 +165,8 @@ const LESSONS: Lesson[] = [
 	},
 	{
 		title: 'Rearm',
-		text: 'Fly low and slow along the runway to rearm and repair. Touch down level to land. Hold over the runway until the rearm counter fills.',
-		keys: ['V', 'S'],
+		text: 'Fly low and slow along the runway to rearm and repair. To land, lower the gear with B first, then touch down level. Hold over the runway until the rearm counter fills.',
+		keys: ['V', 'S', 'B'],
 		pad: 'Left stick',
 		progress: (t) => Math.min(1, t.rearmTime / 3)
 	},

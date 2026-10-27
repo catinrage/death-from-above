@@ -7,6 +7,11 @@ import type { BombId } from './types';
 import { predictImpact } from './weapons';
 import type { World } from './world';
 
+/** Distance out from the runway at which a homing pass lowers the gear. */
+const RUNWAY_APPROACH = 250;
+/** Height above the runway at which the gear comes up after take-off. */
+const GEAR_UP_ALT = 18;
+
 /** Flies the title-screen demo: patrols, strafes and bombs whatever it finds. */
 export class Autopilot {
 	private dir = 1;
@@ -26,7 +31,8 @@ export class Autopilot {
 		cycle: 0,
 		select: null,
 		missiles: null,
-		designate: null
+		designate: null,
+		gear: false
 	};
 
 	update(w: World, p: Player, dt: number): PilotInput {
@@ -63,6 +69,7 @@ export class Autopilot {
 		inp.steerX = this.dir;
 		inp.steerY = climb;
 		inp.boost = Math.abs(p.vx) < p.def.cruise * 0.8;
+		inp.gear = this.gearCall(p, p.y - g, overRunway);
 
 		const hit = predictImpact(w, p.x, p.y - 1, p.vx, p.vy, BOMBS.gp.drag, null);
 		let infantry = 0,
@@ -105,5 +112,17 @@ export class Autopilot {
 		inp.fire = fire && !p.overheated;
 		inp.flare = p.lockedBy > 0 && rnd.chance(dt * 1.5);
 		return inp;
+	}
+
+	/**
+	 * Gear lever: down on the ground, for a homing pass and whenever the
+	 * wheels might meet the runway; up once the climb-out is under way.
+	 */
+	private gearCall(p: Player, alt: number, overRunway: boolean): boolean {
+		if (p.flight !== 'fixed' || p.landed) return false;
+		const near =
+			p.x > WORLD.runwayMinX - RUNWAY_APPROACH && p.x < WORLD.runwayMaxX + RUNWAY_APPROACH;
+		const want = (near && this.homing) || (overRunway && alt < GEAR_UP_ALT);
+		return want !== p.gear.down;
 	}
 }

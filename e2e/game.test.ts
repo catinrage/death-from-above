@@ -68,6 +68,8 @@ test('spends credits in the hangar on an aircraft and an upgrade', async ({ page
 });
 
 test('flies a sortie: HUD, bombing and pause menu', async ({ page }) => {
+	// Software WebGL can crawl under load, and game time crawls with it through the take-off roll.
+	test.setTimeout(300_000);
 	const errors = await openTitle(page);
 	await page.getByRole('button', { name: /sortie/i }).click();
 	await page.getByRole('tab', { name: /endless/i }).click();
@@ -77,8 +79,25 @@ test('flies a sortie: HUD, bombing and pause menu', async ({ page }) => {
 
 	const gp = page.locator('.slot', { hasText: 'GP-250' });
 	const before = Number((await gp.locator('.ct').innerText()).split('/')[0]);
+	// Parked on the runway: roll, rotate, lift off and raise the gear.
+	const prompt = page.getByText(/release brakes/i);
+	const gear = page.locator('.hud .gear');
+	await expect(prompt).toBeVisible();
+	await expect(gear).toHaveText(/DOWN/);
 	await page.keyboard.down('KeyD');
-	await page.waitForTimeout(800);
+	await page.waitForTimeout(1000);
+	await page.keyboard.down('KeyW');
+	await expect(prompt).toBeHidden({ timeout: 90_000 });
+	// Climb clear of the runway before the gear comes up.
+	const alt = page.locator('.readout span').first();
+	await expect
+		.poll(async () => Number((await alt.innerText()).replace(/\D/g, '')), { timeout: 60_000 })
+		.toBeGreaterThan(30);
+	// Keep the nose up through the climb-out while the gear comes up.
+	await page.keyboard.press('KeyB');
+	await expect(gear).toHaveText(/TRANSIT|UP/);
+	await expect(gear).toHaveText(/UP/, { timeout: 60_000 });
+	await page.keyboard.up('KeyW');
 	await page.keyboard.press('Space');
 	await expect
 		.poll(async () => Number((await gp.locator('.ct').innerText()).split('/')[0]), {
@@ -134,14 +153,17 @@ test('training walks through lessons', async ({ page }) => {
 	const errors = await openTitle(page);
 	await page.getByRole('button', { name: /sortie/i }).click();
 	await page.getByRole('button', { name: /start training/i }).click();
-	await expect(page.getByText('Lesson 1/12')).toBeVisible();
+	await expect(page.getByText('Lesson 1/14')).toBeVisible();
 	await expect(page.getByText(/TRAINING/).first()).toBeVisible();
 	await page.keyboard.press('Enter');
-	await expect(page.getByText('Lesson 2/12')).toBeVisible();
-	await expect(page.getByRole('heading', { name: 'Climb', exact: true })).toBeVisible();
+	await expect(page.getByText('Lesson 2/14')).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Take off', exact: true })).toBeVisible();
 	// Enter skips an action lesson; its targets appear with the next one.
 	await page.keyboard.press('Enter');
-	await expect(page.getByText('Lesson 3/12')).toBeVisible();
+	await expect(page.getByText('Lesson 3/14')).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Climb', exact: true })).toBeVisible();
+	await page.keyboard.press('Enter');
+	await expect(page.getByText('Lesson 4/14')).toBeVisible();
 	await page.keyboard.press('Enter');
 	await expect(page.getByRole('heading', { name: 'Guns', exact: true })).toBeVisible();
 	expect(errors).toEqual([]);

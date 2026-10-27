@@ -1,4 +1,5 @@
 import type { MeshName } from '../models';
+import type { GearLayout } from './gear';
 import type { AircraftId, BombId, Vec3T } from './types';
 
 export interface GunSpec {
@@ -78,6 +79,8 @@ export interface AircraftDef {
 	tip: Vec3T;
 	/** Real-world type this is modelled on, shown on the hangar card. */
 	real?: string;
+	/** Undercarriage legs (fixed wing); sized from `radius` when left out. */
+	gear?: GearLayout;
 }
 
 export type BoostFx = 'afterburner' | 'plasma' | 'rocket' | 'smoke' | 'smokyBurner';

@@ -119,6 +119,10 @@ export interface HudSnapshot {
 	ceiling: boolean;
 	rearming: boolean;
 	landed: boolean;
+	/** Undercarriage lamp ('none' for rotors and the gunship). */
+	gear: 'down' | 'up' | 'transit' | 'none';
+	/** Fresh on the runway and not yet airborne: show how to take off. */
+	takeoff: boolean;
 	/** Engine, wing and hydraulic damage, 0..1 each. */
 	systems: Systems;
 	/** A bomb release just stuck in the bay. */
@@ -225,6 +229,8 @@ export function emptyHud(): HudSnapshot {
 		ceiling: false,
 		rearming: false,
 		landed: false,
+		gear: 'none',
+		takeoff: false,
 		systems: { engine: 0, wing: 0, hydraulics: 0 },
 		bayJammed: false,
 		damageDir: 0,

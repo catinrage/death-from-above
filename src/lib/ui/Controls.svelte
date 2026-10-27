@@ -17,7 +17,8 @@
 		['Select ordnance', '1 – 9 (your rack)  ·  Q / Tab / wheel cycle  /  LB RB'],
 		['Flares (break missile locks)', 'F  /  L  /  C  /  B'],
 		['Afterburner', 'Shift  /  X button'],
-		['Airbrake', 'V  /  View button'],
+		['Airbrake (wheel brakes on the ground)', 'V  /  View button'],
+		['Landing gear up / down', 'B  /  Right stick click'],
 		['Wingman: attack my target', 'T  /  D-pad right'],
 		['Wingman: cover me', 'G  /  D-pad up'],
 		['Wingman: hit the SAMs', 'H  /  D-pad down'],
@@ -26,7 +27,8 @@
 	];
 
 	const TIPS = [
-		'Fly low and slow over your runway to rearm specials and repair. Touch down level to land.',
+		'Every sortie starts on the runway: steer or boost to release the brakes, pull up past take-off speed, then raise the gear with B.',
+		'Fly low and slow over your runway to rearm specials and repair. To land, lower the gear first and touch down level.',
 		'Steering is directional: press the way you want to fly. Reversing loops you over the top.',
 		'The dotted arc shows where your selected bomb will land.',
 		'Focus slows time: sweep the reticle across enemies to paint up to six locks, then fire missiles — one per target.',

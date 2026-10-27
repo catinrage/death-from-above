@@ -467,3 +467,12 @@ export function helicopterTailRotor(): Float32Array {
 	b.box(1.6, 0.16, 0.05, P.prop);
 	return b.build();
 }
+
+/** Undercarriage leg: a unit-length oleo strut hanging down from its pivot, with a torque link. */
+export function gearStrut(): Float32Array {
+	const b = new MeshBuilder();
+	b.push().translate(0, -1, 0).cylinder(0.07, 0.09, 1, 8, P.steel).pop();
+	b.push().translate(0, -0.55, 0).cylinder(0.11, 0.11, 0.3, 8, P.hub).pop();
+	b.box(0.05, 0.3, 0.04, P.hub, 0.09, -0.7, 0);
+	return b.build();
+}

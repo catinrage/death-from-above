@@ -31,16 +31,25 @@ strongly recommended; quality presets (LOW / MEDIUM / HIGH) are on the title scr
 | Select ordnance (your rack)       | `1`–`9`, cycle with `Q` / `Tab` / wheel | LB / RB     |
 | Flares                            | `F`, `L` or `C`                         | B           |
 | Afterburner                       | `Shift`                                 | X           |
-| Airbrake                          | `V`                                     | View        |
+| Airbrake (wheel brakes on ground) | `V`                                     | View        |
+| Landing gear up / down            | `B`                                     | R3          |
 | Wingman: attack my target         | `T`                                     | D-pad right |
 | Wingman: cover me                 | `G`                                     | D-pad up    |
 | Wingman: hit the SAMs             | `H`                                     | D-pad down  |
 | Wingman: return to base and rearm | `Y`                                     | D-pad left  |
 | Pause                             | `Esc` or `P`                            | Start       |
 
+**Every sortie starts on the runway**, wheels down and brakes on. Steer or boost to release the
+brakes and roll; once past take-off speed (about 1.1 × stall) pull up to lift off, then press `B`
+to raise the gear: it drags. To land, lower the gear (it takes a couple of seconds) and touch down
+level on the runway; touching down with the wheels up is a belly landing and loses the aircraft. A
+"too low, gear" callout warns you on a wheels-up approach. On the ground, `V` works the wheel brakes.
+Helicopters and the gunship start in the air.
+
 Steering is directional: press the way you want to fly. Asking for the opposite heading loops you
-over the top. Fly low and slow over your runway to rearm specials, missiles and repair; touch down
-level to land. The dotted arc is your bomb sight, and the camera widens to keep its landing point in
+over the top. Fly low and slow over your runway to rearm specials, missiles and repair; land to
+repair damaged systems. Stray out of the combat area and the aircraft turns itself back; stay out
+for long and the armour slowly suffers. The dotted arc is your bomb sight, and the camera widens to keep its landing point in
 view.
 
 **Focus** slows the world to a quarter speed while a meter drains (kills made outside focus
@@ -55,8 +64,8 @@ sits between the missile and you, so drop them as the missile closes from behind
 early burn out, and the seeker picks you up again. Head-on shots and radar-guided SAMs are much
 harder to fool, and your afterburner makes you a brighter target.
 
-**Your wingman** (callsign Two) flies an F-16 with you in campaign and endless sorties. It starts
-on the attack, picking its own targets: bandits coming after you first, then the most dangerous
+**Your wingman** (callsign Two) flies an F-16 with you in campaign and endless sorties, taking off
+once you are airborne. It starts on the attack, picking its own targets: bandits coming after you first, then the most dangerous
 thing on the ground nearby. Press `T` to send it after your target (your first lock, whatever is
 under the reticle, or the best target ahead), `H` to have it hunt the air defences (SAM sites and
 radars first, then AA guns), `G` to call it back to cover you, and `Y` to send it home: it makes a
@@ -117,7 +126,7 @@ and losing your aircraft doesn't hand you a fresh one.
     up across the river and lobs heavy shells onto the airfield. Cut the line or drop the viaduct to
     hold it out of range; it fires from wherever it stops once the airfield is in reach.
 - **Three ways to play** — pick one from the Sortie menu:
-  - **Training**: twelve guided lessons, each with its own practice targets, covering steering,
+  - **Training**: fourteen guided lessons, each with its own practice targets, covering take-off, steering,
     guns, bombs, ordnance selection, guided missiles, focus, flares, afterburner and airbrake, and
     rearming. You can't be shot down for good, and Enter skips a lesson.
   - **Campaign**: nine missions that get harder as you go, each with its own objectives (drop the

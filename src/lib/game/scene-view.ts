@@ -7,6 +7,7 @@ import { AIRCRAFT } from './defs-aircraft';
 import { BOMBS } from './defs-bombs';
 import { brakeFx, engineFx } from './boost-fx';
 import { flareGlow, flareHeat } from './flare-fx';
+import { GEAR_HEIGHT, gearLayout } from './gear';
 import { debrisMatrix } from './debris';
 import { Props, type Prop } from './props';
 import { poseParts, poseScratch, rootMatrix } from './unit-pose';
@@ -15,6 +16,8 @@ import type { Unit } from './types';
 import type { World } from './world';
 
 const IDENTITY = mat4.create();
+/** Radius the shared `wheel` mesh is built at. */
+const WHEEL_MESH_RADIUS = 0.5;
 /** Tracer colours are authored hot; this keeps them gold/red instead of clipping to white. */
 const TRACER_K = 0.5;
 
@@ -27,6 +30,7 @@ function sightScale(w: World): number {
 export class SceneView {
 	private readonly m: Mat4 = mat4.create();
 	private readonly m2: Mat4 = mat4.create();
+	private readonly m3: Mat4 = mat4.create();
 	private readonly root: Mat4 = mat4.create();
 	private readonly s: InstanceStyle = { ...DEFAULT_STYLE };
 	private readonly skip = new Set<number>();
@@ -483,6 +487,7 @@ export class SceneView {
 			mat4.rotateZ(this.m2, this.m2, p.propSpin * 1.6);
 			this.models.heliTailRotor.push(this.m2, st);
 		}
+		if (p.flight === 'fixed') this.gear(p, m, st);
 		const sel = p.ammo[p.selected] > 0 ? p.selected : 'gp';
 		const shown = Math.min(p.ammo[sel], p.def.hardpoints.length);
 		for (let i = 0; i < shown; i++) {
@@ -506,6 +511,34 @@ export class SceneView {
 			p.localToWorld([-6, 2.8, 0], out);
 			if (wing) w.fx.immediateGlow(out[0], out[1], out[2], 1.8, 2, 12, 5);
 			else w.fx.immediateGlow(out[0], out[1], out[2], 1.6, 8, 8, 8);
+		}
+	}
+
+	/**
+	 * Nose and main legs, in the aircraft's own frame: each swings back about
+	 * its pivot as the gear comes up, and is gone once stowed.
+	 */
+	private gear(p: Player, m: Mat4, st: InstanceStyle): void {
+		const e = p.gear.extension;
+		if (e <= 0.001) return;
+		const g = gearLayout(p.def);
+		// Wheels sit on the runway when the aircraft rests at GEAR_HEIGHT.
+		const axle = -GEAR_HEIGHT / p.def.scale + g.wheel;
+		const fold = -(1 - e) * Math.PI * 0.5;
+		const k = g.wheel / WHEEL_MESH_RADIUS;
+		for (const [at, side] of [
+			[g.nose, 1],
+			[g.main, 1],
+			[g.main, -1]
+		] as const) {
+			const len = Math.max(0.3, at[1] - axle);
+			mat4.translate(this.m2, m, at[0], at[1], at[2] * side);
+			mat4.rotateZ(this.m2, this.m2, fold);
+			mat4.translate(this.m3, this.m2, 0, -len, 0);
+			mat4.scale(this.m3, this.m3, k, k, k);
+			this.models.wheel.push(this.m3, st);
+			mat4.scale(this.m2, this.m2, 1, len, 1);
+			this.models.gearStrut.push(this.m2, st);
 		}
 	}
 

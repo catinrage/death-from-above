@@ -46,6 +46,7 @@ const BUILDERS = {
 	heliBody: [air.helicopterBody, true],
 	heliRotor: [air.helicopterRotor, true],
 	heliTailRotor: [air.helicopterTailRotor, false],
+	gearStrut: [air.gearStrut, true],
 
 	wheel: [() => veh.wheel(0.5, 0.36), true],
 	wheelSmall: [() => veh.wheel(0.4, 0.28), true],

@@ -5,6 +5,7 @@ export type Alert =
 	| 'fire'
 	| 'stall'
 	| 'lock'
+	| 'gear'
 	| 'damage'
 	| 'altitude'
 	| 'ceiling'
@@ -18,6 +19,7 @@ export const ALERT_ORDER: readonly Alert[] = [
 	'fire',
 	'stall',
 	'lock',
+	'gear',
 	'damage',
 	'altitude',
 	'ceiling',
@@ -34,6 +36,8 @@ interface AlertSpec {
 	repeat: number;
 	/** Warning tone played before the words. */
 	tone: 'caution' | 'warning' | 'none';
+	/** No clip generated yet: it is never fetched and the speech fallback reads the words. */
+	pending?: boolean;
 }
 
 /** Lines, cadence and tones modelled on real fast-jet voice warning systems. */
@@ -43,6 +47,7 @@ export const ALERTS: Record<Alert, AlertSpec> = {
 	fire: { file: 'fire', text: 'Engine fire. Engine fire.', repeat: 4, tone: 'warning' },
 	stall: { file: 'stall', text: 'Stall. Stall.', repeat: 1.8, tone: 'none' },
 	lock: { file: 'lock', text: 'Warning. Locked on.', repeat: 5, tone: 'warning' },
+	gear: { file: 'too-low-gear', text: 'Too low. Gear.', repeat: 3, tone: 'warning', pending: true },
 	damage: { file: 'damage', text: 'Warning. Damage critical.', repeat: 9, tone: 'warning' },
 	altitude: { file: 'altitude', text: 'Altitude. Altitude.', repeat: 3, tone: 'caution' },
 	ceiling: { file: 'ceiling', text: 'Altitude ceiling.', repeat: 6, tone: 'caution' },

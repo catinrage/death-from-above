@@ -684,6 +684,28 @@ export class AudioEngine implements SoundSink {
 				this.tone(v, t, 0.35, 'sine', 70 * p, 38, 0.5, 0.01);
 				this.noise(v, t, 0.6, 'lowpass', 900 * p, 140, 0.55, 0.7, true);
 				break;
+			case 'gearMotor':
+				// Hydraulic pump whine as the legs start to travel, with the doors' rush of air.
+				dur = 2.4;
+				this.tone(v, t, 2.2, 'sawtooth', 300 * p, 420 * p, 0.05, 0.25);
+				this.tone(v, t, 2.2, 'triangle', 600 * p, 840 * p, 0.04, 0.25);
+				this.noise(v, t, 1.2, 'bandpass', 700 * p, 400, 0.12, 1.2);
+				break;
+			case 'gearLock':
+				// The uplock or downlock catching: a solid mechanical clunk.
+				dur = 0.35;
+				this.tone(v, t, 0.12, 'square', 120 * p, 55, 0.3, 0.002);
+				this.noise(v, t, 0.1, 'bandpass', 1800 * p, 900, 0.35, 2);
+				this.noise(v, t + 0.06, 0.2, 'lowpass', 500 * p, 120, 0.3, 0.7, true);
+				break;
+			case 'tyre':
+				// Tyre chirp as the wheels spin up on the runway, and the thump of the gear taking the weight.
+				dur = 0.6;
+				this.noise(v, t, 0.18, 'bandpass', 3200 * p, 2200, 0.5, 4);
+				this.noise(v, t + 0.04, 0.22, 'bandpass', 2600 * p, 1800, 0.35, 4);
+				this.tone(v, t, 0.2, 'sine', 90 * p, 45, 0.45, 0.004);
+				this.noise(v, t + 0.1, 0.5, 'lowpass', 600 * p, 150, 0.25, 0.7, true);
+				break;
 			case 'airbrake':
 				// Speed brakes biting into the airflow: a rising rush and a low rumble.
 				dur = 0.9;
@@ -936,6 +958,7 @@ export class AudioEngine implements SoundSink {
 		const ctx = this.ctx;
 		if (!ctx || typeof fetch === 'undefined') return;
 		for (const a of ALERT_ORDER) {
+			if (ALERTS[a].pending) continue;
 			const url = new URL(`audio/voice/${ALERTS[a].file}.mp3`, document.baseURI);
 			fetch(url)
 				.then((r) => (r.ok ? r.arrayBuffer() : null))

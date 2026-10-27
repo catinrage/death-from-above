@@ -63,6 +63,7 @@ describe('Player flight model', () => {
 		const land = new Player('kestrel', WORLD.runwayMinX + 20, w.ground(80) + 2.2, 0);
 		land.vx = 45;
 		land.vy = -1;
+		land.gear.extend();
 		w.player = land;
 		fly(land, { brake: true }, 1, w);
 		expect(land.crashed).toBe(false);
