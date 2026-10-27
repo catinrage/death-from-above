@@ -170,7 +170,7 @@ export class Game {
 			const [x0, x1] = river.extent();
 			this.renderer.water.setMesh(m.vertices, m.indices, x0, x1);
 			this.renderer.roadGap = [river.x0 - river.bridgeHalf, river.x0 + river.bridgeHalf];
-			this.renderer.water.river = [river.x0, river.halfWidth, river.depth, SHOAL];
+			this.renderer.water.shoal = SHOAL;
 		}
 		this.world.sound = this.audio;
 		this.terrainView = new TerrainView(this.renderer, this.world.terrain);

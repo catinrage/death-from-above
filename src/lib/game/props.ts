@@ -284,6 +284,6 @@ export class Props {
 }
 
 function inRiver(r: River, x: number, z: number): boolean {
-	if (r.offset(x, z) < r.halfWidthAt(z) + 7) return true;
+	if (r.inChannel(x, z, 7)) return true;
 	return Math.abs(z) < 7 && Math.abs(x - r.x0) < r.bridgeHalf + 6;
 }

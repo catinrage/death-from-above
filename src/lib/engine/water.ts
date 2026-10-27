@@ -18,8 +18,8 @@ import { MAX_RIPPLES, WATER_FS, WATER_VS } from './shaders/water';
 export class WaterRenderer {
 	readonly ripples = new Float32Array(MAX_RIPPLES * 4);
 	numRipples = 0;
-	/** Channel cross-section for the shader: centre x, half width, bed depth, shoal width. */
-	river: [number, number, number, number] = [0, 0, 0, 1];
+	/** Width over which the river bed shoals up to the bank. */
+	shoal = 1;
 	private readonly program: Program;
 	private vao: WebGLVertexArrayObject | null = null;
 	private indexCount = 0;
@@ -43,8 +43,11 @@ export class WaterRenderer {
 		gl.bindVertexArray(vao);
 		gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
 		gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+		// Position, then the channel cross-section: signed offset, half width, bed depth.
 		gl.enableVertexAttribArray(0);
-		gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0);
+		gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 24, 0);
+		gl.enableVertexAttribArray(1);
+		gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 24, 12);
 		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
 		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
 		gl.bindVertexArray(null);
@@ -103,7 +106,7 @@ export class WaterRenderer {
 			.v3('u_zenith', env.zenith)
 			.v3('u_horizon', env.horizon)
 			.i1('u_numRipples', this.numRipples)
-			.f4('u_river', this.river[0], this.river[1], this.river[2], this.river[3])
+			.f1('u_shoal', this.shoal)
 			.v4array('u_ripples', this.ripples, Math.max(1, this.numRipples));
 		lighting(p);
 		gl.activeTexture(gl.TEXTURE2);
