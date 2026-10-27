@@ -544,6 +544,7 @@ export class Game {
 		}
 		if (p && this.phase === 'title') {
 			p.hp = p.def.hp;
+			p.systems.engine = p.systems.wing = p.systems.hydraulics = 0;
 			for (const id of BOMB_ORDER)
 				if (p.ammo[id] < 1 && id !== 'thunder' && id !== 'nuke') p.ammo[id] = p.capacity(id);
 		}
@@ -916,6 +917,8 @@ export class Game {
 			ceiling: !!p?.ceiling && !!p.alive,
 			rearming: !!p?.rearming && !!p.alive,
 			landed: !!p?.landed,
+			systems: p ? { ...p.systems } : { engine: 0, wing: 0, hydraulics: 0 },
+			bayJammed: !!p && p.alive && p.bayJammed > 0,
 			damageDir: p?.damageDir ?? 0,
 			damageFlash: this.damageFlash,
 			aircraft: this.flying,

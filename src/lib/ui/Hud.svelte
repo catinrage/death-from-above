@@ -10,6 +10,12 @@
 	let { hud, messages }: Props = $props();
 
 	const hpFrac = $derived(Math.max(0, hud.hp / hud.hpMax));
+	const SYSTEM_TAGS = [
+		{ id: 'engine', tag: 'ENG' },
+		{ id: 'wing', tag: 'WING' },
+		{ id: 'hydraulics', tag: 'HYD' }
+	] as const;
+	const systemsHit = $derived(SYSTEM_TAGS.some((s) => hud.systems[s.id] > 0));
 	const baseFrac = $derived(Math.max(0, hud.baseHp / hud.baseMax));
 	const heatFrac = $derived(Math.min(1, hud.heat / 100));
 </script>
@@ -118,6 +124,13 @@
 			>
 			<span class="val">{Math.ceil(hud.hp)}</span>
 		</div>
+		{#if systemsHit}
+			<div class="systems" title="Land on the runway to repair">
+				{#each SYSTEM_TAGS as s (s.id)}
+					<span class:hit={hud.systems[s.id] > 0} class:bad={hud.systems[s.id] > 0.6}>{s.tag}</span>
+				{/each}
+			</div>
+		{/if}
 		<div class="gauge">
 			<span class="lbl">BOOST</span>
 			<span class="track"
@@ -214,9 +227,12 @@
 		{/if}
 		{#if hud.ceiling}<div class="warn soft">ALTITUDE CEILING</div>{/if}
 		{#if hud.braking}<div class="brake">AIRBRAKE</div>{/if}
+		{#if hud.bayJammed}<div class="warn soft">BOMB BAY JAMMED</div>{/if}
 		{#if hud.rearming}<div class="good">
 				{hud.landed ? 'LANDED · ' : ''}REARMING &amp; REPAIRING
-			</div>{/if}
+			</div>
+			{#if systemsHit && !hud.landed}<div class="warn soft">LAND TO REPAIR SYSTEMS</div>{/if}
+		{/if}
 	</section>
 
 	<section class="banners">
@@ -1006,6 +1022,32 @@
 		height: 100%;
 		background: #ffb35a;
 		transform-origin: left;
+	}
+
+	.systems {
+		display: flex;
+		gap: 6px;
+		font-family: var(--display);
+		font-size: 10px;
+		letter-spacing: 0.16em;
+	}
+
+	.systems span {
+		padding: 1px 6px;
+		border: 1px solid rgba(255, 255, 255, 0.18);
+		border-radius: 3px;
+		color: rgba(255, 255, 255, 0.4);
+	}
+
+	.systems span.hit {
+		border-color: #ffb35a;
+		color: #ffd27a;
+	}
+
+	.systems span.bad {
+		border-color: var(--danger);
+		color: var(--danger);
+		animation: pulse 0.5s ease-in-out infinite alternate;
 	}
 
 	.warn.soft {
