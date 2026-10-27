@@ -67,7 +67,8 @@ function siegeLine(u: Unit): number {
 
 function move(w: World, u: Unit, dt: number): void {
 	const def = u.def;
-	if (def.isStatic) return;
+	// Train cars are driven by the railway, coupled together.
+	if (def.isStatic || def.rail) return;
 	let want = def.speed;
 	if (u.panic > 0) {
 		u.panic -= dt;

@@ -5,12 +5,14 @@ import { MOBILE_KINDS, STATIC_KINDS, UNITS } from './defs-units';
 import { isBossKind, spawnBoss } from './boss';
 import { AirUnit, type AirKind } from './enemy-air';
 import { clearOfZones } from './no-fire';
+import { trainConsist } from './railway';
 import type { UnitKind } from './types';
 import type { World } from './world';
 
 export interface SpawnOrder {
 	t: number;
-	kind: UnitKind | AirKind;
+	/** A road unit, an aircraft, or a whole armoured train on the railway. */
+	kind: UnitKind | AirKind | 'train';
 	z: number;
 }
 
@@ -37,6 +39,8 @@ export interface WaveTweaks {
 	units?: UnitKind[];
 	/** A boss that joins the wave on top of its budget. */
 	boss?: UnitKind;
+	/** Replaces the number of armoured trains sent down the railway. */
+	trains?: number;
 }
 
 export interface WaveOptions {
@@ -55,7 +59,15 @@ export interface WaveOptions {
 }
 
 const AIR: AirKind[] = ['fighter', 'heli'];
-const isAir = (k: UnitKind | AirKind): k is AirKind => (AIR as string[]).includes(k);
+const isAir = (k: SpawnOrder['kind']): k is AirKind => (AIR as string[]).includes(k);
+
+/** Armoured trains a wave sends by default: none early on, then more and more often one. */
+function stockTrains(wave: number, seed: number): number {
+	if (wave < 4) return 0;
+	// Its own stream, so adding the railway left every road column as it was.
+	const rng = new Rng(seed * 6131 + wave * 31337);
+	return rng.chance(Math.min(0.85, 0.35 + (wave - 4) * 0.1)) ? 1 : 0;
+}
 
 /** Weighted pick of a convoy's lead vehicle for the current wave. */
 function leadFor(wave: number, rng: Rng, bias: WaveTweaks['lead'] = {}): UnitKind {
@@ -141,6 +153,8 @@ export function planWave(
 		orders.push({ t: rng.range(6, Math.max(16, t)), kind: 'heli', z: 0 });
 	// The cruiser opens the wave from the river; the tank follows the first convoy.
 	if (tweaks.boss) orders.push({ t: tweaks.boss === 'cruiser' ? 4 : 12, kind: tweaks.boss, z: 0 });
+	const trains = tweaks.trains ?? stockTrains(wave, seed);
+	for (let i = 0; i < trains; i++) orders.push({ t: 5 + i * 45, kind: 'train', z: 0 });
 	orders.sort((a, b) => a.t - b.t);
 
 	const statics: { kind: UnitKind; x: number }[] = [];
@@ -230,6 +244,8 @@ export class WaveDirector {
 		this.state = 'briefing';
 		if (wave > 1) {
 			w.bridge?.rebuild(w);
+			w.railBridge?.rebuild(w);
+			w.railway?.repair();
 			w.player?.restockWave();
 		}
 		this.timer = 3.5;
@@ -307,6 +323,16 @@ export class WaveDirector {
 		}
 		if (isBossKind(o.kind)) {
 			spawnBoss(w, o.kind);
+			return;
+		}
+		if (o.kind === 'train') {
+			if (!w.railway) return;
+			w.railway.spawnTrain(w, trainConsist(w.wave));
+			w.events.message(
+				'ARMOURED TRAIN',
+				'Tear up the track ahead of it or drop the rail bridge',
+				'warn'
+			);
 			return;
 		}
 		w.spawnUnit(o.kind, WORLD.enemySpawnX + w.rng.range(0, 30), o.z, -1);

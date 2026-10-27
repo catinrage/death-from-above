@@ -15,6 +15,9 @@ const wheels = (mesh: MeshName, xs: number[], y: number, z: number): PartSpec[] 
 		{ mesh, at: [x, y, -z] as Vec3T, drive: 'wheel' as const }
 	]);
 
+/** Flanged wheels on both rails, four axles under each car. */
+const bogies = (xs: number[]): PartSpec[] => wheels('railWheel', xs, 0.45, 0.72);
+
 export const UNITS: Record<UnitKind, UnitDef> = {
 	rifleman: {
 		kind: 'rifleman',
@@ -321,6 +324,102 @@ export const UNITS: Record<UnitKind, UnitDef> = {
 		boom: 3.2,
 		siege: 0,
 		supply: true
+	},
+	locomotive: {
+		kind: 'locomotive',
+		name: 'Armoured Locomotive',
+		hp: 420,
+		armor: 0.85,
+		speed: 11,
+		half: [6.2, 2.15, 1.6],
+		score: 220,
+		cost: 0,
+		minWave: 99,
+		isStatic: false,
+		category: 'armor',
+		weapon: 'mg',
+		range: 380,
+		parts: [
+			{ mesh: 'locoBody', at: [0, 0, 0] },
+			...bogies([4.3, 2.9, -2.9, -4.3]),
+			{ mesh: 'jeepGun', at: [-2.6, 4.3, 0], drive: 'aim' }
+		],
+		death: 'blast',
+		boom: 1.6,
+		siege: 0,
+		rail: true
+	},
+	gunWagon: {
+		kind: 'gunWagon',
+		name: 'Gun Wagon',
+		hp: 260,
+		armor: 0.8,
+		speed: 11,
+		half: [5.2, 2.1, 1.6],
+		score: 160,
+		cost: 0,
+		minWave: 99,
+		isStatic: false,
+		category: 'armor',
+		weapon: 'cannon',
+		range: 460,
+		parts: [
+			{ mesh: 'wagonBody', at: [0, 0, 0] },
+			...bogies([3.7, 2.4, -2.4, -3.7]),
+			{ mesh: 'tankTurret', at: [0.3, 2.85, 0], drive: 'yaw', detach: true },
+			{ mesh: 'tankBarrel', parent: 9, at: [1.7, 0.5, 0], drive: 'pitch', detach: true }
+		],
+		death: 'turretPop',
+		boom: 1.1,
+		siege: 9,
+		rail: true
+	},
+	flakWagon: {
+		kind: 'flakWagon',
+		name: 'Flak Wagon',
+		hp: 200,
+		armor: 0.6,
+		speed: 11,
+		half: [5.2, 2.1, 1.6],
+		score: 170,
+		cost: 0,
+		minWave: 99,
+		isStatic: false,
+		category: 'aa',
+		weapon: 'autocannon',
+		range: 600,
+		parts: [
+			{ mesh: 'wagonBody', at: [0, 0, 0] },
+			...bogies([3.7, 2.4, -2.4, -3.7]),
+			{ mesh: 'spaagTurret', at: [0, 2.85, 0], drive: 'yaw', detach: true },
+			{ mesh: 'spaagGuns', parent: 9, at: [0.9, 0.75, 0], drive: 'pitch', detach: true },
+			{ mesh: 'radarDish', parent: 9, at: [-1.0, 1.8, -0.4], drive: 'spin', detach: true }
+		],
+		death: 'turretPop',
+		boom: 1.0,
+		siege: 3,
+		rail: true
+	},
+	boxcar: {
+		kind: 'boxcar',
+		name: 'Supply Wagon',
+		hp: 150,
+		armor: 0.4,
+		speed: 11,
+		half: [5.2, 2.0, 1.55],
+		score: 90,
+		cost: 0,
+		minWave: 99,
+		isStatic: false,
+		category: 'vehicle',
+		weapon: null,
+		range: 0,
+		parts: [{ mesh: 'boxcarBody', at: [0, 0, 0] }, ...bogies([3.7, 2.4, -2.4, -3.7])],
+		death: 'blast',
+		boom: 1.3,
+		siege: 0,
+		supply: true,
+		rail: true
 	},
 	searchlight: {
 		kind: 'searchlight',

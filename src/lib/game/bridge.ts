@@ -1,4 +1,5 @@
 import { clamp } from '../engine/math';
+import type { MeshName } from '../models';
 import { WORLD } from './constants';
 import type { Debris } from './debris';
 import { dropUnit } from './deaths';
@@ -31,6 +32,62 @@ const CALL_COOLDOWN = 25;
 /** Engineers start work once parked this close behind the broken edge. */
 const WORK_REACH = 4;
 
+/** What makes one crossing differ from another: where it stands, how it is built, what it is called. */
+export interface BridgeSpec {
+	/** Centre line of the deck in depth. */
+	z: number;
+	halfZ: number;
+	/** Running surface height, and the water under it. */
+	deckY: number;
+	level: number;
+	west: number;
+	east: number;
+	spans: number;
+	hp: number;
+	/** Steelwork depth below the running surface, and height above it. */
+	below: number;
+	above: number;
+	/**
+	 * How much depth counts in blast falloff. 1 for the road on the battle
+	 * line; 0 for a crossing further back that combat treats side-on.
+	 */
+	zWeight: number;
+	/** Stranded road columns call up engineers to lay pontoons across fallen spans. */
+	pontoons: boolean;
+	/** Kill feed name and score for a dropped span. */
+	name: string;
+	score: number;
+	down: [string, string];
+	rebuilt: [string, string];
+	/** Wreckage meshes: each half span's deck, and its truss planes if it has any. */
+	deckMesh: MeshName;
+	trussMesh: MeshName | null;
+}
+
+/** The steel through-truss carrying the road over the river. */
+export function roadBridgeSpec(river: River): BridgeSpec {
+	return {
+		z: 0,
+		halfZ: DECK_HALF_Z,
+		deckY: river.deckY,
+		level: river.level,
+		west: river.x0 - river.bridgeHalf,
+		east: river.x0 + river.bridgeHalf,
+		spans: SPANS,
+		hp: SPAN_HP,
+		below: DECK_THICK,
+		above: TRUSS_H,
+		zWeight: 1,
+		pontoons: true,
+		name: 'BRIDGE SPAN',
+		score: SPAN_SCORE,
+		down: ['BRIDGE DOWN', 'The convoy is stranded on the far bank'],
+		rebuilt: ['BRIDGE REBUILT', 'Enemy engineers repaired the crossing'],
+		deckMesh: 'bridgeDeckHalf',
+		trussMesh: 'bridgeTrussHalf'
+	};
+}
+
 /** An engineers' floating bridge laid across a fallen span. */
 export interface Pontoon {
 	/** 0..1 of the span laid so far. */
@@ -59,7 +116,7 @@ export interface Span {
 }
 
 /**
- * A steel through-truss bridge carrying the road over the river. Each span
+ * A steel bridge carrying the road (or the railway) over the river. Each span
  * takes damage separately; a fallen span drops its traffic into the water
  * and blocks the crossing until engineers rebuild it for the next wave.
  * Mid-wave, a stranded column calls up a bridging crew that lays a pontoon
@@ -73,23 +130,29 @@ export class Bridge {
 	readonly east: number;
 	readonly deckY: number;
 	readonly level: number;
+	readonly z: number;
+	readonly halfZ: number;
+	readonly hp: number;
 	/** Seconds a column has sat at a gap with no crew on the way. */
 	private stall = 0;
 	private callCooldown = 0;
 
-	constructor(river: River) {
-		this.deckY = river.deckY;
-		this.level = river.level;
-		this.west = river.x0 - river.bridgeHalf;
-		this.east = river.x0 + river.bridgeHalf;
-		const len = (this.east - this.west) / SPANS;
-		for (let i = 0; i < SPANS; i++) {
+	constructor(readonly spec: BridgeSpec) {
+		this.deckY = spec.deckY;
+		this.level = spec.level;
+		this.z = spec.z;
+		this.halfZ = spec.halfZ;
+		this.hp = spec.hp;
+		this.west = spec.west;
+		this.east = spec.east;
+		const len = (this.east - this.west) / spec.spans;
+		for (let i = 0; i < spec.spans; i++) {
 			const x0 = this.west + i * len;
 			this.spans.push({
 				index: i,
 				x0,
 				x1: x0 + len,
-				hp: SPAN_HP,
+				hp: spec.hp,
 				down: false,
 				flash: 0,
 				wreck: [],
@@ -101,7 +164,8 @@ export class Bridge {
 
 	spanAt(x: number): Span | null {
 		if (x < this.west || x > this.east) return null;
-		const i = Math.min(SPANS - 1, Math.floor(((x - this.west) / (this.east - this.west)) * SPANS));
+		const n = this.spans.length;
+		const i = Math.min(n - 1, Math.floor(((x - this.west) / (this.east - this.west)) * n));
 		return this.spans[i];
 	}
 
@@ -110,9 +174,9 @@ export class Bridge {
 		return !s.down || !!s.pontoon?.up;
 	}
 
-	/** Road height on an intact span or finished pontoon at (x, z), or null. */
+	/** Running surface height on an intact span or finished pontoon at (x, z), or null. */
 	deckAt(x: number, z: number): number | null {
-		if (Math.abs(z) > DECK_HALF_Z) return null;
+		if (Math.abs(z - this.z) > this.halfZ) return null;
 		const s = this.spanAt(x);
 		return s && this.passable(s) ? this.deckY : null;
 	}
@@ -121,7 +185,7 @@ export class Bridge {
 	topAt(x: number): number | null {
 		const s = this.spanAt(x);
 		if (!s) return null;
-		if (!s.down) return this.deckY + TRUSS_H;
+		if (!s.down) return this.deckY + this.spec.above;
 		return s.pontoon?.up ? this.deckY + PONTOON_TOP : null;
 	}
 
@@ -188,9 +252,10 @@ export class Bridge {
 		damage: number,
 		pierce: number
 	): number {
+		const { below, above, zWeight } = this.spec;
 		const dx = Math.max(s.x0 - x, 0, x - s.x1);
-		const dy = Math.max(this.deckY - DECK_THICK - y, 0, y - this.deckY - TRUSS_H);
-		const dz = Math.max(Math.abs(z) - DECK_HALF_Z, 0);
+		const dy = Math.max(this.deckY - below - y, 0, y - this.deckY - above);
+		const dz = Math.max(Math.abs(z - this.z) - this.halfZ, 0) * zWeight;
 		const d = Math.hypot(dx, dy, dz);
 		if (d >= radius) return 0;
 		const k = 1 - d / radius;
@@ -239,11 +304,14 @@ export class Bridge {
 		s.down = true;
 		s.hp = 0;
 		s.pontoon = null;
+		const spec = this.spec;
 		const mid = (s.x0 + s.x1) / 2;
 		const half = (s.x1 - s.x0) / 4;
 		const y = this.deckY;
+		const z = this.z;
 		for (const u of w.units) {
 			if (!u.alive || u.x < s.x0 - 1 || u.x > s.x1 + 1 || Math.abs(u.y - y) > 2.5) continue;
+			if (Math.abs(u.z - z) > this.halfZ + 1) continue;
 			dropUnit(w, u, by);
 		}
 		for (const side of [-1, 1]) {
@@ -251,13 +319,13 @@ export class Bridge {
 			// Each half hinges on its pier and folds into the river, inner end first.
 			const deck = w.debris.spawn({
 				x: cx,
-				y: y - DECK_THICK * 0.5,
-				z: 0,
+				y: y - spec.below * 0.5,
+				z,
 				vx: -side * 0.6,
 				vy: -1,
 				vz: 0,
-				half: [half, DECK_THICK * 0.5, DECK_HALF_Z],
-				parts: [{ mesh: 'bridgeDeckHalf', local: IDENTITY }],
+				half: [half, spec.below * 0.5, this.halfZ],
+				parts: [{ mesh: spec.deckMesh, local: IDENTITY }],
 				mass: 60,
 				spin: 0,
 				life: 1e6,
@@ -267,38 +335,39 @@ export class Bridge {
 			deck.wz = side * 0.55;
 			deck.persistent = true;
 			s.wreck.push(deck);
+			const truss = spec.trussMesh;
+			if (!truss) continue;
 			for (const zs of [-1, 1]) {
-				const truss = w.debris.spawn({
+				const plane = w.debris.spawn({
 					x: cx,
-					y: y + TRUSS_H * 0.5,
-					z: zs * DECK_HALF_Z,
+					y: y + spec.above * 0.5,
+					z: z + zs * this.halfZ,
 					vx: -side * 0.8,
 					vy: -0.5,
 					vz: zs * 1.2,
-					half: [half, TRUSS_H * 0.5, 0.35],
-					parts: [{ mesh: 'bridgeTrussHalf', local: IDENTITY }],
+					half: [half, spec.above * 0.5, 0.35],
+					parts: [{ mesh: truss, local: IDENTITY }],
 					mass: 25,
 					spin: 0,
 					life: 1e6,
 					char: 0.2,
 					q: new Float32Array([0, 0, 0, 1])
 				});
-				truss.wz = side * 0.65;
-				truss.wx = zs * 0.25;
-				truss.persistent = true;
-				s.wreck.push(truss);
+				plane.wz = side * 0.65;
+				plane.wx = zs * 0.25;
+				plane.persistent = true;
+				s.wreck.push(plane);
 			}
 		}
 		for (const ex of [s.x0, s.x1, mid]) {
-			w.fx.explosion(ex, y, 0, 0.7, true);
-			w.fx.impact(ex, y, 0, 'metal', true);
+			w.fx.explosion(ex, y, z, 0.7, true);
+			w.fx.impact(ex, y, z, 'metal', true);
 		}
 		w.fx.shake(mid, y, 0.5);
 		w.sound.play('collapse', mid, y, 1.2);
 		w.sound.boom(1.4, mid, y);
-		w.events.kill('BRIDGE SPAN', SPAN_SCORE, mid, y + TRUSS_H + 4, by);
-		if (this.downCount === 1)
-			w.events.message('BRIDGE DOWN', 'The convoy is stranded on the far bank', 'good');
+		w.events.kill(spec.name, spec.score, mid, y + spec.above + 4, by);
+		if (this.downCount === 1) w.events.message(spec.down[0], spec.down[1], 'good');
 	}
 
 	/** The pontoon breaks up: traffic on it goes into the river, the pieces drift and sink. */
@@ -351,16 +420,17 @@ export class Bridge {
 	}
 
 	update(w: World, dt: number): void {
-		this.engineers(w, dt);
+		if (this.spec.pontoons) this.engineers(w, dt);
 		for (const s of this.spans) {
 			s.flash = Math.max(0, s.flash - dt * 3);
 			if (s.pontoon) s.pontoon.flash = Math.max(0, s.pontoon.flash - dt * 3);
-			if (s.down || s.hp > SPAN_HP * 0.5) continue;
+			if (s.down || s.hp > this.hp * 0.5) continue;
 			// A badly hurt span smokes from its broken members.
-			const hurt = 1 - s.hp / SPAN_HP;
+			const hurt = 1 - s.hp / this.hp;
 			if (w.rng.chance(dt * 3 * hurt)) {
 				const x = w.rng.range(s.x0 + 2, s.x1 - 2);
-				w.fx.trail(x, this.deckY + w.rng.range(0, TRUSS_H), 0, 2.2, 0.05, 0.7, 4, 2);
+				const y = this.deckY + w.rng.range(-this.spec.below, this.spec.above);
+				w.fx.trail(x, y, this.z, 2.2, 0.05, 0.7, 4, 2);
 			}
 		}
 	}
@@ -374,7 +444,7 @@ export class Bridge {
 		let crew = false,
 			stranded = false;
 		for (const u of w.units) {
-			if (!u.alive || u.def.isStatic) continue;
+			if (!u.alive || u.def.isStatic || u.def.rail) continue;
 			const gap = this.gapAhead(u.x, u.dir);
 			if (!gap) continue;
 			const room = ((u.dir < 0 ? gap.x1 : gap.x0) - u.x) * u.dir - u.def.half[0];
@@ -422,16 +492,15 @@ export class Bridge {
 			s.wreck = [];
 			s.pontoon = null;
 			s.down = false;
-			s.hp = SPAN_HP;
+			s.hp = this.hp;
 			s.flash = 0;
 		}
-		if (fallen > 0)
-			w.events.message('BRIDGE REBUILT', 'Enemy engineers repaired the crossing', 'warn');
+		if (fallen > 0) w.events.message(this.spec.rebuilt[0], this.spec.rebuilt[1], 'warn');
 	}
 
 	/** Damage fraction 0..1 of a span, for scorch marks. */
 	wear(s: Span): number {
-		return clamp(1 - s.hp / SPAN_HP, 0, 1);
+		return clamp(1 - s.hp / this.hp, 0, 1);
 	}
 }
 

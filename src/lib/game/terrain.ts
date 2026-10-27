@@ -1,6 +1,7 @@
 import { clamp, lerp, smoothstep } from '../engine/math';
 import { Noise } from '../engine/noise';
 import { TERRAIN_ROWS, WORLD } from './constants';
+import { RailLine, type RailSpec } from './rail';
 import { River, type RiverSpec } from './river';
 
 export const CHUNK_COLS = 64;
@@ -55,6 +56,8 @@ export class Terrain {
 	readonly dirtyChunks = new Set<number>();
 	/** The river carved through the battlefield, if any. */
 	readonly river: River | null;
+	/** The railway embankment built behind the road, if any. */
+	readonly rail: RailLine | null;
 	private readonly noise: Noise;
 	private hotZones: HotZone[] = [];
 	private coolTimer = 0;
@@ -65,7 +68,8 @@ export class Terrain {
 		minX: number = WORLD.terrainMinX,
 		maxX: number = WORLD.terrainMaxX,
 		river: RiverSpec | null = null,
-		shape: Readonly<TerrainShape> = DEFAULT_SHAPE
+		shape: Readonly<TerrainShape> = DEFAULT_SHAPE,
+		rail: RailSpec | null = null
 	) {
 		this.shape = shape;
 		this.noise = new Noise(seed);
@@ -80,6 +84,7 @@ export class Terrain {
 		this.scorch = new Float32Array(n);
 		this.chunkCount = Math.ceil((this.cols - 1) / CHUNK_COLS);
 		this.river = river ? new River(river, (x) => this.profile(x)) : null;
+		this.rail = rail ? new RailLine(rail, (x) => this.profile(x), maxX, this.river) : null;
 		this.build();
 	}
 
@@ -101,6 +106,7 @@ export class Terrain {
 				const x = this.minX + c * this.dx;
 				let h = this.generate(x, z, prof[c]);
 				if (this.river) h = this.river.carve(x, z, h);
+				if (this.rail) h = this.rail.carve(x, z, h);
 				this.heights[r * this.cols + c] = h;
 				this.base[r * this.cols + c] = h;
 			}

@@ -54,7 +54,11 @@ export type UnitKind =
 	| 'depot'
 	| 'searchlight'
 	| 'superTank'
-	| 'cruiser';
+	| 'cruiser'
+	| 'locomotive'
+	| 'gunWagon'
+	| 'flakWagon'
+	| 'boxcar';
 
 export type WeaponKind =
 	'rifle' | 'mg' | 'autocannon' | 'flak' | 'sam' | 'manpads' | 'cannon' | 'artillery';
@@ -112,6 +116,8 @@ export interface UnitDef {
 	supply?: boolean;
 	/** A one-off heavy unit with its own health bar and secondary weapons. */
 	boss?: boolean;
+	/** Runs on the railway, coupled into a train, instead of driving the road. */
+	rail?: boolean;
 }
 
 /** Anything a missile can chase or a gunner can aim at. */

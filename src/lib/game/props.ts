@@ -5,6 +5,7 @@ import type { MeshName } from '../models';
 import { BIOMES, type Flora } from './biomes';
 import { WORLD } from './constants';
 import { NO_FIRE_ZONES } from './no-fire';
+import type { RailLine } from './rail';
 import type { River } from './river';
 import type { Terrain } from './terrain';
 
@@ -71,7 +72,8 @@ export class Props {
 		private readonly terrain: Terrain,
 		private readonly seed = 99,
 		private readonly river: River | null = null,
-		flora: Flora = BIOMES.temperate.flora
+		flora: Flora = BIOMES.temperate.flora,
+		private readonly rail: RailLine | null = null
 	) {
 		this.flora = flora;
 		this.populate();
@@ -86,7 +88,7 @@ export class Props {
 	private populate(): void {
 		const rng = new Rng(this.seed);
 		const noise = new Noise(this.seed + 1);
-		const river = this.river;
+		const { river, rail } = this;
 		this.near.length = this.far.length = this.grass.length = 0;
 		this.forests(rng, noise);
 		this.foreground(rng);
@@ -95,9 +97,11 @@ export class Props {
 		this.noFireZones(rng);
 		this.roadside(rng);
 		for (const list of [this.near, this.far, this.grass]) {
-			if (river) {
-				// Nothing grows in the river or stands on the bridge approaches.
-				const keep = list.filter((p) => !inRiver(river, p.x, p.z));
+			if (river || rail) {
+				// Nothing grows in the river, on the bridge approaches or on the railway.
+				const keep = list.filter(
+					(p) => !(river && inRiver(river, p.x, p.z)) && !(rail && onRail(rail, p.x, p.z))
+				);
 				list.length = 0;
 				list.push(...keep);
 			}
@@ -385,6 +389,10 @@ export class Props {
 			p.fall = Math.min(Math.PI / 2 - 0.05, p.fall + dt * (0.4 + p.fall * 3));
 		}
 	}
+}
+
+function onRail(r: RailLine, x: number, z: number): boolean {
+	return x > r.start - 30 && Math.abs(z - r.z) < 5.5;
 }
 
 function inRiver(r: River, x: number, z: number): boolean {
