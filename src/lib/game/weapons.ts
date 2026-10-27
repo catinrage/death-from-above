@@ -303,7 +303,10 @@ function napalm(w: World, b: Bomb, y: number): void {
 		});
 		w.terrain.burn(fx, 0, length / segments + 3, 1, 1);
 	}
-	w.props.blast(b.x + (dir * length) / 2, y, 0, length * 0.7, 30);
+	const mid = b.x + (dir * length) / 2;
+	for (const h of w.props.blast(mid, y, 0, length * 0.7, 30))
+		w.civilians.houseCollapsed(w, h, b.owner);
+	w.civilians.alarm(mid, 0, length * 3);
 }
 
 /** Fire pools hurt whatever stands in them. */

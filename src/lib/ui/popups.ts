@@ -7,7 +7,7 @@ interface Popup {
 	active: boolean;
 }
 
-export type PopupKind = 'score' | 'supply' | 'big';
+export type PopupKind = 'score' | 'supply' | 'big' | 'penalty';
 
 /** Floating score text anchored to world positions, drawn as pooled DOM nodes. */
 export class PopupLayer {
@@ -40,7 +40,7 @@ export class PopupLayer {
 		p.x = x;
 		p.y = y;
 		p.age = 0;
-		p.life = kind === 'big' ? 2 : 1.3;
+		p.life = kind === 'big' || kind === 'penalty' ? 2 : 1.3;
 		p.active = true;
 		p.el.style.display = 'block';
 	}

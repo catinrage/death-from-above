@@ -1,4 +1,4 @@
-import { MeshBuilder } from '../engine/mesh-builder';
+import { MeshBuilder, type Material } from '../engine/mesh-builder';
 import { P } from './palette';
 
 /** Torso, head and kit. Origin at the feet; hips at y = 0.95. */
@@ -37,5 +37,28 @@ export function soldierArm(): Float32Array {
 	const b = new MeshBuilder();
 	b.box(0.13, 0.58, 0.14, P.uniform, 0, -0.29, 0);
 	b.box(0.11, 0.11, 0.11, P.skin, 0, -0.62, 0);
+	return b.build();
+}
+
+/** An unarmed villager: shirt, bare head, no kit. */
+export function civilianBody(shirt: Material, hair: Material): Float32Array {
+	const b = new MeshBuilder();
+	b.push().translate(0, 0.92, 0).taper(0.28, 0.36, 0.32, 0.5, 0.6, shirt).pop();
+	b.box(0.3, 0.1, 0.4, P.boots, 0, 1.0, 0);
+	b.push().translate(0, 1.64, 0).sphere(0.13, 8, 6, P.skin, false).pop();
+	b.push().translate(-0.02, 1.7, 0).scale(1.05, 0.7, 1).sphere(0.14, 8, 4, hair, false).pop();
+	return b.build();
+}
+
+export function civilianLeg(): Float32Array {
+	const b = new MeshBuilder();
+	b.box(0.17, 0.86, 0.19, P.trousers, 0, -0.43, 0);
+	b.box(0.26, 0.1, 0.18, P.boots, 0.05, -0.9, 0);
+	return b.build();
+}
+
+export function civilianArm(): Float32Array {
+	const b = new MeshBuilder();
+	b.box(0.12, 0.56, 0.13, P.skin, 0, -0.29, 0);
 	return b.build();
 }

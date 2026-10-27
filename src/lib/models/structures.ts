@@ -141,6 +141,48 @@ export function houseLights(w = 6, d = 5): Float32Array {
 	return b.build();
 }
 
+/** Field hospital: a long white ward with red crosses on the roof and the facade. */
+export function hospital(): Float32Array {
+	const b = new MeshBuilder();
+	const w = 16,
+		d = 9,
+		h = 5;
+	b.box(w, h, d, P.wallWhite, 0, h / 2, 0);
+	b.box(w + 0.4, 0.35, d + 0.4, P.concreteDark, 0, h + 0.17, 0);
+	// Roof cross, readable from the cockpit.
+	b.box(5.2, 0.08, 1.5, P.red, 0, h + 0.39, 0);
+	b.box(1.5, 0.08, 5.2, P.red, 0, h + 0.39, 0);
+	// Facade cross above the door.
+	b.box(2.4, 0.7, 0.06, P.red, 0, 3.6, d / 2 + 0.02);
+	b.box(0.7, 2.4, 0.06, P.red, 0, 3.6, d / 2 + 0.02);
+	b.box(1.8, 2.2, 0.08, P.wood, 0, 1.1, d / 2 + 0.01);
+	for (const x of [-6, -3.6, 3.6, 6]) b.box(1.2, 1.0, 0.06, P.windowDark, x, 2.4, d / 2 + 0.01);
+	for (const z of [-2, 2]) {
+		b.box(0.06, 1.0, 1.2, P.windowDark, w / 2 + 0.01, 2.4, z);
+		b.box(0.06, 1.0, 1.2, P.windowDark, -w / 2 - 0.01, 2.4, z);
+	}
+	return b.build();
+}
+
+export function hospitalLights(): Float32Array {
+	const b = new MeshBuilder();
+	for (const x of [-6, -3.6, 3.6, 6]) b.box(1.1, 0.9, 0.04, P.window, x, 2.4, 4.545);
+	return b.build();
+}
+
+/** Roadside board marking the edge of a no-fire zone. */
+export function noFireSign(): Float32Array {
+	const b = new MeshBuilder();
+	for (const x of [-1.1, 1.1]) b.box(0.12, 2.6, 0.12, P.wood, x, 1.3, 0);
+	b.box(2.6, 1.6, 0.08, P.wallWhite, 0, 2.2, 0.08);
+	b.box(2.6, 0.16, 0.1, P.red, 0, 2.92, 0.09);
+	b.box(2.6, 0.16, 0.1, P.red, 0, 1.48, 0.09);
+	b.box(0.16, 1.6, 0.1, P.red, -1.22, 2.2, 0.09);
+	b.box(0.16, 1.6, 0.1, P.red, 1.22, 2.2, 0.09);
+	b.push().translate(0, 2.2, 0.1).rotateZ(0.55).box(2.4, 0.18, 0.06, P.red).pop();
+	return b.build();
+}
+
 export function ruin(): Float32Array {
 	const b = new MeshBuilder();
 	b.box(6, 1.6, 0.35, P.wall, 0, 0.8, -2.3);

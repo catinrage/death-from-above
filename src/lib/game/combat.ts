@@ -196,7 +196,9 @@ export function explode(
 			});
 		}
 		w.fires.add(h.x, h.y + 1, h.z, 1.2, w.rng.range(15, 30), { radius: 2 });
+		w.civilians.houseCollapsed(w, h, by);
 	}
+	w.civilians.blast(w, x, y, z, r, b.damage, by);
 
 	w.bridge?.blast(w, x, y, z, r, b.damage, b.pierce, by);
 	w.troops.blast(x, y, r, b.damage * 0.6);

@@ -29,6 +29,7 @@ export class SceneView {
 	private readonly root: Mat4 = mat4.create();
 	private readonly s: InstanceStyle = { ...DEFAULT_STYLE };
 	private readonly skip = new Set<number>();
+	private readonly outdoors: Unit[] = [];
 	showSight = true;
 	/** Paused: draw the scene but don't add per-frame lights that would never age out. */
 	frozen = false;
@@ -71,6 +72,7 @@ export class SceneView {
 		this.units(w, nearMin - 30, nearMax + 30);
 		this.units(w, nearMin - 30, nearMax + 30, w.allies.list, true);
 		this.troops(w);
+		this.civilians(w, nearMin, nearMax);
 		this.strikes(w);
 		this.debris(w);
 		this.ordnance(w);
@@ -265,6 +267,14 @@ export class SceneView {
 			mat4.scale(m, m, t.chute, 0.3 + 0.7 * t.chute, t.chute);
 			this.models.parachute.push(m, this.style());
 		}
+	}
+
+	/** Villagers out in the open; those sheltering indoors aren't drawn. */
+	private civilians(w: World, minX: number, maxX: number): void {
+		const list = this.outdoors;
+		list.length = 0;
+		for (const c of w.civilians.list) if (c.alive && !c.sheltered) list.push(c);
+		if (list.length > 0) this.units(w, minX, maxX, list);
 	}
 
 	private strikes(w: World): void {

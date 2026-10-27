@@ -46,6 +46,14 @@ export const P = {
 	boots: mat(0x2a2620, 0.9, 0),
 	rifle: mat(0x2a2a2a, 0.55, 0.5),
 
+	// Civilians
+	shirtBlue: mat(0x4f6f9a, 0.9, 0),
+	shirtRed: mat(0x9a4a3c, 0.9, 0),
+	shirtCream: mat(0xcfc3a2, 0.9, 0),
+	trousers: mat(0x3d3f4a, 0.9, 0),
+	hair: mat(0x2b211a, 0.85, 0),
+	hairGrey: mat(0x8a8780, 0.85, 0),
+
 	// Structures
 	concrete: mat(0x8b8780, 0.92, 0),
 	concreteDark: mat(0x5f5c57, 0.92, 0),

@@ -4,6 +4,7 @@ import { Rng } from '../engine/rng';
 import type { MeshName } from '../models';
 import { BIOMES, type Flora } from './biomes';
 import { WORLD } from './constants';
+import { NO_FIRE_ZONES } from './no-fire';
 import type { River } from './river';
 import type { Terrain } from './terrain';
 
@@ -91,6 +92,7 @@ export class Props {
 		this.foreground(rng);
 		if (this.flora.settlement === 'city') this.city(rng);
 		else this.villages(rng);
+		this.noFireZones(rng);
 		this.roadside(rng);
 		for (const list of [this.near, this.far, this.grass]) {
 			if (river) {
@@ -209,9 +211,12 @@ export class Props {
 
 	private villages(rng: Rng): void {
 		for (const vx of [800, 1500, 2200, 3350, 4150, -500]) {
-			const n = rng.int(3, 6);
+			const zone = NO_FIRE_ZONES.find((z) => z.x === vx);
+			const n = zone ? rng.int(5, 7) : rng.int(3, 6);
 			for (let i = 0; i < n; i++) {
-				const x = vx + rng.range(-55, 55);
+				let x = vx + rng.range(-55, 55);
+				// Keep clear of the hospital's footprint.
+				if (zone?.kind === 'hospital' && Math.abs(x - vx) < 14) x = vx + (x < vx ? -14 : 14);
 				const z = rng.range(-34, -13);
 				const white = rng.chance(0.4);
 				const h = this.add(
@@ -230,6 +235,27 @@ export class Props {
 					this.add(this.near, 'fence', 'fence', x + rng.range(-6, 6), z + 5, 1, rng).yaw =
 						rng.range(-0.2, 0.2);
 				if (rng.chance(0.4)) this.add(this.near, 'crates', 'decor', x + 5, z + 3, 1, rng);
+			}
+		}
+	}
+
+	/** The hospital building and the boards marking each protected stretch. */
+	private noFireZones(rng: Rng): void {
+		for (const zone of NO_FIRE_ZONES) {
+			if (zone.kind === 'hospital') {
+				// Clear its plot of anything the settlement put there.
+				const keep = this.near.filter((p) => p.kind !== 'house' || Math.abs(p.x - zone.x) > 16);
+				this.near.length = 0;
+				this.near.push(...keep);
+				const h = this.add(this.near, 'hospital', 'house', zone.x, -24, 1, rng, 'hospitalLights');
+				h.yaw = 0;
+				h.sway = 0;
+				h.hp = h.maxHp = 400;
+				h.tint = 1;
+			}
+			for (const s of [-1, 1]) {
+				this.add(this.near, 'noFireSign', 'decor', zone.x + s * zone.half, -8.5, 1, rng).yaw =
+					rng.range(-0.15, 0.15);
 			}
 		}
 	}

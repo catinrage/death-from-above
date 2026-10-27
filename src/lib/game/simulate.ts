@@ -24,6 +24,7 @@ export function simulateWorld(w: World, dt: number, input: PilotInput | null): v
 	updateStrikes(w, dt);
 	w.troops.update(w, dt);
 	w.allies.update(w, dt);
+	w.civilians.update(w, dt);
 	w.gas.update(w, dt);
 	applyFireDamage(w, dt);
 	w.base.update(w, dt);
