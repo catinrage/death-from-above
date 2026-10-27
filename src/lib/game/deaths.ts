@@ -216,6 +216,10 @@ function turretPop(w: World, u: Unit, dir: number): void {
 	scatterChunks(w, u, 3, 10, [0.6, 0.62, 0.5]);
 }
 
+/** How far a big structure's fireball reaches its neighbours, and how hard it hits them. */
+export const CHAIN_REACH = 34;
+export const CHAIN_DAMAGE = 90;
+
 function blast(w: World, u: Unit): void {
 	const big = u.def.boom > 2;
 	const hy = u.def.half[1];
@@ -235,7 +239,7 @@ function blast(w: World, u: Unit): void {
 		// The fireball reaches neighbours — chain reactions.
 		for (const o of w.units) {
 			if (o === u || !o.alive) continue;
-			if (Math.abs(o.x - u.x) < 34) o.hp -= 90 * (1 - o.def.armor * 0.7);
+			if (Math.abs(o.x - u.x) < CHAIN_REACH) o.hp -= CHAIN_DAMAGE * (1 - o.def.armor * 0.7);
 			if (o.hp <= 0) killUnit(w, o, u.x, 'blast', u.lastHitBy);
 		}
 	} else {

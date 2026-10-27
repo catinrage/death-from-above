@@ -21,6 +21,13 @@
 </script>
 
 <div class="hud" class:critical={hpFrac < 0.3 && hud.hp > 0}>
+	<div class="letterbox" class:on={!!hud.killCam} aria-hidden="true"><i></i><i></i></div>
+	{#if hud.killCam}
+		<div class="killcam-tag" transition:fade={{ duration: 200 }}>
+			<span>KILL CAM</span>
+			<small>{hud.killCam === 'bridge' ? 'Bridge span' : 'Chain reaction'}</small>
+		</div>
+	{/if}
 	<section class="score">
 		<div class="pts">{hud.score.toLocaleString()}</div>
 		{#if hud.multiplier > 1}
@@ -816,6 +823,62 @@
 
 	.gauge.ready .lbl {
 		color: #9fe9ff;
+	}
+
+	.letterbox {
+		position: absolute;
+		inset: 0;
+		overflow: hidden;
+	}
+
+	.letterbox i {
+		position: absolute;
+		left: 0;
+		right: 0;
+		height: 7vh;
+		background: rgba(0, 0, 0, 0.82);
+		transition: transform 0.35s ease;
+	}
+
+	.letterbox i:first-child {
+		top: 0;
+		transform: translateY(-100%);
+	}
+
+	.letterbox i:last-child {
+		bottom: 0;
+		transform: translateY(100%);
+	}
+
+	.letterbox.on i {
+		transform: none;
+	}
+
+	.killcam-tag {
+		position: absolute;
+		left: 50%;
+		top: calc(7vh + 14px);
+		transform: translateX(-50%);
+		display: grid;
+		justify-items: center;
+		gap: 4px;
+	}
+
+	.killcam-tag span {
+		font-family: var(--display);
+		font-size: 18px;
+		font-weight: 700;
+		letter-spacing: 0.6em;
+		margin-right: -0.6em;
+		color: #ffd9a0;
+		text-shadow: 0 0 16px rgba(255, 150, 60, 0.8);
+	}
+
+	.killcam-tag small {
+		font-size: 12px;
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
+		color: rgba(255, 228, 200, 0.75);
 	}
 
 	.focus-tag {

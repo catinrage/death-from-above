@@ -113,15 +113,28 @@ export class Bridge {
 	): void {
 		for (const s of this.spans) {
 			if (s.down) continue;
-			const dx = Math.max(s.x0 - x, 0, x - s.x1);
-			const dy = Math.max(this.deckY - DECK_THICK - y, 0, y - this.deckY - TRUSS_H);
-			const dz = Math.max(Math.abs(z) - DECK_HALF_Z, 0);
-			const d = Math.hypot(dx, dy, dz);
-			if (d >= radius) continue;
-			const k = 1 - d / radius;
-			// Steel and concrete shrug off fragments; heavy and penetrating charges do the work.
-			this.damage(w, s, damage * (0.1 + 0.9 * k * k) * (0.35 + 0.65 * pierce), by);
+			this.damage(w, s, this.blastDamage(s, x, y, z, radius, damage, pierce), by);
 		}
+	}
+
+	/** What a blast at (x, y, z) would take off a span's strength (0 when out of reach). */
+	blastDamage(
+		s: Span,
+		x: number,
+		y: number,
+		z: number,
+		radius: number,
+		damage: number,
+		pierce: number
+	): number {
+		const dx = Math.max(s.x0 - x, 0, x - s.x1);
+		const dy = Math.max(this.deckY - DECK_THICK - y, 0, y - this.deckY - TRUSS_H);
+		const dz = Math.max(Math.abs(z) - DECK_HALF_Z, 0);
+		const d = Math.hypot(dx, dy, dz);
+		if (d >= radius) return 0;
+		const k = 1 - d / radius;
+		// Steel and concrete shrug off fragments; heavy and penetrating charges do the work.
+		return damage * (0.1 + 0.9 * k * k) * (0.35 + 0.65 * pierce);
 	}
 
 	/** Direct damage, e.g. cannon shells striking the deck. */

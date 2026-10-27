@@ -1,5 +1,6 @@
 import type { ObjectiveStatus } from './campaign';
 import type { Systems } from './damage';
+import type { BigKill } from './killcam';
 import type { TutorialCard } from './tutorial';
 import type { AircraftId, BombId } from './types';
 
@@ -87,6 +88,8 @@ export interface HudSnapshot {
 	/** Bullet-time meter 0..1 and whether it is running. */
 	focus: number;
 	focusActive: boolean;
+	/** Kill cam rolling, and what it is showing. */
+	killCam: BigKill | null;
 	missiles: number;
 	missilesMax: number;
 	/** Targets painted for the next missile salvo. */
@@ -173,6 +176,7 @@ export function emptyHud(): HudSnapshot {
 		fps: 0,
 		focus: 1,
 		focusActive: false,
+		killCam: null,
 		missiles: 0,
 		missilesMax: 0,
 		locks: 0,
