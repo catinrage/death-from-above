@@ -20,6 +20,7 @@ import { Surface } from './surface';
 import { Troops } from './troops';
 import { CLEAR, Weather } from './weather';
 import { Terrain } from './terrain';
+import { War } from './war';
 import type { AirUnit } from './enemy-air';
 import type { Player } from './player';
 import type { Wingman } from './wingman';
@@ -131,8 +132,10 @@ export class World {
 	readonly strikes: Strike[] = [];
 	/** Friendly paratroopers. */
 	readonly troops = new Troops();
-	/** Friendly armoured column pushing up the road. */
+	/** Our army pushing up the road toward the enemy HQ. */
 	readonly allies = new Allies();
+	/** The enemy HQ, the checkpoints and our reinforcements (inactive outside a war). */
+	readonly war = new War();
 	/** Chemical clouds. */
 	readonly gas = new GasClouds();
 	/** Wind, rain, snow and lightning. */
@@ -293,6 +296,7 @@ export class World {
 		this.props.reset();
 		this.civilians.populate(this);
 		this.base.reset();
+		this.war.stop();
 		this.player = null;
 		this.wingman = null;
 		this.player2 = null;

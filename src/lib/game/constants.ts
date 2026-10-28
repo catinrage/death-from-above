@@ -18,6 +18,9 @@ export const WORLD = {
 	runwayMaxX: 435,
 	/** Ground units that reach this X start shelling the base. */
 	baseAttackX: 585,
+	/** The enemy HQ compound occupies [hqMinX, hqMaxX]; their columns form up behind it. */
+	hqMinX: 3570,
+	hqMaxX: 3760,
 	enemySpawnX: 3780,
 	baseHeight: 2,
 	ceiling: 330,

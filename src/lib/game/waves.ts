@@ -1,5 +1,4 @@
 import { Rng } from '../engine/rng';
-import type { AllyKind } from './allies';
 import { WORLD } from './constants';
 import { MOBILE_KINDS, STATIC_KINDS, UNITS } from './defs-units';
 import { isBossKind, spawnBoss } from './boss';
@@ -54,9 +53,17 @@ export interface WaveOptions {
 	statics?: UnitKind[];
 	/** Briefing lines for each wave (falls back to the stock ones). */
 	briefings?: string[];
-	/** A friendly column that rolls out from the airfield as the wave launches. */
-	column?: (wave: number) => readonly AllyKind[];
+	/**
+	 * The war rolls on: a wave needn't be wiped out, only spent, before the
+	 * next one forms up, and the sequence never ends by itself.
+	 */
+	rolling?: boolean;
 }
+
+/** A rolling wave is spent once this share of what it sent is gone... */
+const SPENT = 0.3;
+/** ...or this many seconds after its last unit set off. */
+const SPENT_AFTER = 50;
 
 const AIR: AirKind[] = ['fighter', 'heli'];
 const isAir = (k: SpawnOrder['kind']): k is AirKind => (AIR as string[]).includes(k);
@@ -164,7 +171,7 @@ export function planWave(
 	const place = (kind: UnitKind): void => {
 		let x = 0;
 		for (let tries = 0; tries < 20; tries++) {
-			x = rng.range(WORLD.baseMaxX + 600, WORLD.enemySpawnX - 160);
+			x = rng.range(WORLD.baseMaxX + 600, WORLD.hqMinX - 200);
 			const wet = avoid !== null && x > avoid[0] && x < avoid[1];
 			if (!wet && used.every((u) => Math.abs(u - x) > 70)) break;
 		}
@@ -220,6 +227,8 @@ export class WaveDirector {
 	timer = 0;
 	private queue: SpawnOrder[] = [];
 	private elapsed = 0;
+	/** Seconds since the last order of the wave went out. */
+	private idle = 0;
 	total = 0;
 	spawned = 0;
 	/** Waves fully beaten in this sequence. */
@@ -237,7 +246,9 @@ export class WaveDirector {
 
 	/** "WAVE 2/4" in a mission, "WAVE 7" in an open-ended run. */
 	get label(): string {
-		return this.opts.last ? `WAVE ${this.wave}/${this.opts.last}` : `WAVE ${this.wave}`;
+		return this.opts.last && !this.opts.rolling
+			? `WAVE ${this.wave}/${this.opts.last}`
+			: `WAVE ${this.wave}`;
 	}
 
 	begin(w: World, wave = 1): void {
@@ -264,18 +275,22 @@ export class WaveDirector {
 		const avoid: [number, number] | null = r
 			? [r.x0 - r.bridgeHalf - 40, r.x0 + r.bridgeHalf + 40]
 			: null;
+		const tweaks = { ...this.opts.tweaks?.(this.wave) };
+		// Every checkpoint the enemy holds swells its waves.
+		if (w.war.active) tweaks.budget = (tweaks.budget ?? 1) * w.war.enemyBudgetScale();
 		const plan = planWave(
 			this.difficulty(),
 			this.seed,
 			statics,
 			avoid,
-			this.opts.tweaks?.(this.wave) ?? {},
+			tweaks,
 			this.wave === 1 ? (this.opts.statics ?? []) : []
 		);
 		this.queue = plan.orders;
 		this.total = plan.orders.length;
 		this.spawned = 0;
 		this.elapsed = 0;
+		this.idle = 0;
 		for (const s of plan.statics) {
 			const z =
 				s.kind === 'depot' || s.kind === 'radar' ? -14 : s.kind === 'searchlight' ? -9 : -11;
@@ -283,8 +298,6 @@ export class WaveDirector {
 			const u = w.spawnUnit(s.kind, clearOfZones(s.x), z, -1);
 			u.yaw = Math.PI;
 		}
-		const column = this.opts.column?.(this.wave) ?? [];
-		if (column.length > 0) w.allies.deploy(w, column);
 		this.state = 'active';
 	}
 
@@ -305,16 +318,26 @@ export class WaveDirector {
 			if (!o) break;
 			this.spawn(w, o);
 		}
-		if (this.queue.length === 0 && w.hostilesAlive() === 0) {
+		if (this.queue.length > 0) return;
+		this.idle += dt;
+		if (this.opts.rolling) {
+			const left = w.hostilesAlive();
+			if (left > 0 && left > this.spawned * SPENT && this.idle < SPENT_AFTER) return;
 			this.cleared++;
-			if (this.opts.last && this.wave >= this.opts.last) {
-				this.state = 'complete';
-				return;
-			}
 			this.state = 'cleared';
-			this.timer = 7;
-			w.events.message(`WAVE ${this.wave} CLEARED`, 'Rearm at the airfield', 'good');
+			this.timer = left === 0 ? 7 : 10;
+			w.events.message(`WAVE ${this.wave} SPENT`, 'The next wave is forming up. Rearm', 'good');
+			return;
 		}
+		if (w.hostilesAlive() > 0) return;
+		this.cleared++;
+		if (this.opts.last && this.wave >= this.opts.last) {
+			this.state = 'complete';
+			return;
+		}
+		this.state = 'cleared';
+		this.timer = 7;
+		w.events.message(`WAVE ${this.wave} CLEARED`, 'Rearm at the airfield', 'good');
 	}
 
 	private spawn(w: World, o: SpawnOrder): void {
@@ -335,7 +358,9 @@ export class WaveDirector {
 			w.events.message('ARMOURED TRAIN', 'Tear up the track ahead of it', 'warn');
 			return;
 		}
-		w.spawnUnit(o.kind, WORLD.enemySpawnX + w.rng.range(0, 30), o.z, -1);
+		// In a war, columns form up at the enemy's foremost checkpoint.
+		const x = w.war.active ? w.war.enemyStaging() : WORLD.enemySpawnX;
+		w.spawnUnit(o.kind, x + w.rng.range(0, 30), o.z, -1);
 	}
 
 	/** Remaining enemies including those not yet deployed. */

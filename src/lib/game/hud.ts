@@ -74,6 +74,31 @@ export interface Player2Hud {
 	gearDown: boolean;
 }
 
+/** One checkpoint on the HUD's front-line strip. */
+export interface WarPointHud {
+	name: string;
+	/** Position from our airfield (0) to the enemy HQ (1). */
+	at: number;
+	owner: 'player' | 'enemy' | null;
+	/** Capture state, -1 (theirs) to +1 (ours). */
+	hold: number;
+	contested: boolean;
+}
+
+export interface WarHud {
+	/** Enemy HQ strength 0..1. */
+	hq: number;
+	hqDown: boolean;
+	hqUnderFire: boolean;
+	/** Endless: which HQ this is. */
+	front: number;
+	/** Friendly units in the field. */
+	army: number;
+	/** Seconds to the next reinforcement group. */
+	next: number;
+	points: WarPointHud[];
+}
+
 /** Everything the HUD shows, refreshed ~15 times a second. */
 export interface HudSnapshot {
 	hp: number;
@@ -101,8 +126,8 @@ export interface HudSnapshot {
 	boss: { name: string; frac: number } | null;
 	tutorial: TutorialCard | null;
 	enemies: number;
-	/** Friendly column on the road and its distance to go, or empty. */
-	column: string;
+	/** The front line, or null outside a war (training). */
+	war: WarHud | null;
 	baseHp: number;
 	baseMax: number;
 	baseUnderAttack: boolean;
@@ -220,7 +245,7 @@ export function emptyHud(): HudSnapshot {
 		boss: null,
 		tutorial: null,
 		enemies: 0,
-		column: '',
+		war: null,
 		baseHp: 1,
 		baseMax: 1,
 		baseUnderAttack: false,

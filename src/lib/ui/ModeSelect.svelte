@@ -64,7 +64,7 @@
 	const MODES: { id: GameMode; name: string; sub: string; code: string }[] = [
 		{ id: 'tutorial', name: 'Training', sub: 'Learn to fly and fight', code: 'TRN' },
 		{ id: 'campaign', name: 'Campaign', sub: `${MISSIONS.length} missions`, code: 'CMP' },
-		{ id: 'endless', name: 'Endless', sub: 'Waves until you fall', code: 'END' }
+		{ id: 'endless', name: 'Endless', sub: 'Front after front', code: 'END' }
 	];
 	const tabIndex = $derived(MODES.findIndex((m) => m.id === tab));
 
@@ -80,12 +80,12 @@
 
 	function describe(o: Objective): string {
 		switch (o.type) {
-			case 'waves':
-				return `Hold the airfield for ${o.count} waves`;
+			case 'hq':
+				return 'Get our troops to the enemy HQ and level it';
 			case 'destroy':
 				return `${o.label}: ${o.count}`;
-			case 'escort':
-				return `Get ${o.count} vehicles of the friendly column across the river`;
+			case 'capture':
+				return `Hold ${o.count} checkpoints at the same time`;
 		}
 	}
 

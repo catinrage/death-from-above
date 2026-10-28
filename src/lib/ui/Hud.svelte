@@ -59,8 +59,8 @@
 			{#if hud.mode !== 'tutorial'}
 				<span class="en">{hud.enemies} hostile{hud.enemies === 1 ? '' : 's'}</span>
 				<span class="sep"></span>
-				{#if hud.column}
-					<span class="col">{hud.column}</span>
+				{#if hud.war}
+					<span class="col">ARMY {hud.war.army} · +{hud.war.next}s</span>
 					<span class="sep"></span>
 				{/if}
 			{/if}
@@ -79,6 +79,30 @@
 			</span>
 			<span class="pct">{Math.round(baseFrac * 100)}%</span>
 		</div>
+		{#if hud.war}
+			{@const war = hud.war}
+			<div class="front" aria-label="Front line">
+				<span class="end ours" title="Our airfield">AIRFIELD</span>
+				<span class="road">
+					{#each war.points as c (c.name)}
+						<i
+							class="cp"
+							class:ours={c.owner === 'player'}
+							class:theirs={c.owner === 'enemy'}
+							class:contested={c.contested}
+							style:left="{c.at * 100}%"
+							title={c.name}
+						></i>
+					{/each}
+				</span>
+				<span class="end theirs" class:alert={war.hqUnderFire} class:down={war.hqDown}>
+					{war.hqDown ? 'HQ DOWN' : war.front > 1 ? `HQ ${war.front}` : 'ENEMY HQ'}
+					{#if !war.hqDown}
+						<span class="track"><span class="fill" style:transform="scaleX({war.hq})"></span></span>
+					{/if}
+				</span>
+			</div>
+		{/if}
 		{#if hud.boss}
 			<div class="base boss" transition:fade={{ duration: 200 }}>
 				<span class="lbl">{hud.boss.name}</span>
@@ -501,6 +525,82 @@
 
 	.base .fill {
 		background: linear-gradient(90deg, #ffe0a8, var(--amber));
+	}
+
+	/* Front line: airfield, checkpoints along the road, enemy HQ. */
+	.front {
+		display: grid;
+		grid-template-columns: auto 260px auto;
+		align-items: center;
+		gap: 10px;
+		font-size: 11px;
+		letter-spacing: 0.2em;
+	}
+
+	.front .end {
+		color: var(--ink-dim);
+	}
+
+	.front .end.ours {
+		min-width: 160px;
+		text-align: right;
+		color: #8ec5ff;
+	}
+
+	.front .end.theirs {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		color: #ff9d7a;
+	}
+
+	.front .end.theirs .track {
+		width: 70px;
+	}
+
+	.front .end.theirs .fill {
+		background: linear-gradient(90deg, #ff9d7a, var(--danger));
+	}
+
+	.front .end.alert {
+		animation: pulse 0.7s ease-in-out infinite alternate;
+	}
+
+	.front .end.down {
+		color: var(--amber);
+	}
+
+	.road {
+		position: relative;
+		height: 14px;
+		background: linear-gradient(90deg, rgba(142, 197, 255, 0.35), rgba(255, 157, 122, 0.35))
+			center / 100% 2px no-repeat;
+	}
+
+	/* Diamond flag: blue ours, red theirs, grey neutral. */
+	.cp {
+		position: absolute;
+		top: 50%;
+		width: 9px;
+		height: 9px;
+		margin: -5px 0 0 -5px;
+		transform: rotate(45deg);
+		border: 1px solid rgba(255, 255, 255, 0.55);
+		background: rgba(255, 255, 255, 0.15);
+	}
+
+	.cp.ours {
+		background: #8ec5ff;
+		box-shadow: 0 0 6px #8ec5ff;
+	}
+
+	.cp.theirs {
+		background: #ff7a5c;
+		box-shadow: 0 0 6px #ff7a5c;
+	}
+
+	.cp.contested {
+		animation: pulse 0.4s ease-in-out infinite alternate;
 	}
 
 	.base.boss .lbl {
@@ -1396,6 +1496,14 @@
 
 		.base {
 			grid-template-columns: auto 160px auto;
+		}
+
+		.front {
+			grid-template-columns: auto 160px auto;
+		}
+
+		.front .end.ours {
+			min-width: 0;
 		}
 
 		.objectives,

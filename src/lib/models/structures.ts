@@ -282,6 +282,22 @@ export function flagpole(): Float32Array {
 	return b.build();
 }
 
+/** A checkpoint: a tall mast in a ring of sandbags. Its flag is drawn apart (`checkpointFlag`). */
+export function checkpointMast(): Float32Array {
+	const b = new MeshBuilder();
+	sandbagRing(b, 3.2, 12, 2, 0.25);
+	b.cylinder(0.12, 0.08, 14, 6, P.steel);
+	b.push().translate(0, 14, 0).sphere(0.18, 6, 4, P.steel, false).pop();
+	return b.build();
+}
+
+/** Plain white cloth, tinted to the side that holds the checkpoint. Origin at the hoist, bottom edge. */
+export function checkpointFlag(): Float32Array {
+	const b = new MeshBuilder();
+	b.box(3.2, 1.9, 0.05, P.wallWhite, 1.7, 0.95, 0);
+	return b.build();
+}
+
 export function sandbagWall(length: number): Float32Array {
 	const b = new MeshBuilder();
 	const n = Math.max(1, Math.round(length / 1.1));

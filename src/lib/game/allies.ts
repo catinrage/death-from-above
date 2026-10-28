@@ -4,27 +4,42 @@ import { inBattlePlane, segmentVsUnit } from './combat';
 import { WORLD } from './constants';
 import { killUnit } from './deaths';
 import { UNITS } from './defs-units';
-import { spawnBullet } from './projectiles';
+import type { AirUnit } from './enemy-air';
+import { launchMissile, spawnBullet } from './projectiles';
 import type { Unit, UnitDef } from './types';
 import { aimAt, wreck } from './unit-ai';
 import { muzzlePoint } from './unit-pose';
+import { MARCH } from './war';
 import type { World } from './world';
 
-/** Vehicles that can roll out in a friendly column. */
-export type AllyKind = 'tank' | 'apc' | 'jeep' | 'truck';
+/** Troops and vehicles our side can send up the road. */
+export type AllyKind = 'rifleman' | 'manpads' | 'jeep' | 'truck' | 'tank' | 'apc' | 'spaag';
+export const ALLY_KINDS: readonly AllyKind[] = [
+	'rifleman',
+	'manpads',
+	'jeep',
+	'truck',
+	'tank',
+	'apc',
+	'spaag'
+];
 
-/** How hard enemy small arms hit a friendly vehicle (their rounds are tuned against aircraft). */
-export const ALLY_BULLET_K = 6;
-/** Damage a direct hit from an enemy tank gun deals to a friendly vehicle. */
+/** How hard enemy small arms hit a friendly unit (their rounds are tuned against aircraft). */
+export const ALLY_BULLET_K = 8;
+/** Damage a direct hit from an enemy tank gun deals to a friendly unit. */
 const TANK_ROUND = 55;
-/** Speed the column drives at when the road is clear. */
+/** Speed vehicles drive at when the road is clear. */
 const CRUISE = 11;
-/** Distance ahead at which the column halts to fight whatever blocks the road. */
+/** Distance ahead at which a unit halts to fight whatever blocks the road. */
 const HOLD = 230;
-/** Unarmed trucks keep further back from a fight. */
+/** Inside the hold distance, armed units still close in at this share of their speed down to CLOSE. */
+export const CREEP = 0.35;
+export const CLOSE = 120;
+/** Unarmed (or sky-watching) units keep further back from a fight. */
 const HOLD_UNARMED = 320;
-/** Gap the column keeps between vehicles. */
+/** Gap the column keeps between vehicles, and between soldiers. */
 const SPACING = 7;
+const SPACING_INFANTRY = 1.4;
 
 interface AllyGun {
 	range: number;
@@ -34,22 +49,62 @@ interface AllyGun {
 	damage: number;
 	pierce: number;
 	speed: number;
+	/** Fires shells that burst on impact (tank guns). */
+	shell?: boolean;
+	/** Only engages aircraft. */
+	air?: boolean;
+	/** Heat-seeking missiles at aircraft. */
+	missile?: boolean;
 }
 
 const GUNS: Partial<Record<AllyKind, AllyGun>> = {
-	tank: { range: 420, interval: 4.2, burst: 1, gap: 0, damage: 60, pierce: 0.7, speed: 420 },
+	tank: {
+		range: 420,
+		interval: 4.2,
+		burst: 1,
+		gap: 0,
+		damage: 60,
+		pierce: 0.7,
+		speed: 420,
+		shell: true
+	},
 	apc: { range: 380, interval: 2.4, burst: 6, gap: 0.09, damage: 7, pierce: 0.35, speed: 800 },
-	jeep: { range: 340, interval: 2, burst: 6, gap: 0.1, damage: 4, pierce: 0.1, speed: 600 }
+	jeep: { range: 340, interval: 2, burst: 6, gap: 0.1, damage: 4, pierce: 0.1, speed: 600 },
+	rifleman: { range: 280, interval: 1.8, burst: 3, gap: 0.16, damage: 2.6, pierce: 0, speed: 520 },
+	spaag: {
+		range: 620,
+		interval: 2,
+		burst: 8,
+		gap: 0.07,
+		damage: 4,
+		pierce: 0.2,
+		speed: 800,
+		air: true
+	},
+	manpads: {
+		range: 520,
+		interval: 8,
+		burst: 1,
+		gap: 0,
+		damage: 22,
+		pierce: 0,
+		speed: 0,
+		air: true,
+		missile: true
+	}
 };
 
+/** Our infantry is better equipped than the enemy's: it takes a few more rounds to drop. */
+const HP: Partial<Record<AllyKind, number>> = { rifleman: 20, manpads: 20 };
+
 const DEFS = {} as Record<AllyKind, UnitDef>;
-for (const kind of ['tank', 'apc', 'jeep', 'truck'] as AllyKind[]) {
+for (const kind of ALLY_KINDS) {
 	const d = UNITS[kind];
 	DEFS[kind] = {
 		...d,
 		name: `Friendly ${d.name.toLowerCase()}`,
+		hp: HP[kind] ?? d.hp,
 		score: 0,
-		siege: 0,
 		supply: false
 	};
 }
@@ -61,51 +116,46 @@ export function allyDef(kind: AllyKind): UnitDef {
 const m3: [number, number, number] = [0, 0, 0];
 
 /**
- * Your own armour pushing up the road toward the enemy. It halts to trade fire
- * with whatever blocks the way, waits at a fallen bridge span, and counts as
- * through once it reaches the rally point on the far bank.
+ * Our own army pushing up the road toward the enemy HQ. Units halt to trade
+ * fire with whatever blocks the way, stop on checkpoints the enemy holds until
+ * they have taken them, and shell the HQ once they reach its wire.
  */
 export class Allies {
 	readonly list: Unit[] = [];
-	/** Vehicles that reached the rally point this game. */
-	arrived = 0;
-	/** Vehicles destroyed this game. */
+	/** Units destroyed this game. */
 	lost = 0;
-	/** Vehicles sent out this game. */
+	/** Units sent out this game. */
 	deployed = 0;
 
-	/** Where the column is headed: the far side of the bridge, or deep in enemy ground. */
-	goal(w: World): number {
-		const r = w.river;
-		return r ? r.x0 + r.bridgeHalf + 140 : WORLD.enemySpawnX - 700;
-	}
-
-	/** Rolls a column out from the airfield, lead vehicle first. */
-	deploy(w: World, kinds: readonly AllyKind[]): void {
-		const start = WORLD.baseMaxX + 70;
+	/**
+	 * Sends a group up the road from `from` (the airfield by default), lead
+	 * unit first. Infantry spreads across the road; vehicles keep to two lanes.
+	 */
+	deploy(w: World, kinds: readonly AllyKind[], from?: number, note?: string): void {
+		let x = from ?? WORLD.baseMaxX + 70;
 		kinds.forEach((kind, i) => {
-			const u = w.makeUnit(kind, start - i * 16, i % 2 ? -1.1 : 1.1, 1);
+			const infantry = DEFS[kind].category === 'infantry';
+			const z = infantry ? rnd.range(-3.2, 3.2) : i % 2 ? -1.1 : 1.1;
+			const u = w.makeUnit(kind, x, z, 1);
 			u.def = DEFS[kind];
 			u.hp = u.def.hp;
 			u.cooldown = rnd.range(0.5, 2);
 			this.list.push(u);
+			x -= infantry ? 3 : 16;
 		});
 		this.deployed += kinds.length;
-		w.events.message('FRIENDLY COLUMN', 'Armour moving up the road. Clear its path', 'info');
+		w.events.message(
+			'REINFORCEMENTS',
+			note ?? 'Our troops are moving up the road. Clear their path',
+			'info'
+		);
 	}
 
-	/** Friendly vehicles still on the road. */
+	/** Friendly units still fighting. */
 	alive(): number {
 		let n = 0;
 		for (const u of this.list) if (u.alive) n++;
 		return n;
-	}
-
-	/** Lead vehicle's distance to the rally point, or null with no column out. */
-	distanceToGo(w: World): number | null {
-		let lead = -Infinity;
-		for (const u of this.list) if (u.alive) lead = Math.max(lead, u.x);
-		return lead === -Infinity ? null : Math.max(0, this.goal(w) - lead);
 	}
 
 	/** The friendly unit furthest up the road (what enemy gunships go for), or null. */
@@ -115,7 +165,7 @@ export class Allies {
 		return best;
 	}
 
-	/** Nearest live friendly vehicle to (x, y) within `range`, for enemy gunners. */
+	/** Nearest live friendly unit to (x, y) within `range`, for enemy gunners. */
 	nearest(x: number, y: number, range: number): Unit | null {
 		let best: Unit | null = null;
 		let bestD = range;
@@ -130,7 +180,7 @@ export class Allies {
 		return best;
 	}
 
-	/** Closest friendly vehicle on the airfield side of x, within `range`. */
+	/** Closest friendly unit on the airfield side of x, within `range`. */
 	ahead(x: number, range: number): Unit | null {
 		let best: Unit | null = null;
 		let bestD = range;
@@ -151,7 +201,7 @@ export class Allies {
 		u.flash = Math.min(1, u.flash + 0.6);
 	}
 
-	/** Enemy fire striking a friendly vehicle; returns the vehicle it hit. */
+	/** Enemy fire striking a friendly unit; returns the unit it hit. */
 	bulletHit(x0: number, y0: number, x1: number, y1: number, damage: number): Unit | null {
 		for (const u of this.list) {
 			if (!u.alive || segmentVsUnit(u, x0, y0, x1, y1) < 0) continue;
@@ -161,7 +211,7 @@ export class Allies {
 		return null;
 	}
 
-	/** An enemy tank round reaching a friendly vehicle. */
+	/** An enemy tank round reaching a friendly unit. */
 	shellHit(x0: number, y0: number, x1: number, y1: number): Unit | null {
 		for (const u of this.list) {
 			if (!u.alive || segmentVsUnit(u, x0, y0, x1, y1, 0.3) < 0) continue;
@@ -184,7 +234,7 @@ export class Allies {
 	}
 
 	update(w: World, dt: number): void {
-		const goal = this.goal(w);
+		const hq = w.war.active && !w.war.hq.destroyed ? w.war.hq : null;
 		for (let i = this.list.length - 1; i >= 0; i--) {
 			const u = this.list[i];
 			u.flash = Math.max(0, u.flash - dt * 4);
@@ -192,7 +242,7 @@ export class Allies {
 				// Kills by the enemy score nothing; the wreck behaves like any other.
 				killUnit(w, u, u.x + 10, 'blast', 'enemy');
 				this.lost++;
-				w.events.message('', `${u.def.name} destroyed`, 'warn');
+				if (u.def.category !== 'infantry') w.events.message('', `${u.def.name} destroyed`, 'warn');
 			}
 			if (!u.alive) {
 				wreck(w, u, dt);
@@ -200,14 +250,9 @@ export class Allies {
 				continue;
 			}
 			u.stateTime += dt;
-			if (u.x >= goal) {
-				this.arrived++;
-				this.list.splice(i, 1);
-				w.events.message('', `${u.def.name} reached the rally point`, 'good');
-				continue;
-			}
 			this.drive(w, u, dt);
 			this.engage(w, u, dt);
+			if (hq && u.state === 'siege') hq.damage(w, u.def.siege * dt);
 		}
 	}
 
@@ -229,22 +274,32 @@ export class Allies {
 
 	private drive(w: World, u: Unit, dt: number): void {
 		const def = u.def;
-		let want = CRUISE;
+		const infantry = def.category === 'infantry';
+		const gun = GUNS[def.kind as AllyKind];
+		let want = infantry ? def.speed * MARCH : CRUISE;
 		const b = this.blocker(w, u);
-		if (b && b.dist < (def.weapon ? HOLD : HOLD_UNARMED)) want = 0;
+		const hold = gun && !gun.air ? Math.min(HOLD, gun.range * 0.8) : HOLD_UNARMED;
+		// Armed units keep creeping in under fire until the range is short, then stand and fight.
+		if (b && b.dist < hold) want = gun && !gun.air && b.dist > CLOSE ? want * CREEP : 0;
+		const gap = infantry ? SPACING_INFANTRY : SPACING;
 		for (const o of this.list) {
-			if (o === u || !o.alive) continue;
+			if (o === u || !o.alive || Math.abs(o.z - u.z) > 2.6) continue;
 			const ahead = o.x - u.x;
-			if (ahead > 0 && ahead < o.def.half[0] + def.half[0] + SPACING)
+			if (ahead > 0 && ahead < o.def.half[0] + def.half[0] + gap)
 				want = Math.min(want, Math.abs(o.speed) * 0.8);
 		}
+		// Stand on a checkpoint until it is ours.
+		if (w.war.holdingAt(u.x, 'player')) want = 0;
+		// At the HQ's wire: dig in and shell it.
+		const siege = u.x >= w.war.siegeLine(def);
+		if (siege) want = 0;
 		const stop = w.bridge?.stopLine(u.x, 1, def.half[0]);
 		if (stop != null) {
 			const room = stop - u.x;
 			if (room < 6) want = Math.min(want, Math.max(0, room) * 0.6);
 		}
-		u.state = want === 0 ? 'hold' : 'advance';
-		u.speed = damp(u.speed, want, 1.6, dt);
+		u.state = siege ? 'siege' : want === 0 ? 'hold' : 'advance';
+		u.speed = damp(u.speed, want, infantry ? 6 : 1.6, dt);
 		u.x += u.speed * dt;
 		if (stop != null && u.x > stop) {
 			u.x = stop;
@@ -257,7 +312,7 @@ export class Allies {
 			4
 		);
 		u.pitch = damp(u.pitch, slope, 8, dt);
-		u.anim += (u.speed * dt) / 0.5;
+		u.anim += (u.speed * dt) / (infantry ? 0.3 : 0.5);
 		u.spin += dt * 2.6;
 	}
 
@@ -265,6 +320,7 @@ export class Allies {
 		const gun = GUNS[u.def.kind as AllyKind];
 		if (!gun) return;
 		u.cooldown -= dt;
+		if (gun.air) return this.antiAir(w, u, gun, dt);
 		let foe: Unit | null = null;
 		let best = gun.range;
 		for (const o of w.units) {
@@ -278,34 +334,30 @@ export class Allies {
 		}
 		const ox = u.x,
 			oy = u.y + u.def.half[1] * 2;
-		if (!foe) {
+		let tx: number, ty: number;
+		if (foe) {
+			tx = foe.x;
+			ty = foe.y + foe.def.half[1];
+		} else if (u.state === 'siege' && w.war.active && !w.war.hq.destroyed) {
+			// Nothing else to shoot at: pour fire into the compound.
+			tx = w.war.hq.x0 + rnd.range(10, 80);
+			ty = w.ground(tx) + 3;
+		} else {
 			u.aimYaw = damp(u.aimYaw, 0, 1, dt);
 			u.aimPitch = damp(u.aimPitch, 0.05, 1, dt);
 			return;
 		}
-		const tx = foe.x,
-			ty = foe.y + foe.def.half[1];
 		const dx = Math.abs(tx - ox);
-		const g = gun.burst === 1 ? WORLD.gravity : 4;
+		const g = gun.shell ? WORLD.gravity : 4;
 		const tof = dx / gun.speed;
 		const aimY = ty + 0.5 * g * tof * tof;
 		if (!aimAt(u, dt, tx, aimY, ox, oy)) return;
-		if (u.burst > 0) {
-			u.gap -= dt;
-			if (u.gap > 0) return;
-			u.gap = gun.gap;
-			u.burst--;
-		} else {
-			if (u.cooldown > 0) return;
-			u.cooldown = gun.interval * rnd.range(0.85, 1.2);
-			u.burst = gun.burst - 1;
-			u.gap = gun.gap;
-		}
+		if (!this.trigger(u, gun, dt)) return;
 		const m = muzzlePoint(u, m3);
-		const a = Math.atan2(aimY - m[1], tx - m[0]) + rnd.gauss(gun.burst === 1 ? 0.006 : 0.02);
+		const a = Math.atan2(aimY - m[1], tx - m[0]) + rnd.gauss(gun.shell ? 0.006 : 0.02);
 		const cx = Math.cos(a),
 			cy = Math.sin(a);
-		if (gun.burst === 1) {
+		if (gun.shell) {
 			w.shells.push({
 				kind: 'tank',
 				x: m[0],
@@ -326,6 +378,7 @@ export class Allies {
 			w.sound.play('tankGun', m[0], m[1], 0.6);
 			return;
 		}
+		const kind = u.def.kind;
 		spawnBullet(w, {
 			x: m[0],
 			y: m[1],
@@ -338,27 +391,99 @@ export class Allies {
 			owner: 'player',
 			tracer: true,
 			color: [4, 9, 14],
-			size: u.def.kind === 'apc' ? 0.24 : 0.16,
+			size: kind === 'apc' ? 0.24 : kind === 'rifleman' ? 0.1 : 0.16,
 			explosive: 0,
 			aimX: tx
 		});
-		w.fx.muzzleFlash(m[0], m[1], m[2], cx, cy, u.def.kind === 'apc' ? 1.2 : 0.7, [8, 9, 12]);
-		w.sound.play(u.def.kind === 'apc' ? 'aaGun' : 'mg', m[0], m[1], 0.35);
+		if (kind !== 'rifleman' || rnd.chance(0.5))
+			w.fx.muzzleFlash(m[0], m[1], m[2], cx, cy, kind === 'apc' ? 1.2 : 0.7, [8, 9, 12]);
+		w.sound.play(kind === 'apc' ? 'aaGun' : kind === 'rifleman' ? 'rifle' : 'mg', m[0], m[1], 0.35);
+	}
+
+	/** Mobile AA and missile troopers keep the sky over the column clear. */
+	private antiAir(w: World, u: Unit, gun: AllyGun, dt: number): void {
+		let target: AirUnit | null = null;
+		let best = gun.range;
+		const ox = u.x,
+			oy = u.y + u.def.half[1] * 2;
+		for (const a of w.air) {
+			if (!a.alive || a.dying) continue;
+			const d = Math.hypot(a.x - ox, a.y - oy);
+			if (d < best && a.y > oy + 15) {
+				best = d;
+				target = a;
+			}
+		}
+		if (!target) {
+			u.aimPitch = damp(u.aimPitch, 0.5, 1, dt);
+			return;
+		}
+		const t = gun.missile ? 0 : best / gun.speed;
+		const tx = target.x + target.vx * t,
+			ty = target.y + target.vy * t;
+		if (!aimAt(u, dt, tx, ty, ox, oy) || !this.trigger(u, gun, dt)) return;
+		const m = muzzlePoint(u, m3);
+		const a = Math.atan2(ty - m[1], tx - m[0]);
+		if (gun.missile) {
+			launchMissile(w, {
+				kind: 'manpads',
+				x: m[0],
+				y: m[1],
+				z: m[2],
+				angle: a,
+				speed: 28,
+				maxSpeed: 205,
+				accel: 270,
+				turnRate: 2.8,
+				target,
+				burn: 2.3,
+				life: 5.5,
+				damage: gun.damage,
+				owner: 'player',
+				seeker: 'heat'
+			});
+			w.fx.muzzleFlash(m[0], m[1], m[2], Math.cos(a), Math.sin(a), 2, [8, 9, 12]);
+			return;
+		}
+		const aa = a + rnd.gauss(0.02);
+		spawnBullet(w, {
+			x: m[0],
+			y: m[1],
+			z: m[2],
+			vx: Math.cos(aa) * gun.speed,
+			vy: Math.sin(aa) * gun.speed,
+			life: 1.6,
+			damage: gun.damage,
+			pierce: gun.pierce,
+			owner: 'player',
+			tracer: true,
+			color: [4, 9, 14],
+			size: 0.24,
+			explosive: 0
+		});
+		w.fx.muzzleFlash(m[0], m[1], m[2], Math.cos(aa), Math.sin(aa), 1.3, [8, 9, 12]);
+		w.sound.play('aaGun', m[0], m[1], 0.35);
+	}
+
+	/** Burst timing: true when the next round should leave the barrel. */
+	private trigger(u: Unit, gun: AllyGun, dt: number): boolean {
+		if (u.burst > 0) {
+			u.gap -= dt;
+			if (u.gap > 0) return false;
+			u.gap = gun.gap;
+			u.burst--;
+			return true;
+		}
+		if (u.cooldown > 0) return false;
+		u.cooldown = gun.interval * rnd.range(0.85, 1.2);
+		u.burst = gun.burst - 1;
+		u.gap = gun.gap;
+		return true;
 	}
 
 	clear(): void {
 		this.list.length = 0;
-		this.arrived = 0;
 		this.lost = 0;
 		this.deployed = 0;
 	}
-}
-
-/** Endless mode sends a column every third wave, a little heavier each time. */
-export function endlessColumn(wave: number): AllyKind[] {
-	if (wave < 3 || wave % 3 !== 0) return [];
-	const out: AllyKind[] = ['tank', 'apc', 'truck', 'jeep'];
-	const extra = Math.min(Math.floor(wave / 6), 3);
-	for (let i = 0; i < extra; i++) out.splice(1, 0, i % 2 ? 'apc' : 'tank');
-	return out;
 }
