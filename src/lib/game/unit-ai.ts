@@ -8,6 +8,8 @@ import type { Player } from './player';
 import type { Unit } from './types';
 import { muzzlePoint } from './unit-pose';
 import { nearestFriendly, type Wingman } from './wingman';
+import { CLOSE, CREEP } from './allies';
+import { MARCH } from './war';
 import type { World } from './world';
 
 const m3: [number, number, number] = [0, 0, 0];
@@ -68,7 +70,7 @@ function move(w: World, u: Unit, dt: number): void {
 	const def = u.def;
 	// Train cars are driven by the railway, coupled together.
 	if (def.isStatic || def.rail) return;
-	let want = def.speed;
+	let want = def.speed * (w.war.active && def.category === 'infantry' ? MARCH : 1);
 	if (u.panic > 0) {
 		u.panic -= dt;
 		if (u.state !== 'flee') {
@@ -101,7 +103,12 @@ function move(w: World, u: Unit, dt: number): void {
 		if (u.deployed >= 4 && u.stateTime > 3) u.state = 'advance';
 	}
 	// Friendly armour in the way: stop and fight it out instead of driving through.
-	if (u.dir < 0 && w.allies.ahead(u.x, def.weapon ? Math.min(def.range * 0.7, 240) : 260)) want = 0;
+	const ally =
+		u.dir < 0 ? w.allies.ahead(u.x, def.weapon ? Math.min(def.range * 0.7, 240) : 260) : null;
+	// Armed units keep creeping in until the range is short, then stand and fight.
+	if (ally) want = def.weapon && u.x - ally.x > CLOSE ? want * CREEP : 0;
+	// Stand on a checkpoint until it is theirs.
+	if (u.dir < 0 && w.war.holdingAt(u.x, 'enemy')) want = 0;
 	// Keep convoy spacing: slow behind whoever is just ahead in the lane. Bridging
 	// engineers are waved through to the front.
 	for (const o of def.kind === 'engineer' ? [] : w.units) {

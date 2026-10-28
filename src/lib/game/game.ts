@@ -30,7 +30,8 @@ import type {
 	HudMessage,
 	HudSnapshot,
 	ModeStart,
-	Player2Hud
+	Player2Hud,
+	WarHud
 } from './hud';
 import { Input } from './input';
 import { pilotTag, Squadron } from './coop';
@@ -38,7 +39,6 @@ import { NO_INPUT, Player, type PilotInput } from './player';
 import { SceneView } from './scene-view';
 import { TerrainView } from './terrain-view';
 import type { AircraftId, Owner } from './types';
-import { endlessColumn } from './allies';
 import { endlessTweaks, planWave, waveBonus, WaveDirector } from './waves';
 import {
 	loadProgress,
@@ -85,6 +85,7 @@ import {
 import { RESOLVE } from './projectiles';
 import { SHOAL } from './river';
 import { World } from './world';
+import { HQ_HP, type WarSetup } from './war';
 import { Wingman, WING_HP, type WingOrder } from './wingman';
 import { zoneAt } from './no-fire';
 import { AirBase } from './base';
@@ -135,7 +136,8 @@ export class Game {
 	private upgrades: UpgradeLevels | undefined;
 	private flyingUpgrades: UpgradeLevels | undefined;
 	private wavesScored = 0;
-	private escortsScored = 0;
+	private checkpointsScored = 0;
+	private hqsScored = 0;
 	/** Local two-player co-op: player two flies from the first gamepad. */
 	coop = false;
 	/** Aircraft pool and respawn timers: seat 0 is the player, seat 1 player two. */
@@ -493,7 +495,8 @@ export class Game {
 		this.coop = this.input.coop = !!start.coop && this.mode !== 'tutorial';
 		this.squadron = new Squadron(this.coop ? 2 : 1);
 		this.wavesScored = 0;
-		this.escortsScored = 0;
+		this.checkpointsScored = 0;
+		this.hqsScored = 0;
 		this.debriefTimer = 0;
 		const w = this.world;
 		this.useBiome(this.biomeFor(start, mission));
@@ -527,11 +530,13 @@ export class Game {
 		this.waves = new WaveDirector(
 			seed,
 			mission
-				? mission.waves
+				? { ...mission.waves, rolling: true }
 				: this.mode === 'endless'
-					? { tweaks: endlessTweaks, column: endlessColumn }
+					? { tweaks: endlessTweaks, rolling: true }
 					: {}
 		);
+		// Training has no war in it: just the lessons' targets.
+		if (this.mode !== 'tutorial') w.war.start(w, mission?.war ?? ENDLESS_WAR, seed);
 		this.envPhase = this.envTarget = this.envFor(1);
 		w.weather.set(this.weatherFor(1), true);
 		this.setPhase('playing');
@@ -928,18 +933,14 @@ export class Game {
 				'big'
 			);
 		}
-		if (w.allies.arrived > this.escortsScored) {
-			const n = w.allies.arrived - this.escortsScored;
-			this.escortsScored = w.allies.arrived;
-			const bonus = n * ESCORT_BONUS;
-			this.score += bonus;
-			this.popups?.spawn(
-				`+${bonus.toLocaleString()}`,
-				'column through',
-				w.camera.x,
-				w.camera.y + 25,
-				'big'
-			);
+		if (w.war.taken > this.checkpointsScored) {
+			const bonus = (w.war.taken - this.checkpointsScored) * CHECKPOINT_BONUS;
+			this.checkpointsScored = w.war.taken;
+			this.bonus(bonus, 'checkpoint taken');
+		}
+		if (w.war.hqsDestroyed > this.hqsScored) {
+			this.hqsScored = w.war.hqsDestroyed;
+			this.bonus(HQ_BONUS * w.war.front, 'enemy HQ destroyed');
 		}
 		if (this.tutorial) {
 			this.tutorial.update(w, dt, {
@@ -958,7 +959,7 @@ export class Game {
 			if (this.debriefTimer > 0) {
 				this.debriefTimer -= dt;
 				if (this.debriefTimer <= 0) return this.finish();
-			} else if (this.tracker.complete(this.waves)) {
+			} else if (this.tracker.complete()) {
 				this.debriefTimer = DEBRIEF_DELAY;
 				w.events.message('MISSION COMPLETE', 'Return to base', 'good');
 				this.audio.play('siren', w.camera.x, w.camera.y, 0.5);
@@ -966,6 +967,12 @@ export class Game {
 		}
 		this.envTarget = this.envFor(Math.max(1, this.waves.wave));
 		w.weather.set(this.weatherFor(Math.max(1, this.waves.wave)));
+	}
+
+	private bonus(points: number, label: string): void {
+		const w = this.world;
+		this.score += points;
+		this.popups?.spawn(`+${points.toLocaleString()}`, label, w.camera.x, w.camera.y + 25, 'big');
 	}
 
 	/** Endless scores go on the leaderboard; campaign and training results are saved. */
@@ -1045,7 +1052,7 @@ export class Game {
 
 	private finish(): void {
 		if (this.phase === 'gameover') return;
-		const reason = this.mode === 'tutorial' ? 'You are cleared to fly' : 'The sector is secure';
+		const reason = this.mode === 'tutorial' ? 'You are cleared to fly' : 'The enemy HQ has fallen';
 		this.setPhase('gameover');
 		this.cb.gameOver(this.result('complete', reason));
 	}
@@ -1365,11 +1372,11 @@ export class Game {
 			waveState: this.waves.state,
 			mode: this.mode,
 			mission: this.mission?.name ?? '',
-			objectives: this.tracker?.status(this.waves) ?? [],
+			objectives: this.tracker?.status() ?? [],
 			boss: bossStatus(w),
 			tutorial: this.tutorial?.card() ?? null,
 			enemies: this.waves.remaining(w),
-			column: columnStatus(w),
+			war: warStatus(w),
 			baseHp: w.base.hp,
 			baseMax: w.base.maxHp,
 			baseUnderAttack: w.base.underAttack > 0,
@@ -1441,12 +1448,31 @@ const P2_PARK = 15;
 /** Height the player must reach before the AI wingman launches. */
 const WINGMAN_JOIN_ALT = 25;
 
-/** Score for each friendly vehicle that reaches the rally point. */
-const ESCORT_BONUS = 250;
+/** Score for each checkpoint our troops take, and for each enemy HQ they level (times the front). */
+const CHECKPOINT_BONUS = 300;
+const HQ_BONUS = 3000;
 
-/** "COLUMN 4 · 1.2 KM" while friendly armour is on the road. */
-function columnStatus(w: World): string {
-	const left = w.allies.distanceToGo(w);
-	if (left === null) return '';
-	return `COLUMN ${w.allies.alive()} · ${(left / 1000).toFixed(1)} KM`;
+/** Endless: an HQ that is rebuilt stronger every time it falls. */
+const ENDLESS_WAR: WarSetup = { hqHp: HQ_HP, fronts: true };
+
+/** The front line for the HUD: our army, the checkpoints and the enemy HQ. */
+function warStatus(w: World): WarHud | null {
+	const war = w.war;
+	if (!war.active) return null;
+	const span = WORLD.hqMinX - WORLD.baseMaxX;
+	return {
+		hq: Math.max(0, war.hq.hp / war.hq.maxHp),
+		hqDown: war.hq.destroyed,
+		hqUnderFire: war.hq.underAttack > 0,
+		front: war.front,
+		army: w.allies.alive(),
+		next: Math.max(0, Math.ceil(war.nextGroup)),
+		points: war.checkpoints.map((c) => ({
+			name: c.name,
+			at: (c.x - WORLD.baseMaxX) / span,
+			owner: c.owner,
+			hold: c.hold,
+			contested: c.contested
+		}))
+	};
 }

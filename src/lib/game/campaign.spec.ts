@@ -14,7 +14,7 @@ import {
 import { AirUnit } from './enemy-air';
 import { testWorld } from './test-world';
 import { UNITS } from './defs-units';
-import { planWave, WaveDirector } from './waves';
+import { planWave } from './waves';
 
 function memoryStorage(): Storage {
 	const data = new Map<string, string>();
@@ -99,10 +99,9 @@ describe('MissionTracker', () => {
 		t.update(w);
 		expect(t.count(['tank'])).toBe(2);
 		expect(t.count(['jeep'])).toBe(0);
-		const waves = new WaveDirector(1, m.waves);
-		const status = t.status(waves);
+		const status = t.status();
 		expect(status[0]).toMatchObject({ label: 'Destroy tanks', count: '2/6', done: false });
-		expect(t.complete(waves)).toBe(false);
+		expect(t.complete()).toBe(false);
 	});
 
 	it('counts a unit that was cleared away in the same step it died', () => {
@@ -133,12 +132,31 @@ describe('MissionTracker', () => {
 		const w = testWorld();
 		const m = MISSIONS[0];
 		const t = new MissionTracker(m);
-		const waves = new WaveDirector(1, m.waves);
+		w.war.start(w, m.war);
 		t.update(w);
-		expect(t.complete(waves)).toBe(false);
-		waves.cleared = 2;
-		expect(t.complete(waves)).toBe(true);
-		expect(t.status(waves)[0].count).toBe('2/2 waves');
+		expect(t.complete()).toBe(false);
+		w.war.hq.damage(w, w.war.hq.maxHp);
+		t.update(w);
+		expect(t.complete()).toBe(true);
+		expect(t.status()[0]).toMatchObject({ label: 'Destroy the enemy HQ', done: true });
+	});
+
+	it('counts the most checkpoints held at once, even after some are lost', () => {
+		const w = testWorld();
+		const m = MISSIONS.find((x) => x.id === 'spearhead')!;
+		const t = new MissionTracker(m);
+		w.war.start(w, m.war);
+		t.update(w);
+		expect(t.status()[0]).toMatchObject({ count: '1/3', done: false });
+		for (const c of w.war.checkpoints.slice(0, 3)) c.owner = 'player';
+		t.update(w);
+		w.war.checkpoints[2].owner = 'enemy';
+		t.update(w);
+		expect(t.status()[0]).toMatchObject({ count: '3/3', done: true });
+	});
+
+	it('ends every mission at the enemy HQ', () => {
+		for (const m of MISSIONS) expect(m.objectives.some((o) => o.type === 'hq')).toBe(true);
 	});
 
 	it('fails when the airfield drops below the floor, even if it is repaired', () => {
@@ -152,7 +170,7 @@ describe('MissionTracker', () => {
 		w.base.hp = w.base.maxHp;
 		t.update(w);
 		expect(t.failed()).toBe(true);
-		const floor = t.status(new WaveDirector(1, m.waves)).at(-1)!;
+		const floor = t.status().at(-1)!;
 		expect(floor.failed).toBe(true);
 	});
 });

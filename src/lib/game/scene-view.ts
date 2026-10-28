@@ -27,6 +27,12 @@ function sightScale(w: World): number {
 }
 
 /** Turns the simulation state into per-mesh instance lists every frame. */
+/** Checkpoint masts stand just behind the road. */
+const CHECKPOINT_Z = -9;
+const FLAG_OURS = [0.45, 0.75, 1.6];
+const FLAG_THEIRS = [1.7, 0.42, 0.35];
+const FLAG_NEUTRAL = [0.8, 0.8, 0.8];
+
 export class SceneView {
 	private readonly m: Mat4 = mat4.create();
 	private readonly m2: Mat4 = mat4.create();
@@ -73,6 +79,7 @@ export class SceneView {
 		for (const mesh of this.models.mountains) mesh.push(IDENTITY, this.tinted(this.style(), hills));
 		this.props(w, nearMin, nearMax);
 		this.base(w, time);
+		this.war(w, time);
 		this.bridge(w, nearMin, nearMax);
 		this.railway(w, nearMin, nearMax);
 		this.units(w, nearMin - 30, nearMax + 30);
@@ -166,6 +173,36 @@ export class SceneView {
 		}
 		if (Math.sin(time * 3) > 0.6)
 			w.fx.immediateGlow(309.1, w.ground(307.5) + 15.3, -32.4, 1.5, 9, 1, 0.6);
+	}
+
+	/** The enemy HQ compound (rubble once it falls) and the checkpoint flags. */
+	private war(w: World, time: number): void {
+		const war = w.war;
+		if (!war.active) return;
+		const m = this.m;
+		const hq = war.hq;
+		const damage = 1 - hq.hp / hq.maxHp;
+		for (const s of hq.structures) {
+			mat4.fromTranslation(m, s.x, w.terrain.heightAtXZ(s.x, s.z), s.z);
+			mat4.rotateY(m, m, s.yaw);
+			if (hq.destroyed) {
+				const embers = Math.max(0, 1 - hq.fallen / 40);
+				if (s.ruin) this.models.rubble.push(m, this.style(0.7, 0, 0, 1, 1, embers));
+				continue;
+			}
+			const char = s.fire ? 0.55 : damage * 0.3;
+			this.mesh(s.mesh).push(m, this.style(char, 0, 0, 1, 1, s.fire ? 0.5 : 0));
+		}
+		for (const c of war.checkpoints) {
+			const y = w.terrain.heightAtXZ(c.x, CHECKPOINT_Z);
+			mat4.fromTranslation(m, c.x, y, CHECKPOINT_Z);
+			this.models.checkpointMast.push(m, this.style());
+			// The flag climbs the mast as a side takes the point, in that side's colour.
+			mat4.fromTranslation(m, c.x + 0.1, y + 1.2 + Math.abs(c.hold) * 10.6, CHECKPOINT_Z);
+			mat4.rotateY(m, m, Math.sin(time * 2.1 + c.x) * 0.18);
+			const tint = c.hold > 0.01 ? FLAG_OURS : c.hold < -0.01 ? FLAG_THEIRS : FLAG_NEUTRAL;
+			this.models.checkpointFlag.push(m, this.tinted(this.style(), tint));
+		}
 	}
 
 	private bridge(w: World, minX: number, maxX: number): void {

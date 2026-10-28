@@ -2,8 +2,10 @@
 
 # Death From Above
 
-A side-view 3D bomber. You fly a strike aircraft over a living battlefield, break enemy columns
-before they reach your airfield, and dodge flak, tracers and SAMs while you do it.
+A side-view 3D bomber over a two-army war. Your army and the enemy's both send troops up the same
+road; theirs is much bigger. You fly the strike aircraft that has to make up the difference: break
+their columns, help your troops take the checkpoints along the road, and get them to the enemy HQ,
+which only ground troops can bring down. Dodge flak, tracers and SAMs while you do it.
 
 Everything you see is rendered by a custom WebGL2 engine written for this project — no three.js,
 no textures or audio files. Models are generated from code, sounds are synthesised in WebAudio.
@@ -99,9 +101,19 @@ and losing your aircraft doesn't hand you a fresh one.
   drops helicopters, blinds missiles), terrain-hugging cruise missiles, a ballistic missile that
   climbs out of sight and comes down at Mach 6, paratroopers who land and fight, the Thunderclap,
   the tactical nuke, and guided air-to-ground missiles fired in salvos.
-- **Friendly column** — your own tanks, APCs, trucks and jeeps push up the road toward the far bank.
-  They halt to trade fire with whatever blocks the way and take damage from your bombs like anything
-  else. Clear their path from the air.
+- **The war** — your reinforcements (riflemen, missile troopers, jeeps, tanks, APCs and AA
+  carriers) set off every 30 seconds from the furthest checkpoint you hold that isn't under attack,
+  or from the airfield. They creep in under fire, stand and fight at short range, and take damage
+  from your bombs like anything else. Enemy waves are bigger, keep rolling in whether or not you
+  wipe the last one out, and form up at the enemy's foremost checkpoint.
+- **Checkpoints** — four flags along the road (Crossroads, Farmstead, the Bridgehead past the river
+  and the Outpost). Troops standing on one alone raise their flag; both armies on it is a stalemate.
+  Units stop on a checkpoint their side doesn't hold until they take it. Each checkpoint the enemy
+  holds swells its waves; each one you take pays 300 points and lets your troops form up further
+  forward. The strip under the airfield bar shows who holds what.
+- **The enemy HQ** — a compound at the far end of the road, ringed by pillboxes and flak. Air
+  strikes don't touch it: your troops have to reach the wire and shell it down. Its strength bar is
+  on the front-line strip. Aircraft can't damage your airfield either; only enemy ground troops can.
 - **The river** — the road crosses a river on a steel truss bridge, and the railway on a viaduct
   beside it. Both armies need the crossings, so they are built to take anything you drop on them.
 - **No-fire zones** — a field hospital and a village sit on the road between the airfield and the
@@ -129,16 +141,16 @@ and losing your aircraft doesn't hand you a fresh one.
   - **Training**: fourteen guided lessons, each with its own practice targets, covering take-off, steering,
     guns, bombs, ordnance selection, guided missiles, focus, flares, afterburner and airbrake, and
     rearming. You can't be shot down for good, and Enter skips a lesson.
-  - **Campaign**: nine missions that get harder as you go, each with its own objectives (ambush the
-    convoy at the bridge, kill the tanks, escort your own armour across the river, silence the flak, hunt the SAM sites, clear the sky, hold until dawn).
+  - **Campaign**: nine missions that get harder as you go, each ending at a stronger enemy HQ and
+    most with goals of their own on the way (ambush the convoy at the bridge, kill the tanks, hold
+    three checkpoints at once, silence the flak, hunt the SAM sites, clear the sky).
     Iron Column ends with the Behemoth, Wild Weasel with the river cruiser and the final mission
     with the railway gun.
     Winning one unlocks the next and earns up to three stars (win, airfield above 70%, no aircraft
     lost). Progress and best scores are saved in the browser.
-  - **Endless**: waves until you fall, with a budget that grows each wave and more aircraft joining
-    past wave eleven. Every third wave a friendly column rolls out from the airfield; each vehicle you
-    get to the far bank pays a bonus, as does clearing a wave; your five best runs are kept on a local
-    leaderboard. The sky moves from golden hour through sunset, dusk and night to dawn.
+  - **Endless**: front after front. Each time your troops level the HQ (3,000 points times the
+    front) the enemy digs in a stronger one, while its waves keep growing and more aircraft join
+    past wave eleven; your five best runs are kept on a local leaderboard. The sky moves from golden hour through sunset, dusk and night to dawn.
 - **Physics** — lift/drag/stall flight model, ballistic and guided ordnance, a rigid-body solver for
   wreckage tumbling across deformable terrain, craters and scorch marks that cool from glowing
   embers to charcoal.

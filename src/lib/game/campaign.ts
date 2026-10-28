@@ -1,17 +1,19 @@
 import type { BiomeId } from './biomes';
 import type { AirKind } from './enemy-air';
 import type { UnitKind } from './types';
-import type { WaveDirector, WaveOptions } from './waves';
+import type { WarSetup } from './war';
+import type { WaveOptions } from './waves';
 import type { WeatherSpec } from './weather';
 import type { World } from './world';
 
 export type Target = UnitKind | AirKind;
 
 export type Objective =
-	| { type: 'waves'; count: number }
+	/** Our troops level the enemy HQ. */
+	| { type: 'hq' }
 	| { type: 'destroy'; kinds: Target[]; count: number; label: string }
-	/** Get this many vehicles of the friendly column to the rally point. */
-	| { type: 'escort'; count: number };
+	/** Hold this many checkpoints at the same time. */
+	| { type: 'capture'; count: number };
 
 export interface Mission {
 	id: string;
@@ -25,7 +27,10 @@ export interface Mission {
 	env: number[];
 	/** Weather for each wave, like `env`; omitted = clear with a light breeze. */
 	weather?: WeatherSpec[];
+	/** Enemy waves; `last` is how many are scripted (the war rolls on past them). */
 	waves: WaveOptions & { last: number };
+	/** The enemy HQ's strength and our reinforcements. */
+	war: WarSetup;
 	objectives: Objective[];
 	/** The airfield must stay above this fraction of its strength. */
 	baseFloor?: number;
@@ -39,19 +44,20 @@ export const MISSIONS: readonly Mission[] = [
 		id: 'first-light',
 		solo: true,
 		name: 'First Light',
-		tagline: 'Infantry and trucks on the road',
+		tagline: 'Break their first push',
 		brief:
-			'A light column is probing toward the airfield. Break it up before it reaches the wire. Rearm over the runway between passes.',
+			'Our troops are pushing up the road toward the enemy HQ, but theirs outnumber ours. Break up their columns from the air, help ours take the checkpoints, and get them to the HQ: only ground troops can bring it down. Rearm over the runway between passes.',
 		biome: 'temperate',
 		env: [0.9],
 		waves: {
 			last: 2,
 			briefings: [
 				'Infantry and trucks advancing. Strafe and bomb them on the road',
-				'A second column behind the first. Keep them off the airfield'
+				'A second column behind the first. Keep it off our troops'
 			]
 		},
-		objectives: [{ type: 'waves', count: 2 }]
+		war: { hqHp: 700, opening: ['rifleman', 'rifleman', 'rifleman', 'rifleman', 'jeep', 'tank'] },
+		objectives: [{ type: 'hq' }]
 	},
 	{
 		id: 'the-crossing',
@@ -71,9 +77,10 @@ export const MISSIONS: readonly Mission[] = [
 				'A second convoy behind the first. Stop it on the bridge'
 			]
 		},
+		war: { hqHp: 900 },
 		objectives: [
 			{ type: 'destroy', kinds: ['truck'], count: 5, label: 'Destroy supply trucks' },
-			{ type: 'waves', count: 2 }
+			{ type: 'hq' }
 		]
 	},
 	{
@@ -99,33 +106,44 @@ export const MISSIONS: readonly Mission[] = [
 				'The Behemoth is coming. Its rear guns track aircraft, so bomb it from the front'
 			]
 		},
+		war: { hqHp: 1100 },
 		objectives: [
 			{ type: 'destroy', kinds: ['tank'], count: 6, label: 'Destroy tanks' },
 			{ type: 'destroy', kinds: ['superTank'], count: 1, label: 'Destroy the Behemoth' },
-			{ type: 'waves', count: 2 }
+			{ type: 'hq' }
 		]
 	},
 	{
 		id: 'spearhead',
 		name: 'Spearhead',
-		tagline: 'Escort the armoured column',
+		tagline: 'Take the road',
 		brief:
-			'Our own armour is pushing up the road to take the far bank. Clear the way ahead of it: four of its six vehicles must reach the rally point.',
+			'Our armour is rolling out in strength. Clear the way ahead of it and hold three checkpoints at once, then push on to the HQ.',
 		env: [0.6],
 		biome: 'temperate',
 		waves: {
 			last: 2,
 			offset: 2,
-			column: (wave) => (wave === 1 ? ['tank', 'apc', 'tank', 'truck', 'apc', 'jeep'] : []),
 			briefings: [
 				'Friendly armour rolling out. Hit what stands in its way',
 				'Enemy reinforcements coming down the road at the column'
 			]
 		},
-		objectives: [
-			{ type: 'escort', count: 4 },
-			{ type: 'waves', count: 2 }
-		]
+		war: {
+			hqHp: 1100,
+			opening: [
+				'rifleman',
+				'rifleman',
+				'rifleman',
+				'rifleman',
+				'tank',
+				'apc',
+				'tank',
+				'apc',
+				'jeep'
+			]
+		},
+		objectives: [{ type: 'capture', count: 3 }, { type: 'hq' }]
 	},
 	{
 		id: 'flak-alley',
@@ -144,18 +162,19 @@ export const MISSIONS: readonly Mission[] = [
 				'Reinforcements moving up under the guns'
 			]
 		},
+		war: { hqHp: 1300 },
 		objectives: [
 			{ type: 'destroy', kinds: ['flak'], count: 3, label: 'Destroy flak batteries' },
 			{ type: 'destroy', kinds: ['bunker'], count: 2, label: 'Destroy pillboxes' },
-			{ type: 'waves', count: 2 }
+			{ type: 'hq' }
 		]
 	},
 	{
 		id: 'night-watch',
 		name: 'Night Watch',
-		tagline: 'Hold until dawn',
+		tagline: 'Attack before dawn',
 		brief:
-			'Three waves under cover of darkness. Searchlights will hunt you and the guns shoot straighter when they find you. The airfield must not fall below half strength.',
+			'A night assault on the HQ. Searchlights will hunt you and the guns shoot straighter when they find you. The airfield must not fall below half strength.',
 		biome: 'city',
 		env: [2.6, 3, 3.6],
 		weather: [
@@ -169,10 +188,11 @@ export const MISSIONS: readonly Mission[] = [
 			briefings: [
 				'Movement on the road after dark',
 				'Searchlights are up. Kill them to blind the flak',
-				'Last push before dawn. Hold the line'
+				'Last push before dawn. Get our troops to the wire'
 			]
 		},
-		objectives: [{ type: 'waves', count: 3 }],
+		war: { hqHp: 1400 },
+		objectives: [{ type: 'hq' }],
 		baseFloor: 0.5
 	},
 	{
@@ -198,11 +218,12 @@ export const MISSIONS: readonly Mission[] = [
 				'An AA cruiser is coming down the river to cover the crossing. Sink it'
 			]
 		},
+		war: { hqHp: 1500 },
 		objectives: [
 			{ type: 'destroy', kinds: ['sam'], count: 4, label: 'Destroy SAM launchers' },
 			{ type: 'destroy', kinds: ['radar'], count: 2, label: 'Destroy radar stations' },
 			{ type: 'destroy', kinds: ['cruiser'], count: 1, label: 'Sink the river cruiser' },
-			{ type: 'waves', count: 2 }
+			{ type: 'hq' }
 		]
 	},
 	{
@@ -223,9 +244,10 @@ export const MISSIONS: readonly Mission[] = [
 				'Their last squadron is airborne'
 			]
 		},
+		war: { hqHp: 1600 },
 		objectives: [
 			{ type: 'destroy', kinds: ['fighter', 'heli'], count: 8, label: 'Shoot down aircraft' },
-			{ type: 'waves', count: 3 }
+			{ type: 'hq' }
 		]
 	},
 	{
@@ -233,7 +255,7 @@ export const MISSIONS: readonly Mission[] = [
 		name: 'Death From Above',
 		tagline: 'Everything they have left',
 		brief:
-			'The final offensive: armour, air defence and aircraft all at once, from dusk through the night, and a railway gun coming down the line to shell the airfield. Four waves. Keep the airfield standing.',
+			'The final offensive against their main HQ: armour, air defence and aircraft all at once, from dusk through the night, and a railway gun coming down the line to shell the airfield. Keep the airfield standing.',
 		biome: 'city',
 		env: [1.9, 2.6, 3.2, 4.1],
 		waves: {
@@ -252,9 +274,10 @@ export const MISSIONS: readonly Mission[] = [
 				'Final wave. Their railway gun is on the line: cut the track ahead of it'
 			]
 		},
+		war: { hqHp: 2200, reinforce: 1.1 },
 		objectives: [
 			{ type: 'destroy', kinds: ['railGun'], count: 1, label: 'Destroy the railway gun' },
-			{ type: 'waves', count: 4 }
+			{ type: 'hq' }
 		],
 		baseFloor: 0.4
 	}
@@ -287,12 +310,10 @@ export class MissionTracker {
 	readonly destroyed: Partial<Record<Target, number>> = {};
 	/** Lowest the airfield has been, as a fraction. */
 	baseLow = 1;
-	/** Friendly vehicles through to the rally point. */
-	escorted = 0;
-	/** Friendly vehicles through or still on the road. */
-	escortLeft = 0;
-	/** The friendly column has rolled out. */
-	escortOut = false;
+	/** The enemy HQ has fallen. */
+	hqDown = false;
+	/** Most checkpoints our troops have held at once. */
+	mostHeld = 0;
 	private readonly seen = new Set<number>();
 	/** Ground units last seen alive, so ones cleared away in the same step they died still count. */
 	private living = new Map<number, Target>();
@@ -318,33 +339,31 @@ export class MissionTracker {
 			if (!a.alive || a.dying) this.tally(a.id, a.kind);
 		}
 		this.baseLow = Math.min(this.baseLow, w.base.hp / w.base.maxHp);
-		this.escorted = w.allies.arrived;
-		this.escortLeft = w.allies.arrived + w.allies.alive();
-		this.escortOut = w.allies.deployed > 0;
+		if (w.war.active) {
+			this.hqDown ||= w.war.hq.destroyed;
+			this.mostHeld = Math.max(this.mostHeld, w.war.held('player'));
+		}
 	}
 
 	count(kinds: Target[]): number {
 		return kinds.reduce((n, k) => n + (this.destroyed[k] ?? 0), 0);
 	}
 
-	status(waves: WaveDirector): ObjectiveStatus[] {
+	status(): ObjectiveStatus[] {
 		const out = this.mission.objectives.map((o): ObjectiveStatus => {
 			switch (o.type) {
-				case 'waves': {
-					const n = Math.min(waves.cleared, o.count);
-					return { label: 'Hold the airfield', count: `${n}/${o.count} waves`, done: n >= o.count };
-				}
+				case 'hq':
+					return { label: 'Destroy the enemy HQ', count: '', done: this.hqDown };
 				case 'destroy': {
 					const n = Math.min(this.count(o.kinds), o.count);
 					return { label: o.label, count: `${n}/${o.count}`, done: n >= o.count };
 				}
-				case 'escort': {
-					const n = Math.min(this.escorted, o.count);
+				case 'capture': {
+					const n = Math.min(this.mostHeld, o.count);
 					return {
-						label: 'Get the column through',
+						label: 'Hold checkpoints at once',
 						count: `${n}/${o.count}`,
-						done: n >= o.count,
-						failed: this.escortFailed(o.count)
+						done: n >= o.count
 					};
 				}
 			}
@@ -362,8 +381,8 @@ export class MissionTracker {
 	}
 
 	/** All goals met (constraints are only checked for failure). */
-	complete(waves: WaveDirector): boolean {
-		return this.status(waves).every((s) => s.done);
+	complete(): boolean {
+		return this.status().every((s) => s.done);
 	}
 
 	failed(): boolean {
@@ -374,13 +393,7 @@ export class MissionTracker {
 	failure(): string | null {
 		const floor = this.mission.baseFloor;
 		if (floor !== undefined && this.baseLow < floor) return 'The airfield was overrun';
-		for (const o of this.mission.objectives)
-			if (o.type === 'escort' && this.escortFailed(o.count)) return 'The column was destroyed';
 		return null;
-	}
-
-	private escortFailed(count: number): boolean {
-		return this.escortOut && this.escorted < count && this.escortLeft < count;
 	}
 }
 

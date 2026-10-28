@@ -127,6 +127,8 @@ const BUILDERS = {
 	fuelTankSmall: [st.fuelTankSmall, true],
 	windsock: [st.windsock, true],
 	flagpole: [st.flagpole, true],
+	checkpointMast: [st.checkpointMast, true],
+	checkpointFlag: [st.checkpointFlag, true],
 	sandbagWall: [() => st.sandbagWall(8), true],
 	tankTrap: [st.tankTrap, true],
 	crates: [st.crateStack, true],

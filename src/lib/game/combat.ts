@@ -212,6 +212,7 @@ export function explode(
 		w.civilians.houseCollapsed(w, h, by);
 	}
 	w.civilians.blast(w, x, y, z, r, b.damage, by);
+	w.war.blastAt(w, x, by);
 
 	w.bridge?.blast(w, x, y, z, r, b.damage, b.pierce, by);
 	w.railBridge?.blast(w, x, y, z, r, b.damage, b.pierce, by);
