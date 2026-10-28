@@ -28,7 +28,7 @@ export type RadioCue =
 export interface RadioLine {
 	/** Clip file (static/audio/radio/<file>.mp3). */
 	file: string;
-	/** The words, for subtitles and the speech fallback. */
+	/** The words, for subtitles and the voice generator. */
 	text: string;
 }
 
@@ -59,7 +59,7 @@ const TIMING: Record<RadioCue, CueTiming> = {
 	enemyAir: { priority: 3, cooldown: 30, ttl: 5 },
 	waveInbound: { priority: 3, cooldown: 10, ttl: 6 },
 	waveClear: { priority: 3, cooldown: 10, ttl: 6 },
-	sortie: { priority: 2, cooldown: 6, ttl: 6 },
+	sortie: { priority: 2, cooldown: 6, ttl: 12 },
 	rearmed: { priority: 2, cooldown: 20, ttl: 4 },
 	missileDefeated: { priority: 2, cooldown: 12, ttl: 2 },
 	streak: { priority: 1, cooldown: 18, ttl: 2.5 },
@@ -87,7 +87,7 @@ export const RADIO: Record<RadioCue, CueSpec> = Object.fromEntries(
 
 export const RADIO_CUES = Object.keys(TIMING) as RadioCue[];
 
-/** Clips that `pnpm voice radio` has generated; the rest are read by the speech voice. */
+/** Clips that `pnpm voice radio` has generated; a call with none of its takes recorded stays silent. */
 export const RECORDED: ReadonlySet<string> = new Set(script.recorded);
 
 /** What the radio watches each frame to decide when something is worth a call. */
@@ -181,8 +181,16 @@ export class RadioDesk {
 		return this.busy > 0;
 	}
 
-	/** Advances time; returns what to put on the air now. `hold` blocks new calls (the cockpit voice is talking). */
-	update(dt: number, hold = false): Transmission | null {
+	/**
+	 * Advances time; returns what to put on the air now. `hold` blocks new calls (the cockpit
+	 * voice is talking); `playable` says which clips have loaded — a call waits for one of its
+	 * recordings (and goes stale without one) rather than being read by a speech voice.
+	 */
+	update(
+		dt: number,
+		hold = false,
+		playable: (file: string) => boolean = () => true
+	): Transmission | null {
 		this.busy -= dt;
 		for (const [c, t] of this.cool) this.cool.set(c, t - dt);
 		for (const [c, t] of this.pending) {
@@ -192,14 +200,17 @@ export class RadioDesk {
 		if (hold || this.busy > -GAP || this.pending.size === 0) return null;
 		let cue: RadioCue | null = null;
 		for (const c of this.pending.keys())
-			if (!cue || RADIO[c].priority > RADIO[cue].priority) cue = c;
+			if (RADIO[c].lines.some((l) => playable(l.file)))
+				if (!cue || RADIO[c].priority > RADIO[cue].priority) cue = c;
 		if (!cue) return null;
 		this.pending.delete(cue);
 		this.cool.set(cue, RADIO[cue].cooldown);
 		const spec = RADIO[cue];
+		const takes = spec.lines.flatMap((l, i) => (playable(l.file) ? [i] : []));
 		const last = this.lastTake.get(cue) ?? -1;
-		let take = Math.floor(this.rand() * spec.lines.length) % spec.lines.length;
-		if (take === last && spec.lines.length > 1) take = (take + 1) % spec.lines.length;
+		let pick = Math.floor(this.rand() * takes.length) % takes.length;
+		if (takes[pick] === last && takes.length > 1) pick = (pick + 1) % takes.length;
+		const take = takes[pick];
 		this.lastTake.set(cue, take);
 		this.busy = estimateLength(spec.lines[take].text);
 		return { cue, speaker: spec.speaker, line: spec.lines[take] };
@@ -217,7 +228,7 @@ export class RadioDesk {
 	}
 }
 
-/** Rough spoken length of a line, for the speech fallback (about 2.8 words a second). */
+/** Rough spoken length of a line (about 2.8 words a second). */
 export function estimateLength(text: string): number {
 	return 0.5 + text.split(/\s+/).length / 2.8;
 }

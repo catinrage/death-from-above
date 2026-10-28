@@ -118,6 +118,22 @@ describe('CameraRig bomb framing', () => {
 	});
 });
 
+describe('CameraRig on the runway', () => {
+	it('keeps the ground line low with sky above while taking off or landing', () => {
+		const cam = new CameraRig();
+		cam.aspect = 1.94;
+		for (const interest of [null, [1015, 1015] as [number, number]]) {
+			cam.interest = interest;
+			cam.snap({ x: 1000, y: 12, vx: 0, vy: 0 }, 10);
+			cam.update(0, 10);
+			const ground = cam.project(1000, 10, 0, 1940, 1000);
+			const plane = cam.project(1000, 12, 0, 1940, 1000);
+			expect(ground && ground[1] > 600 && ground[1] < 760).toBe(true);
+			expect(plane && plane[1] > 500 && plane[1] < ground![1]).toBe(true);
+		}
+	});
+});
+
 describe('CameraRig high altitude', () => {
 	it('zooms out as the aircraft climbs so the ground never leaves the frame', () => {
 		const cam = new CameraRig();
