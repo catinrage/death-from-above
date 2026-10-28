@@ -328,6 +328,7 @@
 				{hud.landed ? 'LANDED · ' : ''}REARMING &amp; REPAIRING
 			</div>
 			{#if systemsHit && !hud.landed}<div class="warn soft">LAND TO REPAIR SYSTEMS</div>{/if}
+			{#if hud.canSwap}<div class="takeoff">Esc · change aircraft</div>{/if}
 		{/if}
 	</section>
 

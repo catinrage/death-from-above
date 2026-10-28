@@ -27,7 +27,8 @@ export function startSandbox(canvas: HTMLCanvasElement): () => void {
 		aberration: 0.0025,
 		waves: new Float32Array(32),
 		numWaves: 0,
-		skyFlash: [0, -1, 0]
+		skyFlash: [0, -1, 0],
+		lens: 1
 	};
 	const m = mat4.create();
 	const ground = (x: number, z: number): number => terrain.heightAtXZ(x, z);

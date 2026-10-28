@@ -1,4 +1,5 @@
 import { clamp, damp, DEG, mat4, vec3 } from '../engine/math';
+import { lensDistort, lensUndistort } from '../engine/lens';
 import type { CameraFrame } from '../engine/renderer';
 
 export interface FollowTarget {
@@ -38,6 +39,8 @@ export class CameraRig {
 	readonly far = 9000;
 	aspect = 16 / 9;
 	trauma = 0;
+	/** Barrel distortion the post stack applies, so screen mapping matches what is drawn. */
+	lens = 0;
 	private time = 0;
 	private lead = 0;
 	minDist = 70;
@@ -213,8 +216,9 @@ export class CameraRig {
 	/** Maps a CSS-pixel screen point onto the battle plane (z = 0). Null if the ray misses it. */
 	unproject(sx: number, sy: number, cssW: number, cssH: number): [number, number] | null {
 		const m = this.frame.invViewProj;
-		const nx = (sx / cssW) * 2 - 1,
-			ny = 1 - (sy / cssH) * 2;
+		const [u, v] = lensDistort(sx / cssW, 1 - sy / cssH, cssW / cssH, this.lens);
+		const nx = u * 2 - 1,
+			ny = v * 2 - 1;
 		const a = mat4.transformPoint(vec3.create(), m, nx, ny, -1);
 		const b = mat4.transformPoint(vec3.create(), m, nx, ny, 1);
 		const dz = b[2] - a[2];
@@ -231,6 +235,7 @@ export class CameraRig {
 		if (w <= 0) return null;
 		const nx = (m[0] * x + m[4] * y + m[8] * z + m[12]) / w;
 		const ny = (m[1] * x + m[5] * y + m[9] * z + m[13]) / w;
-		return [(nx * 0.5 + 0.5) * cssW, (1 - (ny * 0.5 + 0.5)) * cssH];
+		const [u, v] = lensUndistort(nx * 0.5 + 0.5, ny * 0.5 + 0.5, cssW / cssH, this.lens);
+		return [u * cssW, (1 - v) * cssH];
 	}
 }

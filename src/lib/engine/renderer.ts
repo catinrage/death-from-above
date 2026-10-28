@@ -35,6 +35,7 @@ import {
 	RAYS_BLUR_FS,
 	RAYS_MASK_FS
 } from './shaders/post';
+import { LENS_BARREL } from './lens';
 
 export type RGB = [number, number, number];
 
@@ -105,6 +106,8 @@ export interface PostFrame {
 	numWaves: number;
 	/** Horizon artillery flash: direction x, direction z, intensity. */
 	skyFlash: [number, number, number];
+	/** Vintage camera lens look, 0 (off) to 1. */
+	lens: number;
 }
 
 export interface Quality {
@@ -753,6 +756,8 @@ export class Renderer {
 			.v3('u_tint', env.tint)
 			.v3('u_flash', post.flash)
 			.f1('u_damage', post.damage)
+			.f1('u_lens', post.lens)
+			.f1('u_lensK', post.lens * LENS_BARREL)
 			.i1('u_numWaves', post.numWaves)
 			.v4array('u_waves', post.waves, post.numWaves);
 		if (this.quality.fxaa) {

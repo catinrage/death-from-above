@@ -17,6 +17,7 @@
 		onSortie: () => void;
 		onHangar: () => void;
 		onQuality: (q: QualityLevel) => void;
+		onLens: (on: boolean) => void;
 		onVolume: (v: number) => void;
 		onControls: () => void;
 	}
@@ -29,6 +30,7 @@
 		onSortie,
 		onHangar,
 		onQuality,
+		onLens,
 		onVolume,
 		onControls
 	}: Props = $props();
@@ -148,6 +150,12 @@
 				>
 			{/each}
 		</div>
+		<button
+			class="m-tile lens"
+			class:on={settings.lens}
+			aria-pressed={settings.lens}
+			onclick={() => onLens(!settings.lens)}>Film lens · {settings.lens ? 'on' : 'off'}</button
+		>
 		<label class="vol">
 			<span class="m-label">Volume <b>{Math.round(settings.volume * 100)}</b></span>
 			<input
@@ -535,6 +543,23 @@
 	}
 
 	.seg button.on {
+		color: var(--amber);
+	}
+
+	.lens {
+		width: 100%;
+		margin-bottom: 6px;
+		padding: 7px 4px;
+		justify-items: center;
+		font-family: var(--display);
+		font-size: 12px;
+		font-weight: 600;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--ink-dim);
+	}
+
+	.lens.on {
 		color: var(--amber);
 	}
 
