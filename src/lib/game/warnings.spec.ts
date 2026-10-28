@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { Player } from './player';
 import { launchMissile } from './projectiles';
 import { testWorld } from './test-world';
-import { cockpitAlerts, incomingThreats, lockThreat, missileThreat } from './warnings';
+import { WORLD } from './constants';
+import { cockpitAlerts, incomingThreats, lockThreat, missileThreat, runwayEnd } from './warnings';
 
 describe('cockpit warnings', () => {
 	it('reports the closest missile homing on the aircraft and where it is', () => {
@@ -64,5 +65,58 @@ describe('cockpit warnings', () => {
 		const dir = lockThreat(p).lockDir;
 		expect(dir).toBeGreaterThan(Math.PI / 2);
 		expect(dir).toBeLessThan(Math.PI);
+	});
+});
+
+describe('runway end warning', () => {
+	const rolling = (x: number, vx: number) => {
+		const w = testWorld();
+		const p = new Player('kestrel', x, 0, 0);
+		w.player = p;
+		p.park(w);
+		p.gear.parked = false;
+		p.vx = vx;
+		return { w, p };
+	};
+
+	it('is quiet parked, and early in the roll with plenty of runway ahead', () => {
+		const { w, p } = rolling(WORLD.runwayMinX + 60, 0);
+		p.gear.parked = true;
+		expect(runwayEnd(w, p)).toBe(0);
+		p.gear.parked = false;
+		p.vx = 20;
+		expect(runwayEnd(w, p)).toBe(0);
+		expect(cockpitAlerts(w, p).runway).toBe(false);
+	});
+
+	it('warns with the metres left when the runway ahead runs short for the speed', () => {
+		const { w, p } = rolling(WORLD.runwayMaxX - 90, 45);
+		expect(runwayEnd(w, p)).toBeCloseTo(90, 0);
+		expect(cockpitAlerts(w, p).runway).toBe(true);
+		// Slow taxi near the end is fine; the same speed heading back down the runway too.
+		p.vx = 3;
+		expect(runwayEnd(w, p)).toBe(0);
+		p.vx = -45;
+		expect(runwayEnd(w, p)).toBe(0);
+	});
+
+	it('looks the other way when rolling toward the near end', () => {
+		const { w, p } = rolling(WORLD.runwayMinX + 70, -40);
+		expect(runwayEnd(w, p)).toBeCloseTo(70, 0);
+	});
+
+	it('warns on a landing flare that touches down too late', () => {
+		const w = testWorld();
+		const x = WORLD.runwayMaxX - 80;
+		const p = new Player('kestrel', x, w.surface.clearance(x) + 6, 0);
+		w.player = p;
+		p.vx = 55;
+		p.vy = -2;
+		expect(runwayEnd(w, p)).toBe(0);
+		p.gear.extend();
+		expect(runwayEnd(w, p)).toBeCloseTo(80, 0);
+		// Climbing away (a go-around) or gear up: not a landing.
+		p.vy = 4;
+		expect(runwayEnd(w, p)).toBe(0);
 	});
 });

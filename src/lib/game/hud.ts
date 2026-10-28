@@ -115,6 +115,8 @@ export interface HudSnapshot {
 	inbound: boolean;
 	stall: boolean;
 	pullUp: boolean;
+	/** Metres of runway left when a take-off or landing roll is running out of room; 0 otherwise. */
+	runwayEnd: number;
 	boundary: number;
 	ceiling: boolean;
 	rearming: boolean;
@@ -225,6 +227,7 @@ export function emptyHud(): HudSnapshot {
 		inbound: false,
 		stall: false,
 		pullUp: false,
+		runwayEnd: 0,
 		boundary: 0,
 		ceiling: false,
 		rearming: false,
