@@ -7,6 +7,8 @@ export type QualityLevel = 'low' | 'medium' | 'high';
 
 export interface Settings {
 	quality: QualityLevel;
+	/** Vintage camera lens post-processing (grain, halation, distortion, faded grade). */
+	lens: boolean;
 	volume: number;
 	aircraft: AircraftId;
 	/** Hangar loadouts the pilot customised, per aircraft. */
@@ -16,6 +18,7 @@ export interface Settings {
 const KEY = 'dfa.settings';
 const DEFAULTS: Settings = {
 	quality: 'high',
+	lens: true,
 	volume: 0.75,
 	aircraft: 'kestrel',
 	loadouts: {}
@@ -33,6 +36,7 @@ export function loadSettings(): Settings {
 			quality: QUALITIES.includes(r.quality as QualityLevel)
 				? (r.quality as QualityLevel)
 				: DEFAULTS.quality,
+			lens: typeof r.lens === 'boolean' ? r.lens : DEFAULTS.lens,
 			volume:
 				typeof r.volume === 'number' && r.volume >= 0 && r.volume <= 1 ? r.volume : DEFAULTS.volume,
 			aircraft: AIRCRAFT.includes(r.aircraft as AircraftId)

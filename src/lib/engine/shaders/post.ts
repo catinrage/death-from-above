@@ -127,6 +127,8 @@ uniform float u_contrast;
 uniform vec3 u_tint;
 uniform vec3 u_flash;
 uniform float u_damage;
+uniform float u_lens;
+uniform float u_lensK;
 uniform int u_numWaves;
 uniform vec4 u_waves[MAX_WAVES];
 in vec2 v_uv;
@@ -139,6 +141,14 @@ vec3 aces(vec3 x) {
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+// Barrel distortion; mirrors lensDistort in engine/lens.ts so HTML overlays stay aligned.
+vec2 lensUV(vec2 q, float aspect) {
+	vec2 c = q - 0.5;
+	float a2 = aspect * aspect;
+	float r2 = 2.0 * (c.x * c.x * a2 + c.y * c.y) / (a2 + 1.0);
+	return 0.5 + c * (1.0 + u_lensK * (r2 - 0.5));
 }
 
 void main() {
@@ -154,13 +164,25 @@ void main() {
 		float ring = exp(-x * x) * x;
 		uv -= (d / max(dist, 1e-4)) * ring * w.w / vec2(aspect, 1.0);
 	}
+	// Vintage lens: film runs at 24 fps, so its flaws change on that beat.
+	float L = u_lens;
+	float fr = floor(u_time * 24.0);
+	vec2 sc = uv - 0.5;
+	if (L > 0.0) {
+		uv = lensUV(uv, aspect);
+		// Gate weave: the print shifts a hair from frame to frame.
+		uv += (vec2(hash(vec2(fr, 1.7)), hash(vec2(fr, 5.3))) - 0.5) * 0.0007 * L;
+	}
 	vec2 cc = uv - 0.5;
-	float ca = u_aberration * (0.4 + dot(cc, cc) * 2.4);
+	float ca = u_aberration * (0.4 + dot(cc, cc) * 2.4) + L * 0.012 * dot(cc, cc);
 	vec3 col;
 	col.r = texture(u_scene, uv - cc * ca).r;
 	col.g = texture(u_scene, uv).g;
 	col.b = texture(u_scene, uv + cc * ca).b;
-	col += texture(u_bloom, uv).rgb * u_bloomStrength;
+	vec3 bloom = texture(u_bloom, uv).rgb;
+	col += bloom * u_bloomStrength;
+	// Halation: highlights bleed a red-orange fringe through the film base.
+	col += bloom * vec3(0.9, 0.32, 0.12) * (0.45 * L * step(1e-4, u_bloomStrength));
 	col += texture(u_rays, uv).rgb * u_raysColor;
 	col += u_flash;
 	col *= u_exposure * u_tint;
@@ -171,9 +193,45 @@ void main() {
 	vec2 vc = cc * vec2(aspect, 1.0) * 0.72;
 	float vig = smoothstep(0.95, 0.15, length(vc));
 	col *= mix(1.0 - u_vignette, 1.0, vig);
+	// Lens falloff: a round, soft darkening toward the frame edge.
+	col *= 1.0 - L * 0.42 * smoothstep(0.3, 1.05, length(sc * vec2(aspect, 1.0)));
 	col = mix(col, vec3(0.55, 0.02, 0.0), u_damage * (1.0 - vig) * 0.85);
 	col = pow(col, vec3(1.0 / 2.2));
+	if (L > 0.0) {
+		// Faded print: a little less colour, cool shadows, warm cream highlights,
+		// lifted blacks and softened whites.
+		float dl = dot(col, vec3(0.2126, 0.7152, 0.0722));
+		vec3 f = mix(vec3(dl), col, 0.86);
+		f = mix(f * vec3(0.93, 1.0, 1.03), f * vec3(1.06, 1.0, 0.84), smoothstep(0.2, 0.85, dl));
+		f = vec3(0.035, 0.03, 0.04) + f * 0.93;
+		// Projector flicker.
+		f *= 1.0 + (hash(vec2(fr, 3.1)) - 0.5) * 0.04;
+		col = mix(col, f, L);
+	}
 	col += (hash(uv * u_resolution + fract(u_time) * 100.0) - 0.5) * u_grain;
+	if (L > 0.0) {
+		vec2 px = v_uv * u_resolution;
+		float gl = dot(col, vec3(0.299, 0.587, 0.114));
+		// Film grain: clumpier than pixel noise, strongest in the midtones.
+		float g = hash(floor(px / 1.6) + fr * 17.13) + hash(floor(px / 2.7) + fr * 7.31) - 1.0;
+		col += g * L * 0.035 * (0.4 + 2.4 * gl * (1.0 - gl));
+		// Dust: a speck or two lands on the odd frame.
+		vec2 cells = vec2(12.0, 7.0);
+		vec2 gcell = v_uv * cells;
+		vec2 id = floor(gcell);
+		if (hash(id + fr * 1.37) > 0.988) {
+			vec2 at = vec2(hash(id + fr * 2.11 + 0.3), hash(id + fr * 3.71 + 0.9));
+			float dd = length((fract(gcell) - at) * u_resolution / cells);
+			col *= 1.0 - L * 0.55 * smoothstep(2.6, 0.6, dd);
+		}
+		// A faint scratch that wanders along the print now and then.
+		float sl = floor(u_time * 0.6);
+		float sx = hash(vec2(sl, 8.2)) + sin(u_time * 2.3) * 0.004;
+		float on = step(0.6, hash(vec2(sl, 4.4))) * step(0.25, hash(vec2(fr, 6.6)));
+		float line = exp(-pow((v_uv.x - sx) * u_resolution.x / 1.1, 2.0));
+		line *= 0.5 + 0.5 * sin(v_uv.y * 37.0 + fr);
+		col += line * on * L * 0.07;
+	}
 	o_color = vec4(col, dot(col, vec3(0.299, 0.587, 0.114)));
 }
 `;

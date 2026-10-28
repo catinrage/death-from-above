@@ -102,6 +102,7 @@
 				if (new URLSearchParams(location.search).has('debug')) {
 					(window as unknown as { __dfa: Game }).__dfa = game;
 				}
+				game.setLens(settings.lens);
 				game.audio.setVolume(settings.volume);
 				const audio = game.audio;
 				setMenuSound((kind) => {
@@ -218,6 +219,12 @@
 		game?.setQuality(QUALITY_PRESETS[q]);
 	}
 
+	function setLens(on: boolean): void {
+		settings = { ...settings, lens: on };
+		saveSettings(settings);
+		game?.setLens(on);
+	}
+
 	function setVolume(v: number): void {
 		settings = { ...settings, volume: v };
 		saveSettings(settings);
@@ -280,6 +287,7 @@
 				onSortie={chooseMode}
 				onHangar={() => openHangar(true)}
 				onQuality={setQuality}
+				onLens={setLens}
 				onVolume={setVolume}
 				onControls={() => (showControls = true)}
 			/>

@@ -84,6 +84,7 @@ import {
 	runwayEnd
 } from './warnings';
 import { RESOLVE } from './projectiles';
+import { LENS_BARREL } from '../engine/lens';
 import { SHOAL } from './river';
 import { World } from './world';
 import { Wingman, WING_HP, type WingOrder } from './wingman';
@@ -229,7 +230,8 @@ export class Game {
 		aberration: 0.002,
 		waves: new Float32Array(32),
 		numWaves: 0,
-		skyFlash: [0, -1, 0]
+		skyFlash: [0, -1, 0],
+		lens: 1
 	};
 	private pilotFrame: PilotInput = { ...NO_INPUT };
 	private pilotSub: PilotInput = { ...NO_INPUT };
@@ -407,6 +409,12 @@ export class Game {
 	setQuality(q: Quality): void {
 		this.renderer.setQuality(q);
 		this.resize();
+	}
+
+	/** Turns the vintage camera lens look on or off. */
+	setLens(on: boolean): void {
+		this.post.lens = on ? 1 : 0;
+		this.world.camera.lens = on ? LENS_BARREL : 0;
 	}
 
 	private setPhase(p: GamePhase): void {
