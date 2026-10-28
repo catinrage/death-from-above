@@ -285,6 +285,7 @@
 				RUNWAY END <small>{Math.round(hud.runwayEnd)} m · V brakes · W rotate</small>
 			</div>
 		{/if}
+		{#if hud.gearDown}<div class="warn soft">GEAR DOWN <small>B raises the gear</small></div>{/if}
 		{#if hud.boundary > 0}
 			<div class="warn">
 				RETURN TO COMBAT AREA <small>{Math.max(0, BOUNDS_GRACE - hud.boundary).toFixed(1)}</small>

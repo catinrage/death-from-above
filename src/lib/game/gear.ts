@@ -7,8 +7,8 @@ import type { Vec3T } from './types';
 export const GEAR_CYCLE = 2.5;
 /** Height of the aircraft's origin above the runway when it sits on its wheels. */
 export const GEAR_HEIGHT = 1.7;
-/** Extra drag with the gear fully down, as a fraction of the clean airframe's. */
-export const GEAR_DRAG = 0.55;
+/** Extra drag with the gear fully down, as a fraction of the clean airframe's: about a quarter off top speed. */
+export const GEAR_DRAG = 0.9;
 /** Rotation speed as a multiple of the stall speed. */
 export const ROTATE_FACTOR = 1.1;
 /** Nose attitude while rolling, and the most the tail allows when rotating. */

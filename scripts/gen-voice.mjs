@@ -28,6 +28,7 @@ const COCKPIT = {
 	damage: 'Warning. Damage critical.',
 	altitude: 'Altitude. Altitude.',
 	ceiling: 'Altitude ceiling.',
+	'gear-down': 'Gear down.',
 	boundary: 'Warning. Leaving combat area.',
 	overheat: 'Guns overheat.',
 	winchester: 'Winchester.'

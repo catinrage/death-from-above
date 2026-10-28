@@ -43,6 +43,7 @@
 			{#if wing.missilesMax > 0}<span>MSL <b>{wing.missiles}</b></span>{/if}
 			<span>FLR <b>{wing.flares}</b></span>
 		</div>
+		{#if wing.gearDown}<p class="gear">GEAR DOWN · right stick click raises it</p>{/if}
 	{/if}
 	{#if wing.noPad}
 		<p class="pad">Connect a gamepad to fly P2</p>
@@ -163,6 +164,14 @@
 		font-size: 11px;
 		letter-spacing: 0.1em;
 		color: var(--amber);
+	}
+
+	.gear {
+		margin: 0;
+		font-size: 11px;
+		letter-spacing: 0.1em;
+		color: var(--amber);
+		animation: blink 0.5s linear infinite alternate;
 	}
 
 	.critical {

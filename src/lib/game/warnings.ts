@@ -11,6 +11,9 @@ const LOW_ALT = 22;
 const GEAR_ALT = 35;
 const GEAR_SPEED = 1.8;
 const GEAR_RANGE = 300;
+/** "Gear down": quiet within this far past the runway's far end and below this height (take-off and landing). */
+const GEAR_UP_RANGE = 500;
+const GEAR_UP_ALT = 140;
 /** Runway end: slower than this (m/s) is a taxi, not a roll worth warning about. */
 const RUNWAY_TAXI = 6;
 /** Warn once the runway left is under the braking distance times this, plus this many metres. */
@@ -30,6 +33,7 @@ export function cockpitAlerts(w: World, p: Player): AlertState {
 	s.stall = p.stalled && !p.landed;
 	s.gear = gearWarning(w, p, alt);
 	s.runway = runwayEnd(w, p, alt) > 0;
+	s.gearDown = gearUpWarning(w, p, alt);
 	s.missile = w.missiles.some((m) => m.target === p && m.alive);
 	s.lock = p.lockProgress > 0.75;
 	s.fire = p.hp < p.def.hp * 0.18;
@@ -46,6 +50,18 @@ export function gearWarning(w: World, p: Player, alt = p.y - w.surface.clearance
 	if (p.flight !== 'fixed' || p.landed || p.gear.down) return false;
 	const near = p.x > WORLD.runwayMinX - GEAR_RANGE && p.x < WORLD.runwayMaxX + GEAR_RANGE;
 	return near && alt < GEAR_ALT && p.vy < -1 && p.speed < p.def.stallSpeed * GEAR_SPEED;
+}
+
+/**
+ * Flying with the wheels hanging out (dragging the aircraft back) once clear of the
+ * runway: away from the take-off climb-out and the landing approach.
+ */
+export function gearUpWarning(w: World, p: Player, alt = p.y - w.surface.clearance(p.x)): boolean {
+	if (p.flight !== 'fixed' || !p.alive || p.dying || p.landed || !p.hasFlown) return false;
+	if (!p.gear.down) return false;
+	const nearRunway =
+		p.x > WORLD.runwayMinX - GEAR_UP_RANGE && p.x < WORLD.runwayMaxX + GEAR_UP_RANGE;
+	return !(nearRunway && alt < GEAR_UP_ALT);
 }
 
 /**
