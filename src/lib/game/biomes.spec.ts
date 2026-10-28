@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { BIOMES, BIOME_ORDER, gradeEnvironment, isBiome, type BiomeId } from './biomes';
-import { MISSIONS } from './campaign';
 import { WORLD } from './constants';
 import { environmentAt } from './environment';
 import { Props } from './props';
@@ -149,12 +148,6 @@ describe('Biomes', () => {
 		);
 		expect(desert.cloud[0]).toBeLessThan(noon.cloud[0]);
 		expect(snow.ambGround[2]).toBeGreaterThan(noon.ambGround[2] * 2);
-	});
-
-	it('flies the campaign across every biome', () => {
-		for (const m of MISSIONS) expect(isBiome(m.biome)).toBe(true);
-		expect(new Set(MISSIONS.map((m) => m.biome))).toEqual(new Set(BIOME_ORDER));
-		expect(MISSIONS[0].biome).toBe('temperate');
 	});
 
 	it('swaps a live world to another biome and back', () => {

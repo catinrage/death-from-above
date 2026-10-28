@@ -89,7 +89,7 @@
 			<span class="from"><Letters text="FROM ABOVE" delay={800} stagger={32} /></span>
 		</h1>
 		<p class="tag m-rise" style:--d="1150ms">
-			Hold the airfield. Break the column. Every bomb you carry is someone's bad day.
+			Their army is bigger. Ours has you. Clear the road and get our troops to the enemy HQ.
 		</p>
 	</header>
 

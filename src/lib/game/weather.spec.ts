@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { environmentAt } from './environment';
 import { BOMBS } from './defs-bombs';
-import { MISSIONS } from './campaign';
 import { Player } from './player';
 import { IR_RANGE, launchMissile, updateProjectiles } from './projectiles';
 import { testWorld } from './test-world';
@@ -147,15 +146,11 @@ describe('heat seekers in bad weather', () => {
 });
 
 describe('weather schedule and look', () => {
-	it('opens endless with clear waves, then brings in mist', () => {
+	it('opens the war with clear waves, then brings in mist', () => {
 		expect(weatherForWave(1).kind).toBe('clear');
 		expect(weatherForWave(2).kind).toBe('clear');
 		const kinds = new Set(Array.from({ length: 10 }, (_, i) => weatherForWave(i + 1).kind));
 		expect(kinds).toEqual(new Set(['clear', 'mist']));
-	});
-
-	it('gives some campaign missions mist', () => {
-		expect(MISSIONS.some((m) => m.weather?.some((s) => s.kind !== 'clear'))).toBe(true);
 	});
 
 	it('softens the sun, and thickens and pales the fog in mist', () => {
@@ -174,8 +169,6 @@ describe('weather schedule and look', () => {
 	it('only knows clear skies and mist', () => {
 		for (let wave = 1; wave <= 30; wave++)
 			expect(['clear', 'mist']).toContain(weatherForWave(wave).kind);
-		for (const m of MISSIONS)
-			for (const s of m.weather ?? []) expect(['clear', 'mist']).toContain(s.kind);
 	});
 
 	it('is reset to clear for a new battle', () => {

@@ -1,92 +1,48 @@
 <script lang="ts">
 	import { fade, fly } from 'svelte/transition';
 	import { AIRCRAFT } from '$lib/game/defs-aircraft';
-	import { isUnlocked, MISSIONS, type CampaignProgress, type Objective } from '$lib/game/campaign';
-	import {
-		canStrike,
-		loadStrikes,
-		saveStrike,
-		sectorOf,
-		STRIKE_IDS,
-		STRIKES,
-		type StrikeId
-	} from '$lib/game/campaign-map';
-	import CampaignMap from './CampaignMap.svelte';
-	import EndlessPane from './EndlessPane.svelte';
-	import { BIOMES, type BiomeId } from '$lib/game/biomes';
 	import type { GameMode, ModeStart } from '$lib/game/hud';
-	import type { EndlessRun } from '$lib/game/records';
 	import { blip, menu, powerOn } from './menu-fx';
 
 	interface Props {
-		progress: CampaignProgress;
-		board: EndlessRun[];
 		best: number;
 		trained: boolean;
-		/** Credits in the wallet, to pay for strikes. */
-		credits: number;
-		/** Mode and mission to open on. */
+		/** Mode to open on. */
 		initial: ModeStart | null;
 		onLaunch: (start: ModeStart) => void;
 		onClose: () => void;
 	}
 
-	let { progress, board, best, trained, credits, initial, onLaunch, onClose }: Props = $props();
+	let { best, trained, initial, onLaunch, onClose }: Props = $props();
 
-	/** Furthest mission the pilot may fly. */
-	const frontier = $derived(
-		[...MISSIONS].reverse().find((m) => isUnlocked(progress, m.id)) ?? MISSIONS[0]
-	);
 	// The menu opens on the last mode flown, or training for a new pilot.
 	// svelte-ignore state_referenced_locally
-	let tab = $state<GameMode>(initial?.mode ?? (trained ? 'campaign' : 'tutorial'));
-	// svelte-ignore state_referenced_locally
-	let picked = $state<string | null>(initial?.mode === 'campaign' ? initial.mission : null);
-	// svelte-ignore state_referenced_locally
-	let biome = $state<BiomeId>((initial?.mode === 'endless' && initial.biome) || 'temperate');
+	let tab = $state<GameMode>(initial?.mode ?? (trained ? 'war' : 'tutorial'));
 	/** Local two-player co-op: a second aircraft on a gamepad. Training is always solo. */
 	// svelte-ignore state_referenced_locally
 	let coop = $state(!!initial?.coop);
-	const missionId = $derived(
-		picked && isUnlocked(progress, picked) ? picked : (frontier?.id ?? MISSIONS[0].id)
-	);
-	const mission = $derived(MISSIONS.find((m) => m.id === missionId) ?? MISSIONS[0]);
-	const missionIndex = $derived(MISSIONS.indexOf(mission));
-	let strikes = $state(loadStrikes());
-	const strike = $derived<StrikeId | null>(strikes[mission.id] ?? null);
-
-	function pickStrike(id: StrikeId | null): void {
-		strikes = saveStrike(mission.id, id);
-	}
-	const totalStars = $derived(Object.values(progress).reduce((n, r) => n + r.stars, 0));
-	const won = $derived(Object.keys(progress).length);
 
 	const MODES: { id: GameMode; name: string; sub: string; code: string }[] = [
 		{ id: 'tutorial', name: 'Training', sub: 'Learn to fly and fight', code: 'TRN' },
-		{ id: 'campaign', name: 'Campaign', sub: `${MISSIONS.length} missions`, code: 'CMP' },
-		{ id: 'endless', name: 'Endless', sub: 'Front after front', code: 'END' }
+		{ id: 'war', name: 'The war', sub: 'Break through to the enemy HQ', code: 'WAR' }
 	];
 	const tabIndex = $derived(MODES.findIndex((m) => m.id === tab));
+
+	/** The whole game in five lines, for a pilot who has never flown it. */
+	const RULES = [
+		'Two armies fight their way along one road. Theirs is bigger than ours.',
+		'Bomb and strafe their troops and vehicles so ours can push forward.',
+		'Our troops take the flags on the way, then attack the enemy HQ at the far end.',
+		'Only troops can destroy the HQ. You win when it falls.',
+		'You lose if the airfield falls or every aircraft is shot down.'
+	];
 
 	/** Set once the menu has launched or closed: its keys stay deaf while it fades out. */
 	let done = false;
 
 	function launch(): void {
 		done = true;
-		if (tab === 'campaign') onLaunch({ mode: 'campaign', mission: mission.id, strike, coop });
-		else if (tab === 'endless') onLaunch({ mode: 'endless', biome, coop });
-		else onLaunch({ mode: tab });
-	}
-
-	function describe(o: Objective): string {
-		switch (o.type) {
-			case 'hq':
-				return 'Get our troops to the enemy HQ and level it';
-			case 'destroy':
-				return `${o.label}: ${o.count}`;
-			case 'capture':
-				return `Hold ${o.count} checkpoints at the same time`;
-		}
+		onLaunch(tab === 'war' ? { mode: 'war', coop } : { mode: 'tutorial' });
 	}
 
 	// Capture phase, so the title screen behind doesn't also act on Enter.
@@ -158,7 +114,6 @@
 					<small>
 						{#if m.id === 'tutorial' && !trained}Recommended first
 						{:else if m.id === 'tutorial'}Completed ✓
-						{:else if m.id === 'campaign'}{won}/{MISSIONS.length} won · ★ {totalStars}
 						{:else if best > 0}Best {best.toLocaleString()}
 						{:else}{m.sub}{/if}
 					</small>
@@ -189,79 +144,27 @@
 								<li class="m-rise" style:--i="3" style:--d="150ms">Enter skips a lesson</li>
 							</ul>
 						</div>
-					{:else if tab === 'campaign'}
-						<div class="campaign">
-							<CampaignMap
-								{progress}
-								selected={mission.id}
-								{strike}
-								onPick={(id) => (picked = id)}
-							/>
-							<div class="split">
-								<div class="detail">
-									{#key mission.id}
-										<div in:fly={{ y: 10, duration: 320 }}>
-											<p class="m-label">
-												Mission {missionIndex + 1} of {MISSIONS.length} · {sectorOf(mission.id)
-													?.name} · {BIOMES[mission.biome].name}
-											</p>
-											<h3>{mission.name}</h3>
-											<p class="lead">{mission.brief}</p>
-										</div>
-									{/key}
-									<p class="m-label sub">Objectives</p>
-									<ul class="objectives">
-										{#each mission.objectives as o, k (k)}
-											<li>{describe(o)}</li>
-										{/each}
-										{#if mission.baseFloor}
-											<li>Keep the airfield above {Math.round(mission.baseFloor * 100)}%</li>
-										{/if}
-									</ul>
-									<p class="hint">
-										★ Win · ★ Airfield above 70% · ★ No aircraft lost
-										{#if progress[mission.id]}
-											<br />Best score {progress[mission.id].best.toLocaleString()}
-										{/if}
-									</p>
-								</div>
-								{#if canStrike(mission.id)}
-									<aside class="strike-col">
-										<p class="m-label sub">
-											Strike ahead of the sortie · <b>{credits.toLocaleString()} cr</b>
-										</p>
-										<div class="strikes" role="radiogroup" aria-label="Strike target">
-											{#each STRIKE_IDS as id (id)}
-												{@const s = STRIKES[id]}
-												{@const short = credits < s.cost}
-												<button
-													role="radio"
-													aria-checked={strike === id}
-													class="m-tile"
-													class:on={strike === id}
-													class:short
-													disabled={short && strike !== id}
-													data-nav
-													onclick={() => pickStrike(strike === id ? null : id)}
-												>
-													<strong>{s.name} <em>{s.cost} cr</em></strong>
-													<small>{short ? `Needs ${s.cost} credits. ` : ''}{s.effect}</small>
-												</button>
-											{/each}
-										</div>
-									</aside>
-								{/if}
-							</div>
-						</div>
 					{:else}
-						<EndlessPane {biome} {board} onBiome={(id) => (biome = id)} />
+						<div class="detail">
+							<p class="m-label">The war</p>
+							<h3>Destroy the enemy HQ</h3>
+							<ul class="rules">
+								{#each RULES as r, i (i)}
+									<li class="m-rise" style:--i={i} style:--d="150ms">{r}</li>
+								{/each}
+							</ul>
+							<p class="hint">
+								Land on the runway to rearm, repair or switch aircraft. Every aircraft and bomb is
+								yours from the start; spend the credits you earn on upgrades in the hangar.
+							</p>
+						</div>
 					{/if}
 				</div>
 			{/key}
 		</div>
 
 		<footer>
-			{#if tab !== 'tutorial'}
+			{#if tab === 'war'}
 				<div class="players" role="radiogroup" aria-label="Players">
 					<button
 						role="radio"
@@ -292,11 +195,7 @@
 			{/if}
 			<button class="m-btn m-primary launch" data-nav onclick={launch}>
 				<span>
-					{tab === 'tutorial'
-						? 'Start training'
-						: tab === 'campaign'
-							? `Fly ${mission.name}`
-							: 'Start endless'}
+					{tab === 'tutorial' ? 'Start training' : 'Go to war'}
 				</span>
 				<span class="m-chev" aria-hidden="true"><i></i><i></i><i></i></span>
 				<span class="m-key">Enter</span>
@@ -416,17 +315,6 @@
 		scrollbar-color: rgba(255, 176, 74, 0.35) transparent;
 	}
 
-	.campaign {
-		display: grid;
-		gap: 16px;
-	}
-
-	.split {
-		display: grid;
-		grid-template-columns: 1fr minmax(240px, 300px);
-		gap: 24px;
-	}
-
 	.detail {
 		min-width: 0;
 	}
@@ -448,21 +336,7 @@
 		color: var(--ink-dim);
 	}
 
-	.sub {
-		display: block;
-		margin: 18px 0 8px;
-	}
-
-	.sub b {
-		font-weight: 600;
-		color: var(--good);
-	}
-
-	.strike-col .sub {
-		margin-top: 0;
-	}
-
-	.objectives,
+	.rules,
 	.facts {
 		margin: 0;
 		padding: 0;
@@ -472,13 +346,13 @@
 		font-size: 16px;
 	}
 
-	.objectives li {
+	.rules li {
 		display: flex;
 		gap: 10px;
 		align-items: baseline;
 	}
 
-	.objectives li::before {
+	.rules li::before {
 		content: '';
 		width: 6px;
 		height: 6px;
@@ -506,44 +380,6 @@
 	}
 
 	/* ---- Strikes ---- */
-
-	.strikes {
-		display: grid;
-		gap: 6px;
-	}
-
-	.strikes button {
-		align-content: start;
-		padding: 9px 12px;
-	}
-
-	.strikes strong {
-		font-family: var(--display);
-		font-size: 14px;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-	}
-
-	.strikes button.on strong {
-		color: var(--amber);
-	}
-
-	.strikes button.on.short {
-		--accent: var(--danger);
-	}
-
-	.strikes em {
-		float: right;
-		font-style: normal;
-		font-size: 13px;
-		color: var(--ink-dim);
-	}
-
-	.strikes small {
-		font-size: 13px;
-		line-height: 1.3;
-		color: var(--ink-dim);
-	}
 
 	.hint {
 		margin: 16px 0 0;
@@ -609,10 +445,6 @@
 	}
 
 	@media (max-width: 720px) {
-		.split {
-			grid-template-columns: 1fr;
-		}
-
 		.tab strong {
 			font-size: 16px;
 		}

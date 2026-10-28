@@ -184,7 +184,7 @@ const LESSONS: Lesson[] = [
 	},
 	{
 		title: 'Ready for duty',
-		text: 'In a real sortie enemy columns drive at the airfield and shell it when they arrive. Lose the airfield or all three aircraft and the mission fails. Good hunting.',
+		text: 'In the war, two armies fight along this road and theirs is bigger. Bomb their columns so our troops can take the flags and reach the enemy HQ: only troops can destroy it. Lose the airfield or all three aircraft and the battle is lost. Good hunting.',
 		keys: ['Enter'],
 		pad: 'A',
 		manual: true,

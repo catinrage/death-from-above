@@ -21,6 +21,16 @@ describe('Player flight model', () => {
 		expect(p.speed).toBeGreaterThan(p.def.stallSpeed);
 	});
 
+	it('flies about twice as fast on boost', () => {
+		const w = testWorld();
+		w.godMode = true;
+		const cruising = new Player('kestrel', 800, w.ground(800) + 200, 0);
+		const boosting = new Player('kestrel', 800, w.ground(800) + 200, 0);
+		fly(cruising, { steerX: 1 }, 10, w);
+		fly(boosting, { steerX: 1, boost: true }, 10, w);
+		expect(boosting.speed).toBeGreaterThan(cruising.speed * 1.8);
+	});
+
 	it('climbs when steered upward and descends when steered down', () => {
 		const w = testWorld();
 		const up = new Player('kestrel', 800, w.ground(800) + 150, 0);

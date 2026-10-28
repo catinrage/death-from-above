@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { WORLD } from './constants';
 import { Player } from './player';
 import { testWorld } from './test-world';
-import { MISSIONS } from './campaign';
 import { Tutorial, type TutorialInput } from './tutorial';
 import type { World } from './world';
 
@@ -208,12 +207,5 @@ describe('wingman lesson', () => {
 		for (let i = 0; i < 200; i++)
 			t.update(w, 1 / 60, { focus: false, confirm: false, skip: false });
 		expect(t.card().step).toBe(step + 1);
-	});
-});
-
-describe('campaign wingman', () => {
-	it('flies the opening mission solo and Two joins from the second', () => {
-		expect(MISSIONS[0].solo).toBe(true);
-		expect(MISSIONS.slice(1).every((m) => !m.solo)).toBe(true);
 	});
 });

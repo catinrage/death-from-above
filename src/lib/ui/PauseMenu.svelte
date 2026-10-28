@@ -31,7 +31,7 @@
 				>
 			{/if}
 			<button class="m-btn m-wipe" style:--d="200ms" style:--i="1" data-nav onclick={onRestart}
-				>Restart mission</button
+				>Restart battle</button
 			>
 			<button class="m-btn m-wipe" style:--d="200ms" style:--i="2" data-nav onclick={onControls}
 				>Controls</button
@@ -42,7 +42,7 @@
 				style:--i="3"
 				data-nav
 				data-back
-				onclick={onQuit}>Abort mission</button
+				onclick={onQuit}>Quit to menu</button
 			>
 		</div>
 		<p class="hint">↑ ↓ select · Enter confirm</p>

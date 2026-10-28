@@ -30,7 +30,7 @@ export class Squadron {
 	lives: number;
 	readonly maxLives: number;
 	readonly seats: Seat[];
-	/** Aircraft lost (counts against the campaign's no-losses star). */
+	/** Aircraft lost this sortie. */
 	lost = 0;
 
 	constructor(seats: number, lives = seats > 1 ? COOP_LIVES : SOLO_LIVES) {

@@ -108,6 +108,21 @@ const REPAIR_RATE = 0.035;
 /** Airbrake strength relative to the boost, and the stall margin it stops at. */
 const BRAKE_POWER = 1.3;
 export const BRAKE_FLOOR = 1.12;
+/** Boost adds this many times the speed over cruise it used to (about doubling the top speed). */
+export const BOOST_GAIN = 2;
+
+/**
+ * Extra thrust while boosting. Drag grows with the square of speed, so adding
+ * BOOST_GAIN times the old speed gain takes more than BOOST_GAIN times the push:
+ * this solves for the push that settles at the faster top speed.
+ */
+export function boostThrust(d: AircraftDef): number {
+	const cruise = Math.sqrt((0.8 * d.thrust) / d.drag);
+	const old = Math.sqrt((d.thrust + d.boost) / d.drag);
+	const top = cruise + (old - cruise) * BOOST_GAIN;
+	return d.drag * top * top - d.thrust;
+}
+
 /** Flares rippled out per press (one counts against the dispenser load). */
 const FLARES_PER_SALVO = 8;
 /** Ordnance the airfield cannot restock: it comes back once, at the start of each wave. */
@@ -471,7 +486,7 @@ export class Player implements Trackable {
 		this.ceiling = alt > WORLD.ceiling - 20;
 		const thin = 1 - smoothstep(WORLD.ceiling - 40, WORLD.ceiling + 60, alt) * 0.9;
 		const accel =
-			(d.thrust * this.throttle + (this.boosting ? d.boost : 0)) *
+			(d.thrust * this.throttle + (this.boosting ? boostThrust(d) : 0)) *
 			thin *
 			engineFactor(this.systems.engine);
 		this.vx += ca * accel * dt;
@@ -597,7 +612,8 @@ export class Player implements Trackable {
 		const sx = Math.abs(inp.steerX) > 0.2 ? inp.steerX : 0;
 		const sy = Math.abs(inp.steerY) > 0.2 ? inp.steerY : 0;
 		const slide =
-			(d.cruise * 0.8 + (this.boosting ? d.boost : 0)) * engineFactor(this.systems.engine);
+			(d.cruise * 0.8 + (this.boosting ? d.boost * BOOST_GAIN : 0)) *
+			engineFactor(this.systems.engine);
 		this.orbitX = clamp(
 			this.orbitX + sx * slide * dt,
 			WORLD.arenaMinX + ORBIT_R,
@@ -637,7 +653,8 @@ export class Player implements Trackable {
 		const hold = inp.brake;
 		const sx = !hold && Math.abs(inp.steerX) > 0.2 ? inp.steerX : 0;
 		const sy = !hold && Math.abs(inp.steerY) > 0.2 ? inp.steerY : 0;
-		const top = (d.cruise + (this.boosting ? d.boost : 0)) * engineFactor(this.systems.engine);
+		const top =
+			(d.cruise + (this.boosting ? d.boost * BOOST_GAIN : 0)) * engineFactor(this.systems.engine);
 		const alt = this.y - WORLD.baseHeight;
 		const thin = 1 - smoothstep(WORLD.ceiling - 40, WORLD.ceiling + 60, alt);
 		// Sitting on the skids it only moves off once the collective lifts it.

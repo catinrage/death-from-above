@@ -21,7 +21,7 @@ import { WORLD } from './constants';
 import { BOMBS, BOMB_ORDER, ROCKET_SPEED } from './defs-bombs';
 import { environmentAt, presetName } from './environment';
 import { applyWeather, CLEAR, weatherForWave, type WeatherSpec } from './weather';
-import { gradeEnvironment, type BiomeId } from './biomes';
+import { BIOME_ORDER, gradeEnvironment, type BiomeId } from './biomes';
 import type {
 	GameMode,
 	GameOverStats,
@@ -30,6 +30,7 @@ import type {
 	HudMessage,
 	HudSnapshot,
 	ModeStart,
+	ObjectiveStatus,
 	Player2Hud,
 	WarHud
 } from './hud';
@@ -39,40 +40,19 @@ import { NO_INPUT, Player, type PilotInput } from './player';
 import { SceneView } from './scene-view';
 import { TerrainView } from './terrain-view';
 import type { AircraftId, Owner } from './types';
-import { endlessTweaks, planWave, waveBonus, WaveDirector } from './waves';
-import {
-	loadProgress,
-	missionById,
-	MISSIONS,
-	MissionTracker,
-	nextMission,
-	recordMission,
-	saveProgress,
-	starsFor,
-	type Mission
-} from './campaign';
-import {
-	canStrike,
-	captureLine,
-	payForStrike,
-	STRIKES,
-	withStrike,
-	type StrikeId
-} from './campaign-map';
+import { planWave, waveBonus, WaveDirector, warTweaks } from './waves';
 import { Tutorial } from './tutorial';
-import { placeRun, readBest, readBoard, saveBoard, writeBest, writeTrained } from './records';
+import { readBest, writeBest, writeTrained } from './records';
 import { predictImpact } from './weapons';
 import { trainConsist } from './railway';
 import { simulateWorld } from './simulate';
 import { AIRCRAFT } from './defs-aircraft';
 import type { Loadout } from './loadout';
 import {
-	endlessCredits,
+	battleCredits,
 	grant,
 	loadOrMigrate,
-	missionCredits,
 	saveProgression,
-	type CreditAward,
 	type UpgradeLevels
 } from './progression';
 import {
@@ -87,7 +67,7 @@ import { RESOLVE } from './projectiles';
 import { LENS_BARREL } from '../engine/lens';
 import { SHOAL } from './river';
 import { World } from './world';
-import { HQ_HP, type WarSetup } from './war';
+import { HQ_HP } from './war';
 import { Wingman, WING_HP, type WingOrder } from './wingman';
 import { zoneAt } from './no-fire';
 import { AirBase } from './base';
@@ -104,7 +84,7 @@ export interface GameCallbacks {
 const STEP = 1 / 60;
 /** Time-of-day phase for each wave (see environment presets). */
 const ENV_BY_WAVE = [0.9, 0, 0.7, 1.25, 2.1, 3, 3, 3.6, 4.2, 5];
-/** Seconds between a campaign win and the debrief, so the last kills can land. */
+/** Seconds between the HQ falling and the debrief, so the last kills can land. */
 const DEBRIEF_DELAY = 3.5;
 const NO_EDGES: readonly EdgeMarker[] = [];
 /** Radius (CSS px) of the ring of threat chevrons around the aircraft. */
@@ -127,9 +107,7 @@ export class Game {
 	phase: GamePhase = 'title';
 	aircraft: AircraftId = 'kestrel';
 	private loadout: Loadout | undefined;
-	mode: GameMode = 'endless';
-	private mission: Mission | null = null;
-	private tracker: MissionTracker | null = null;
+	mode: GameMode = 'war';
 	private tutorial: Tutorial | null = null;
 	/** Airframe and rack actually flown this sortie (training overrides the hangar). */
 	private flying: AircraftId = 'kestrel';
@@ -144,7 +122,7 @@ export class Game {
 	coop = false;
 	/** Aircraft pool and respawn timers: seat 0 is the player, seat 1 player two. */
 	private squadron = new Squadron(1);
-	/** Counts down from a campaign win to the debrief. */
+	/** Counts down from the HQ falling to the debrief. */
 	private debriefTimer = 0;
 	/** The AI wingman launches once the player is off the runway; 'join' also announces him. */
 	private wingmanDue: 'plain' | 'join' | null = null;
@@ -484,19 +462,13 @@ export class Game {
 	newGame(
 		aircraft: AircraftId,
 		loadout?: Loadout,
-		start: ModeStart = { mode: 'endless' },
+		start: ModeStart = { mode: 'war' },
 		upgrades?: UpgradeLevels
 	): void {
 		this.aircraft = aircraft;
 		this.loadout = loadout;
 		this.upgrades = upgrades;
-		const flown = start.mode === 'campaign' ? (missionById(start.mission) ?? null) : null;
-		const wanted = start.mode === 'campaign' && flown && canStrike(flown.id) ? start.strike : null;
-		const strike = wanted && this.payStrike(wanted) ? wanted : null;
-		const mission = flown && withStrike(flown, strike);
-		this.mode = start.mode === 'campaign' && !mission ? 'endless' : start.mode;
-		this.mission = mission;
-		this.tracker = mission ? new MissionTracker(mission) : null;
+		this.mode = start.mode;
 		this.tutorial = this.mode === 'tutorial' ? new Tutorial() : null;
 		this.flying = this.mode === 'tutorial' ? TRAINER : aircraft;
 		this.flyingLoadout = this.mode === 'tutorial' ? undefined : loadout;
@@ -508,7 +480,7 @@ export class Game {
 		this.hqsScored = 0;
 		this.debriefTimer = 0;
 		const w = this.world;
-		this.useBiome(this.biomeFor(start, mission));
+		this.useBiome(this.biomeFor(start));
 		w.reset();
 		w.godMode = false;
 		this.score = 0;
@@ -528,50 +500,31 @@ export class Game {
 		// Player two takes the AI wingman's place in co-op.
 		this.wingmanDue = null;
 		if (this.coop) this.spawnPlayer2();
-		else if (this.mode !== 'tutorial' && !mission?.solo) {
-			// The first campaign mission is flown alone; Two's arrival is worth a word.
-			const joins = mission && MISSIONS.findIndex((m) => m.solo) === MISSIONS.indexOf(mission) - 1;
-			this.wingmanDue = joins ? 'join' : 'plain';
-		}
+		else if (this.mode !== 'tutorial') this.wingmanDue = 'plain';
 		this.radioWatch.reset();
 		this.audio.radio(['sortie']);
 		const seed = Math.floor(Math.random() * 1e6);
 		this.waves = new WaveDirector(
 			seed,
-			mission
-				? { ...mission.waves, rolling: true }
-				: this.mode === 'endless'
-					? { tweaks: endlessTweaks, rolling: true }
-					: {}
+			this.mode === 'war' ? { tweaks: warTweaks, rolling: true, quietStart: true } : {}
 		);
 		// Training has no war in it: just the lessons' targets.
-		if (this.mode !== 'tutorial') w.war.start(w, mission?.war ?? ENDLESS_WAR, seed);
+		if (this.mode === 'war') w.war.start(w, { hqHp: HQ_HP }, seed);
 		this.envPhase = this.envTarget = this.envFor(1);
 		w.weather.set(this.weatherFor(1), true);
 		this.setPhase('playing');
 		if (this.tutorial) this.tutorial.start(w);
 		else {
-			if (mission)
-				this.cb.message({
-					id: this.msgId++,
-					text: mission.name.toUpperCase(),
-					sub: strike
-						? `${mission.brief} ${STRIKES[strike].name} hit: ${STRIKES[strike].effect.toLowerCase()}.`
-						: wanted
-							? `${mission.brief} Not enough credits for the ${STRIKES[wanted].name.toLowerCase()} strike.`
-							: mission.brief,
-					tone: 'info'
-				});
+			this.cb.message({ id: this.msgId++, text: BRIEF.text, sub: BRIEF.sub, tone: 'info' });
 			this.waves.begin(w, 1);
 		}
 		void this.audio.unlock();
 	}
 
-	/** Map a sortie is flown on: training stays in the valley. */
-	private biomeFor(start: ModeStart, mission: Mission | null): BiomeId {
+	/** Map a sortie is flown on: training stays in the valley, each battle picks one. */
+	private biomeFor(start: ModeStart): BiomeId {
 		if (start.mode === 'tutorial') return 'temperate';
-		if (mission) return mission.biome;
-		return start.mode === 'endless' ? (start.biome ?? 'temperate') : 'temperate';
+		return start.biome ?? rnd.pick(BIOME_ORDER);
 	}
 
 	/** Regrows the battlefield for a biome and pushes the new ground to the GPU. */
@@ -582,22 +535,9 @@ export class Game {
 		this.terrainView.syncAll();
 	}
 
-	/** Takes a strike's cost from the wallet. False when the pilot can't afford it. */
-	private payStrike(strike: StrikeId): boolean {
-		const wallet = loadOrMigrate();
-		const paid = payForStrike(wallet, strike);
-		if (paid === wallet) return false;
-		saveProgression(paid);
-		return true;
-	}
-
 	/** Time of day for a wave of the current sortie. */
 	private envFor(wave: number): number {
 		if (this.mode === 'tutorial') return ENV_BY_WAVE[0];
-		if (this.mission) {
-			const env = this.mission.env;
-			return env[Math.min(wave - 1, env.length - 1)];
-		}
 		return wave < ENV_BY_WAVE.length
 			? ENV_BY_WAVE[wave]
 			: 5 + (wave - ENV_BY_WAVE.length + 1) * 0.6;
@@ -606,10 +546,6 @@ export class Game {
 	/** Sky and wind for a wave of the current sortie. */
 	private weatherFor(wave: number): WeatherSpec {
 		if (this.mode === 'tutorial') return CLEAR;
-		if (this.mission) {
-			const list = this.mission.weather;
-			return list ? list[Math.min(wave - 1, list.length - 1)] : CLEAR;
-		}
 		return weatherForWave(wave);
 	}
 
@@ -972,7 +908,7 @@ export class Game {
 		}
 		if (w.war.hqsDestroyed > this.hqsScored) {
 			this.hqsScored = w.war.hqsDestroyed;
-			this.bonus(HQ_BONUS * w.war.front, 'enemy HQ destroyed');
+			this.bonus(HQ_BONUS, 'enemy HQ destroyed');
 		}
 		if (this.tutorial) {
 			this.tutorial.update(w, dt, {
@@ -984,16 +920,12 @@ export class Game {
 			this.confirm = this.skip = false;
 			if (this.tutorial.finished) return this.finish();
 		}
-		if (this.tracker) {
-			this.tracker.update(w);
-			const lost = this.tracker.failure();
-			if (lost) return this.gameOver(lost);
+		if (this.mode === 'war') {
 			if (this.debriefTimer > 0) {
 				this.debriefTimer -= dt;
 				if (this.debriefTimer <= 0) return this.finish();
-			} else if (this.tracker.complete()) {
+			} else if (w.war.hq.destroyed) {
 				this.debriefTimer = DEBRIEF_DELAY;
-				w.events.message('MISSION COMPLETE', 'Return to base', 'good');
 				this.audio.play('siren', w.camera.x, w.camera.y, 0.5);
 			}
 		}
@@ -1007,19 +939,12 @@ export class Game {
 		this.popups?.spawn(`+${points.toLocaleString()}`, label, w.camera.x, w.camera.y + 25, 'big');
 	}
 
-	/** Endless scores go on the leaderboard; campaign and training results are saved. */
+	/** The best score is kept, and a battle pays credits; training just marks the pilot trained. */
 	private result(outcome: 'failed' | 'complete', reason: string): GameOverStats {
-		// Read (and migrate) the wallet before campaign progress changes below.
-		const wallet = loadOrMigrate();
-		const pay = (award: CreditAward): GameOverStats['credits'] => {
-			const next = grant(wallet, award.total);
-			saveProgression(next);
-			return { ...award, balance: next.credits };
-		};
 		const base = {
 			mode: this.mode,
 			outcome,
-			title: this.mission?.name ?? (this.mode === 'tutorial' ? 'Flight training' : 'Endless'),
+			title: this.mode === 'tutorial' ? 'Flight training' : 'The war',
 			score: this.score,
 			wave: this.waves.wave,
 			kills: this.kills,
@@ -1030,55 +955,21 @@ export class Game {
 			newBest: false,
 			reason
 		};
-		if (this.mode === 'endless') {
-			const best = readBest();
-			const newBest = this.score > best;
-			if (newBest) writeBest(this.score);
-			const { board, rank } = placeRun(readBoard(), {
-				score: this.score,
-				wave: this.waves.wave,
-				kills: this.kills,
-				aircraft: this.flying,
-				date: Date.now()
-			});
-			if (rank > 0) saveBoard(board);
-			const credits = pay(endlessCredits({ score: this.score, wavesCleared: this.waves.cleared }));
-			return { ...base, best: Math.max(best, this.score), newBest, rank, credits };
+		if (this.mode === 'tutorial') {
+			if (outcome === 'complete') writeTrained();
+			return base;
 		}
-		if (this.mode === 'tutorial' && outcome === 'complete') writeTrained();
-		const m = this.mission;
-		if (!m) return base;
-		const progress = loadProgress();
-		const prevBest = progress[m.id]?.best ?? 0;
-		const baseFrac = this.world.base.hp / this.world.base.maxHp;
-		const lost = this.squadron.lost;
-		const stars = starsFor(baseFrac, lost);
-		const next = nextMission(m.id);
-		const earned = missionCredits({
-			index: MISSIONS.findIndex((x) => x.id === m.id),
-			won: outcome === 'complete',
-			score: this.score,
-			stars,
-			prevStars: progress[m.id]?.stars ?? 0
-		});
-		const capture = outcome === 'complete' ? captureLine(m.id, !!progress[m.id]) : null;
-		const credits = pay(
-			capture ? { lines: [...earned.lines, capture], total: earned.total + capture.amount } : earned
-		);
-		if (outcome === 'complete') saveProgress(recordMission(progress, m.id, stars, this.score));
+		const best = readBest();
+		const newBest = this.score > best;
+		if (newBest) writeBest(this.score);
+		const award = battleCredits({ score: this.score, won: outcome === 'complete' });
+		const wallet = grant(loadOrMigrate(), award.total);
+		saveProgression(wallet);
 		return {
 			...base,
-			credits,
-			missionId: m.id,
-			best: Math.max(prevBest, outcome === 'complete' ? this.score : 0),
-			newBest: outcome === 'complete' && this.score > prevBest,
-			stars: outcome === 'complete' ? stars : 0,
-			starNotes: [
-				{ label: 'Mission complete', got: outcome === 'complete' },
-				{ label: 'Airfield above 70%', got: outcome === 'complete' && baseFrac >= 0.7 },
-				{ label: 'No aircraft lost', got: outcome === 'complete' && lost === 0 }
-			],
-			nextMission: next?.id
+			best: Math.max(best, this.score),
+			newBest,
+			credits: { ...award, balance: wallet.credits }
 		};
 	}
 
@@ -1404,8 +1295,8 @@ export class Game {
 			waveLabel: this.mode === 'tutorial' ? 'TRAINING' : this.waves.label,
 			waveState: this.waves.state,
 			mode: this.mode,
-			mission: this.mission?.name ?? '',
-			objectives: this.tracker?.status() ?? [],
+			mission: this.mode === 'war' ? 'Objectives' : '',
+			objectives: this.mode === 'war' ? objectives(w) : [],
 			boss: bossStatus(w),
 			tutorial: this.tutorial?.card() ?? null,
 			enemies: this.waves.remaining(w),
@@ -1482,12 +1373,30 @@ const P2_PARK = 15;
 /** Height the player must reach before the AI wingman launches. */
 const WINGMAN_JOIN_ALT = 25;
 
-/** Score for each checkpoint our troops take, and for each enemy HQ they level (times the front). */
+/** Score for each checkpoint our troops take, and for levelling the enemy HQ. */
 const CHECKPOINT_BONUS = 300;
 const HQ_BONUS = 3000;
 
-/** Endless: an HQ that is rebuilt stronger every time it falls. */
-const ENDLESS_WAR: WarSetup = { hqHp: HQ_HP, fronts: true };
+/** What a new pilot is told as the battle opens: the whole game in two lines. */
+const BRIEF = {
+	text: 'DESTROY THE ENEMY HQ',
+	sub: 'Their army outnumbers ours. Bomb their columns so our troops can take the flags and reach the HQ at the far end. Only troops can bring it down.'
+};
+
+/** The objectives panel: what wins, what loses, and how far along the road we are. */
+function objectives(w: World): ObjectiveStatus[] {
+	const war = w.war;
+	if (!war.active) return [];
+	return [
+		{ label: 'Get our troops to the enemy HQ', count: '', done: war.hq.destroyed },
+		{
+			label: 'Checkpoints held',
+			count: `${war.held('player')}/${war.checkpoints.length}`,
+			done: war.held('player') === war.checkpoints.length
+		},
+		{ label: 'Keep the airfield standing', count: '', done: false, failed: w.base.hp <= 0 }
+	];
+}
 
 /** The front line for the HUD: our army, the checkpoints and the enemy HQ. */
 function warStatus(w: World): WarHud | null {
@@ -1498,7 +1407,6 @@ function warStatus(w: World): WarHud | null {
 		hq: Math.max(0, war.hq.hp / war.hq.maxHp),
 		hqDown: war.hq.destroyed,
 		hqUnderFire: war.hq.underAttack > 0,
-		front: war.front,
 		army: w.allies.alive(),
 		next: Math.max(0, Math.ceil(war.nextGroup)),
 		points: war.checkpoints.map((c) => ({
