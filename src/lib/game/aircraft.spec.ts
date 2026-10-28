@@ -39,6 +39,33 @@ function impacts(w: World, seconds = 8): number[] {
 	return [...last.values()];
 }
 
+describe('aircraft traits', () => {
+	it('lists strengths and weaknesses for every airframe', () => {
+		for (const id of AIRCRAFT_ORDER) {
+			expect(AIRCRAFT[id].pros.length, id).toBeGreaterThanOrEqual(2);
+			expect(AIRCRAFT[id].cons.length, id).toBeGreaterThanOrEqual(2);
+		}
+	});
+});
+
+describe('changing aircraft mid-sortie', () => {
+	it('is offered on the runway, not in the air or after a crash', () => {
+		const w = testWorld();
+		const x = WORLD.runwayMinX + 60;
+		const p = new Player('kestrel', x, w.ground(x) + 20);
+		p.park(w);
+		w.player = p;
+		simulateWorld(w, STEP, NO_INPUT);
+		expect(p.canChangeAircraft).toBe(true);
+		p.alive = false;
+		expect(p.canChangeAircraft).toBe(false);
+		const air = testWorld();
+		const q = flying(air, 'kestrel');
+		simulateWorld(air, STEP, NO_INPUT);
+		expect(q.canChangeAircraft).toBe(false);
+	});
+});
+
 describe('new aircraft', () => {
 	it('builds a model for each of the six', () => {
 		for (const id of ['ac130', 'apache', 'mq9', 'stuka', 'a1', 'tu95'] as const) {

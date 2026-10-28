@@ -30,17 +30,16 @@
 	import Hangar from './Hangar.svelte';
 	import { capacityOf, stockLoadout, weightOf, type Loadout } from '$lib/game/loadout';
 	import {
-		buyAircraft,
 		buyUpgrade,
 		extraPayload,
 		loadOrMigrate,
 		loadProgression,
-		owns,
 		saveProgression,
 		type Progression,
 		type UpgradeId
 	} from '$lib/game/progression';
 	import PauseMenu from './PauseMenu.svelte';
+	import AircraftSwap from './AircraftSwap.svelte';
 	import GameOver from './GameOver.svelte';
 	import Controls from './Controls.svelte';
 	import ModeSelect from './ModeSelect.svelte';
@@ -56,15 +55,14 @@
 	let messages = $state<HudMessage[]>([]);
 	let over = $state<GameOverStats | null>(null);
 	const saved = loadSettings();
-	// Credits and hangar purchases. Saving straight away locks in a migrated older save.
-	const savedWallet = loadOrMigrate(saved.aircraft);
+	// Credits and hangar upgrades. Saving straight away locks in a migrated older save.
+	const savedWallet = loadOrMigrate();
 	saveProgression(savedWallet);
-	if (!owns(savedWallet, saved.aircraft)) saved.aircraft = savedWallet.owned[0];
 	let settings = $state<Settings>(saved);
 	let wallet = $state<Progression>(savedWallet);
 	let hangarOpen = $state(false);
-	/** The aircraft the hangar is showing, which may be one not yet bought. */
-	let viewing = $state<AircraftId>(saved.aircraft);
+	/** The pause menu's aircraft picker is open. */
+	let swapping = $state(false);
 	const upgrades = $derived(wallet.upgrades[settings.aircraft]);
 	const loadout = $derived.by<Loadout>(() => {
 		const id = settings.aircraft;
@@ -90,6 +88,7 @@
 						hud: (h) => (hud = h),
 						phase: (p) => {
 							phase = p;
+							if (p !== 'paused') swapping = false;
 							if (p === 'title' || p === 'gameover') refreshRecords();
 						},
 						message: pushMessage,
@@ -176,16 +175,19 @@
 		game?.toTitle();
 	}
 
-	/** Shows an aircraft in the hangar; owned ones also become the one you fly. */
+	/** Picks the aircraft to fly: every airframe is in the hangar from the start. */
 	function selectAircraft(id: AircraftId): void {
-		viewing = id;
-		if (!owns(wallet, id)) {
-			game?.preview(id, stockLoadout(id));
-			return;
-		}
 		settings = { ...settings, aircraft: id };
 		saveSettings(settings);
 		game?.preview(id, loadout, upgrades);
+	}
+
+	/** Trades the landed aircraft mid-sortie for another, with its hangar loadout and upgrades. */
+	function swapAircraft(id: AircraftId): void {
+		settings = { ...settings, aircraft: id };
+		saveSettings(settings);
+		swapping = false;
+		if (game?.swapAircraft(id, loadout, upgrades)) game.resume();
 	}
 
 	function setLoadout(l: Loadout): void {
@@ -200,11 +202,6 @@
 		saveProgression(next);
 	}
 
-	function purchaseAircraft(id: AircraftId): void {
-		spend(buyAircraft(wallet, id));
-		if (owns(wallet, id)) selectAircraft(id);
-	}
-
 	function purchaseUpgrade(u: UpgradeId): void {
 		spend(buyUpgrade(wallet, settings.aircraft, u));
 		game?.preview(settings.aircraft, loadout, upgrades);
@@ -213,11 +210,6 @@
 	function openHangar(open: boolean): void {
 		hangarOpen = open;
 		if (game) game.showcase = open;
-		if (viewing !== settings.aircraft) {
-			// Leaving with an unbought aircraft on show: go back to the one you fly.
-			viewing = settings.aircraft;
-			game?.preview(settings.aircraft, loadout, upgrades);
-		}
 	}
 
 	function setQuality(q: QualityLevel): void {
@@ -270,12 +262,11 @@
 	{#if phase === 'title'}
 		{#if hangarOpen}
 			<Hangar
-				aircraft={viewing}
+				aircraft={settings.aircraft}
 				{loadout}
 				{wallet}
 				onSelect={selectAircraft}
 				onLoadout={setLoadout}
-				onBuyAircraft={purchaseAircraft}
 				onBuyUpgrade={purchaseUpgrade}
 				onBack={() => openHangar(false)}
 				onSortie={chooseMode}
@@ -295,12 +286,15 @@
 		{/if}
 	{/if}
 
-	{#if phase === 'paused'}
+	{#if phase === 'paused' && swapping}
+		<AircraftSwap current={hud.aircraft} onPick={swapAircraft} onBack={() => (swapping = false)} />
+	{:else if phase === 'paused'}
 		<PauseMenu
 			onResume={() => game?.resume()}
 			onRestart={sortie}
 			onQuit={toTitle}
 			onControls={() => (showControls = true)}
+			onChangeAircraft={hud.canSwap ? () => (swapping = true) : undefined}
 		/>
 	{/if}
 

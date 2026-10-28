@@ -1,13 +1,7 @@
 <script lang="ts">
 	import { AIRCRAFT, AIRCRAFT_ORDER } from '$lib/game/defs-aircraft';
-	import { stockLoadout, type Loadout } from '$lib/game/loadout';
-	import {
-		AIRCRAFT_PRICE,
-		owns,
-		upgradedDef,
-		type Progression,
-		type UpgradeId
-	} from '$lib/game/progression';
+	import type { Loadout } from '$lib/game/loadout';
+	import { upgradedDef, type Progression, type UpgradeId } from '$lib/game/progression';
 	import type { AircraftId } from '$lib/game/types';
 	import HangarFleet from './HangarFleet.svelte';
 	import HangarRacks from './HangarRacks.svelte';
@@ -15,30 +9,20 @@
 	import { blip, menu, parallax } from './menu-fx';
 
 	interface Props {
-		/** The aircraft on show: the one you fly, or one you haven't bought yet. */
+		/** The aircraft on show, which is the one you fly. */
 		aircraft: AircraftId;
 		/** Loadout of the aircraft you fly. */
 		loadout: Loadout;
 		wallet: Progression;
 		onSelect: (id: AircraftId) => void;
 		onLoadout: (l: Loadout) => void;
-		onBuyAircraft: (id: AircraftId) => void;
 		onBuyUpgrade: (u: UpgradeId) => void;
 		onBack: () => void;
 		onSortie: () => void;
 	}
 
-	let {
-		aircraft,
-		loadout: flown,
-		wallet,
-		onSelect,
-		onLoadout,
-		onBuyAircraft,
-		onBuyUpgrade,
-		onBack,
-		onSortie
-	}: Props = $props();
+	let { aircraft, loadout, wallet, onSelect, onLoadout, onBuyUpgrade, onBack, onSortie }: Props =
+		$props();
 
 	const STATS = [
 		{ key: 'speed', label: 'Speed' },
@@ -47,11 +31,7 @@
 		{ key: 'agility', label: 'Agility' }
 	] as const;
 
-	const owned = $derived(owns(wallet, aircraft));
-	const price = $derived(AIRCRAFT_PRICE[aircraft]);
 	const def = $derived(upgradedDef(AIRCRAFT[aircraft], wallet.upgrades[aircraft]));
-	/** An aircraft not yet bought shows its stock racks, read-only. */
-	const loadout = $derived(owned ? flown : stockLoadout(aircraft));
 
 	function onKey(e: KeyboardEvent): void {
 		const i = AIRCRAFT_ORDER.indexOf(aircraft);
@@ -60,10 +40,8 @@
 			blip('back');
 			onBack();
 		} else if (e.code === 'Enter') {
-			if (owned) {
-				blip('select');
-				onSortie();
-			}
+			blip('select');
+			onSortie();
 		} else if (e.code === 'ArrowDown' || e.code === 'KeyS') {
 			blip('hover');
 			onSelect(AIRCRAFT_ORDER[(i + 1) % n]);
@@ -90,7 +68,7 @@
 		{/key}
 		<div class="sight" aria-hidden="true">
 			<i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
-			<span class="tag">{owned ? 'Ready' : 'Not owned'}</span>
+			<span class="tag">Ready</span>
 		</div>
 	</section>
 
@@ -98,6 +76,14 @@
 		<div class="scroll">
 			{#key aircraft}
 				<p class="blurb">{def.blurb}</p>
+				<div class="traits">
+					<ul class="pros" aria-label="Strengths">
+						{#each def.pros as t (t)}<li>{t}</li>{/each}
+					</ul>
+					<ul class="cons" aria-label="Weaknesses">
+						{#each def.cons as t (t)}<li>{t}</li>{/each}
+					</ul>
+				</div>
 				<dl class="bars">
 					{#each STATS as s, i (s.key)}
 						<div>
@@ -129,28 +115,13 @@
 				</div>
 			</dl>
 
-			<HangarRacks {aircraft} {loadout} {owned} {wallet} {onLoadout} {onBuyUpgrade} />
+			<HangarRacks {aircraft} {loadout} {wallet} {onLoadout} {onBuyUpgrade} />
 		</div>
-		{#if owned}
-			<button class="m-btn m-primary go" onclick={onSortie}>
-				<span>Take off</span>
-				<span class="m-chev" aria-hidden="true"><i></i><i></i><i></i></span>
-				<span class="m-key">Enter</span>
-			</button>
-		{:else}
-			<button
-				class="m-btn m-primary go"
-				disabled={wallet.credits < price}
-				onclick={() => onBuyAircraft(aircraft)}
-			>
-				<span>Buy</span>
-				<small>
-					{wallet.credits < price
-						? `${(price - wallet.credits).toLocaleString()} cr short`
-						: `${price.toLocaleString()} cr`}
-				</small>
-			</button>
-		{/if}
+		<button class="m-btn m-primary go" onclick={onSortie}>
+			<span>Take off</span>
+			<span class="m-chev" aria-hidden="true"><i></i><i></i><i></i></span>
+			<span class="m-key">Enter</span>
+		</button>
 	</aside>
 </div>
 
@@ -321,6 +292,49 @@
 		animation: fadein 0.5s ease-out backwards;
 	}
 
+	.traits {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 10px;
+		animation: fadein 0.5s ease-out backwards;
+	}
+
+	.traits ul {
+		display: grid;
+		align-content: start;
+		gap: 3px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		font-size: 13px;
+		line-height: 1.25;
+	}
+
+	.traits li {
+		position: relative;
+		padding-left: 14px;
+	}
+
+	.traits li::before {
+		position: absolute;
+		left: 0;
+		font-weight: 700;
+	}
+
+	.pros li::before {
+		content: '+';
+		color: var(--amber);
+	}
+
+	.cons li {
+		color: var(--ink-dim);
+	}
+
+	.cons li::before {
+		content: '−';
+		color: var(--danger);
+	}
+
 	dl {
 		margin: 0;
 	}
@@ -417,13 +431,6 @@
 
 	.go .m-chev {
 		margin-left: auto;
-	}
-
-	.go small {
-		font-family: var(--body);
-		font-size: 12px;
-		letter-spacing: 0.16em;
-		opacity: 0.8;
 	}
 
 	@media (max-width: 860px) {

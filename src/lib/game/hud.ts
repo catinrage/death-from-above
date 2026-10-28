@@ -125,6 +125,8 @@ export interface HudSnapshot {
 	ceiling: boolean;
 	rearming: boolean;
 	landed: boolean;
+	/** Down at the airfield, where the aircraft can be traded for another. */
+	canSwap: boolean;
 	/** Undercarriage lamp ('none' for rotors and the gunship). */
 	gear: 'down' | 'up' | 'transit' | 'none';
 	/** Fresh on the runway and not yet airborne: show how to take off. */
@@ -237,6 +239,7 @@ export function emptyHud(): HudSnapshot {
 		ceiling: false,
 		rearming: false,
 		landed: false,
+		canSwap: false,
 		gear: 'none',
 		takeoff: false,
 		systems: { engine: 0, wing: 0, hydraulics: 0 },

@@ -8,9 +8,11 @@
 		onRestart: () => void;
 		onQuit: () => void;
 		onControls: () => void;
+		/** Set while landed at the airfield, where the aircraft can be traded. */
+		onChangeAircraft?: () => void;
 	}
 
-	let { onResume, onRestart, onQuit, onControls }: Props = $props();
+	let { onResume, onRestart, onQuit, onControls, onChangeAircraft }: Props = $props();
 </script>
 
 <div class="m-veil" transition:fade={{ duration: 160 }}>
@@ -23,6 +25,11 @@
 				<span class="m-chev" aria-hidden="true"><i></i><i></i><i></i></span>
 				<span class="m-key">Esc</span>
 			</button>
+			{#if onChangeAircraft}
+				<button class="m-btn m-wipe" style:--d="200ms" data-nav onclick={onChangeAircraft}
+					>Change aircraft</button
+				>
+			{/if}
 			<button class="m-btn m-wipe" style:--d="200ms" style:--i="1" data-nav onclick={onRestart}
 				>Restart mission</button
 			>

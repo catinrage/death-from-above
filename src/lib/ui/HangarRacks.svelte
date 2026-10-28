@@ -24,15 +24,13 @@
 
 	interface Props {
 		aircraft: AircraftId;
-		/** The racks on show (stock, read-only, for an aircraft not yet bought). */
 		loadout: Loadout;
-		owned: boolean;
 		wallet: Progression;
 		onLoadout: (l: Loadout) => void;
 		onBuyUpgrade: (u: UpgradeId) => void;
 	}
 
-	let { aircraft, loadout, owned, wallet, onLoadout, onBuyUpgrade }: Props = $props();
+	let { aircraft, loadout, wallet, onLoadout, onBuyUpgrade }: Props = $props();
 
 	const extra = $derived(extraPayload(wallet, aircraft));
 	const cap = $derived(capacityOf(aircraft, extra));
@@ -48,9 +46,7 @@
 
 <div class="ld-head">
 	<h3>Loadout</h3>
-	{#if owned}
-		<button class="reset" onclick={() => onLoadout(stockLoadout(aircraft))}>Stock</button>
-	{/if}
+	<button class="reset" onclick={() => onLoadout(stockLoadout(aircraft))}>Stock</button>
 </div>
 <div class="payload" style:--fill={Math.min(1, used / cap)} class:full={used >= cap}>
 	<span class="bar"><span></span></span>
@@ -73,47 +69,43 @@
 				<small>{WEIGHT[b]} pt · max {MAX_COUNT[b]}</small>
 			</span>
 			<span class="stepper">
-				<button
-					onclick={() => change(b, -1)}
-					disabled={!owned || n === 0}
-					aria-label="Fewer {BOMBS[b].short}">−</button
+				<button onclick={() => change(b, -1)} disabled={n === 0} aria-label="Fewer {BOMBS[b].short}"
+					>−</button
 				>
 				{#key n}<output>{n}</output>{/key}
 				<button
 					onclick={() => change(b, 1)}
-					disabled={!owned || !canAdd(aircraft, loadout, b, extra)}
+					disabled={!canAdd(aircraft, loadout, b, extra)}
 					aria-label="More {BOMBS[b].short}">+</button
 				>
 			</span>
 		</li>
 	{/each}
 </ul>
-{#if owned}
-	<h3>Upgrades</h3>
-	<ul class="upgrades">
-		{#each upgrades as u (u.id)}
-			{@const lv = levelOf(wallet, aircraft, u.id)}
-			{@const cost = nextCost(wallet, aircraft, u.id)}
-			<li>
-				<span class="un">
-					<strong>{u.name}</strong>
-					<small>{u.blurb}</small>
-				</span>
-				<span class="pips" aria-label="Level {lv} of {u.costs.length}">
-					{#each u.costs as _, k (k)}<i class:got={k < lv}></i>{/each}
-				</span>
-				<button
-					class="buy"
-					disabled={cost === null || cost > wallet.credits}
-					onclick={() => onBuyUpgrade(u.id)}
-					aria-label={cost === null ? `${u.name} maxed` : `Buy ${u.name} for ${cost} credits`}
-				>
-					{cost === null ? 'Max' : `${cost.toLocaleString()}`}
-				</button>
-			</li>
-		{/each}
-	</ul>
-{/if}
+<h3>Upgrades</h3>
+<ul class="upgrades">
+	{#each upgrades as u (u.id)}
+		{@const lv = levelOf(wallet, aircraft, u.id)}
+		{@const cost = nextCost(wallet, aircraft, u.id)}
+		<li>
+			<span class="un">
+				<strong>{u.name}</strong>
+				<small>{u.blurb}</small>
+			</span>
+			<span class="pips" aria-label="Level {lv} of {u.costs.length}">
+				{#each u.costs as _, k (k)}<i class:got={k < lv}></i>{/each}
+			</span>
+			<button
+				class="buy"
+				disabled={cost === null || cost > wallet.credits}
+				onclick={() => onBuyUpgrade(u.id)}
+				aria-label={cost === null ? `${u.name} maxed` : `Buy ${u.name} for ${cost} credits`}
+			>
+				{cost === null ? 'Max' : `${cost.toLocaleString()}`}
+			</button>
+		</li>
+	{/each}
+</ul>
 
 <style>
 	button {

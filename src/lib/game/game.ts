@@ -64,6 +64,7 @@ import { placeRun, readBest, readBoard, saveBoard, writeBest, writeTrained } fro
 import { predictImpact } from './weapons';
 import { trainConsist } from './railway';
 import { simulateWorld } from './simulate';
+import { AIRCRAFT } from './defs-aircraft';
 import type { Loadout } from './loadout';
 import {
 	endlessCredits,
@@ -481,7 +482,7 @@ export class Game {
 		this.upgrades = upgrades;
 		const flown = start.mode === 'campaign' ? (missionById(start.mission) ?? null) : null;
 		const wanted = start.mode === 'campaign' && flown && canStrike(flown.id) ? start.strike : null;
-		const strike = wanted && this.payStrike(aircraft, wanted) ? wanted : null;
+		const strike = wanted && this.payStrike(wanted) ? wanted : null;
 		const mission = flown && withStrike(flown, strike);
 		this.mode = start.mode === 'campaign' && !mission ? 'endless' : start.mode;
 		this.mission = mission;
@@ -569,8 +570,8 @@ export class Game {
 	}
 
 	/** Takes a strike's cost from the wallet. False when the pilot can't afford it. */
-	private payStrike(aircraft: AircraftId, strike: StrikeId): boolean {
-		const wallet = loadOrMigrate(aircraft);
+	private payStrike(strike: StrikeId): boolean {
+		const wallet = loadOrMigrate();
 		const paid = payForStrike(wallet, strike);
 		if (paid === wallet) return false;
 		saveProgression(paid);
@@ -662,6 +663,29 @@ export class Game {
 				'good'
 			);
 		this.wingmanDue = null;
+	}
+
+	/** Whether the pilot is down at the airfield and may trade their aircraft for another. */
+	canSwap(): boolean {
+		if (this.mode === 'tutorial' || (this.phase !== 'playing' && this.phase !== 'paused'))
+			return false;
+		return !!this.world.player?.canChangeAircraft;
+	}
+
+	/** Trades the landed aircraft for another; later respawns fly it too. */
+	swapAircraft(aircraft: AircraftId, loadout?: Loadout, upgrades?: UpgradeLevels): boolean {
+		if (!this.canSwap()) return false;
+		this.aircraft = this.flying = aircraft;
+		this.loadout = this.flyingLoadout = loadout;
+		this.upgrades = this.flyingUpgrades = upgrades;
+		this.targeting.clear();
+		this.spawnPlayer();
+		this.world.events.message(
+			`${AIRCRAFT[aircraft].name} READY`,
+			'Ground crew: fresh airframe, fuelled and armed',
+			'good'
+		);
+		return true;
 	}
 
 	pause(): void {
@@ -971,7 +995,7 @@ export class Game {
 	/** Endless scores go on the leaderboard; campaign and training results are saved. */
 	private result(outcome: 'failed' | 'complete', reason: string): GameOverStats {
 		// Read (and migrate) the wallet before campaign progress changes below.
-		const wallet = loadOrMigrate(this.aircraft);
+		const wallet = loadOrMigrate();
 		const pay = (award: CreditAward): GameOverStats['credits'] => {
 			const next = grant(wallet, award.total);
 			saveProgression(next);
@@ -1388,6 +1412,7 @@ export class Game {
 			ceiling: !!p?.ceiling && !!p.alive,
 			rearming: !!p?.rearming && !!p.alive,
 			landed: !!p?.landed,
+			canSwap: this.canSwap(),
 			gear: gearStatus(p),
 			takeoff: !!p && p.alive && p.flight === 'fixed' && !p.hasFlown,
 			systems: p ? { ...p.systems } : { engine: 0, wing: 0, hydraulics: 0 },
