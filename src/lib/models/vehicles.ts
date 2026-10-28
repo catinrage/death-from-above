@@ -355,3 +355,100 @@ export function artilleryBarrel(): Float32Array {
 	b.box(0.35, 0.3, 0.42, P.gunMetal, 4.65, 0, 0);
 	return b.build();
 }
+
+/** Fast, thinly armoured scout tank: low hull, five road wheels a side. */
+export function lightTankHull(): Float32Array {
+	const b = new MeshBuilder();
+	b.extrude(
+		[
+			[-2.7, 0.5],
+			[2.3, 0.5],
+			[2.9, 0.95],
+			[2.5, 1.35],
+			[-2.5, 1.35],
+			[-2.8, 1.0]
+		],
+		2.4,
+		P.army
+	);
+	trackRun(
+		b,
+		[
+			[-2.8, 0.12],
+			[2.6, 0.12],
+			[3.05, 0.55],
+			[2.65, 0.92],
+			[-2.8, 0.92],
+			[-3.1, 0.55]
+		],
+		[-2.1, -1.05, 0, 1.05, 2.1],
+		0.45,
+		1.25
+	);
+	for (const s of [1, -1]) b.box(5.4, 0.3, 0.08, P.armyLight, -0.1, 1.1, 1.6 * s);
+	b.box(0.5, 0.3, 1.2, P.armyDark, -2.55, 1.28, 0);
+	b.box(0.2, 0.2, 0.2, P.lamp, 2.65, 1.2, 0.95);
+	b.box(0.2, 0.2, 0.2, P.lamp, 2.65, 1.2, -0.95);
+	return b.build();
+}
+
+export function lightTankTurret(): Float32Array {
+	const b = new MeshBuilder();
+	b.extrude(
+		[
+			[-1.3, 0],
+			[1.1, 0],
+			[1.55, 0.3],
+			[1.0, 0.75],
+			[-1.1, 0.75],
+			[-1.45, 0.4]
+		],
+		1.9,
+		P.armyLight,
+		0.22
+	);
+	b.push().translate(-0.4, 0.75, 0.4).cylinder(0.32, 0.3, 0.22, 10, P.armyLight).pop();
+	b.box(0.45, 0.4, 1.5, P.armyDark, -1.5, 0.35, 0);
+	b.box(0.7, 0.16, 1.94, P.red, -0.5, 0.4, 0);
+	b.push().translate(-0.9, 0.75, -0.5).cylinder(0.025, 0.02, 1.8, 4, P.gunMetal).pop();
+	return b.build();
+}
+
+export function lightTankBarrel(): Float32Array {
+	const b = new MeshBuilder();
+	b.box(0.55, 0.45, 0.7, P.armyLight, 0.15, 0, 0);
+	b.push().translate(0.4, 0, 0).cylinder(0.1, 0.09, 3.2, 8, P.armyLight, { axis: 'x' }).pop();
+	b.push().translate(3.5, 0, 0).cylinder(0.14, 0.14, 0.3, 8, P.gunMetal, { axis: 'x' }).pop();
+	return b.build();
+}
+
+/** Truck cab and a bare flatbed that carries the rocket pod. */
+export function rocketTruckBody(): Float32Array {
+	const b = new MeshBuilder();
+	b.box(6.6, 0.3, 1.0, P.armyDark, -0.3, 0.75, 0);
+	b.push().translate(2.2, 0.9, 0).taper(1.9, 2.3, 1.6, 2.2, 1.45, P.army, -0.1).pop();
+	b.box(1.1, 0.78, 1.9, P.army, 3.55, 1.28, 0);
+	b.box(0.05, 0.5, 1.8, P.glass, 3.0, 1.98, 0);
+	b.box(0.08, 0.5, 1.7, P.armyDark, 4.12, 1.2, 0);
+	b.box(4.3, 0.18, 2.3, P.armyDark, -1.2, 1.08, 0);
+	b.box(0.5, 0.45, 1.4, P.army, -2.6, 1.35, 0);
+	for (const s of [1, -1]) b.box(0.3, 0.6, 0.12, P.armyDark, 0.6, 1.4, 1.0 * s);
+	b.box(0.22, 0.22, 0.22, P.lamp, 4.12, 1.35, 0.75);
+	b.box(0.22, 0.22, 0.22, P.lamp, 4.12, 1.35, -0.75);
+	return b.build();
+}
+
+/** Box of launch tubes, three rows of four, pivoting at its rear. */
+export function rocketPod(): Float32Array {
+	const b = new MeshBuilder();
+	b.box(3.9, 1.2, 1.9, P.armyLight, 2.0, 0.55, 0);
+	for (let iy = 0; iy < 3; iy++) {
+		for (let iz = 0; iz < 4; iz++) {
+			b.push().translate(3.96, 0.15 + iy * 0.38, -0.66 + iz * 0.44);
+			b.cylinder(0.14, 0.14, 0.04, 6, P.rubber, { axis: 'x' });
+			b.pop();
+		}
+	}
+	b.box(0.6, 0.14, 1.94, P.red, 0.6, 1.2, 0);
+	return b.build();
+}

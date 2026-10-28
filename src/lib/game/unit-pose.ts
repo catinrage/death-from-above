@@ -85,6 +85,8 @@ export function poseParts(u: Unit, root: Mat4, out: Mat4[] = poseScratch, ragdol
 /** Barrel length past the pitching part's pivot, by unit kind. */
 const MUZZLE: Partial<Record<UnitKind, number>> = {
 	tank: 5.4,
+	lightTank: 3.7,
+	rocketTruck: 4,
 	flak: 6.2,
 	sam: 5.2,
 	superTank: 8.6,

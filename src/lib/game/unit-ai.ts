@@ -5,10 +5,10 @@ import { WORLD } from './constants';
 import { ENEMY_WEAPONS, type EnemyWeapon } from './defs-units';
 import { launchMissile, spawnBullet } from './projectiles';
 import type { Player } from './player';
-import type { Unit } from './types';
+import type { Owner, Unit, WeaponKind } from './types';
 import { muzzlePoint } from './unit-pose';
 import { nearestFriendly, type Wingman } from './wingman';
-import { CLOSE, CREEP } from './allies';
+import { CLOSE, CREEP, tend } from './allies';
 import { MARCH } from './war';
 import type { World } from './world';
 
@@ -19,6 +19,59 @@ const ELEVATE_RATE = 1.4;
 const ALLY_REACH = 330;
 /** Gunners are much steadier against ground targets than against aircraft. */
 const GROUND_SPREAD = 0.3;
+/** Direct hit from an anti-tank rocket on a friendly unit, and how much armour it defeats. */
+const RPG_PUNCH = 90;
+const RPG_PIERCE = 0.9;
+/** A light tank's gun hits a friendly unit for less than a battle tank's. */
+const LIGHT_PUNCH = 35;
+
+export interface Lob {
+	/** How far it reaches the friendly column. */
+	range: number;
+	/** Launch angle above the horizon. */
+	theta: number;
+	/** Metres either side of the aim point a round lands (one standard deviation). */
+	scatter: number;
+}
+
+/** Indirect fire: mortars, howitzers and rocket launchers drop rounds on troops from behind their own lines. */
+export const LOB: Partial<Record<WeaponKind, Lob>> = {
+	mortar: { range: 480, theta: 1.15, scatter: 9 },
+	artillery: { range: 1100, theta: 0.9, scatter: 16 },
+	rockets: { range: 950, theta: 0.75, scatter: 22 }
+};
+
+/** Launches an indirect-fire round from (x, y, z) to land near `tx` on level ground. */
+export function lobShell(
+	w: World,
+	x: number,
+	y: number,
+	z: number,
+	tx: number,
+	theta: number,
+	damage: number,
+	owner: Owner
+): void {
+	const dist = Math.max(20, Math.abs(tx - x));
+	const v = Math.sqrt((WORLD.gravity * dist) / Math.sin(2 * theta));
+	const a = tx < x ? Math.PI - theta : theta;
+	w.shells.push({
+		kind: 'artillery',
+		x,
+		y,
+		z,
+		vx: Math.cos(a) * v,
+		vy: Math.sin(a) * v,
+		age: 0,
+		fuse: Infinity,
+		damage,
+		radius: 6,
+		owner,
+		trail: 0
+	});
+	w.fx.muzzleFlash(x, y, z, Math.cos(a), Math.sin(a), 2.6, [12, 6, 2]);
+	w.fx.gunSmoke(x, y, z, 3);
+}
 
 export function updateUnits(w: World, dt: number): void {
 	w.radarCoverage = false;
@@ -52,7 +105,8 @@ export function updateUnits(w: World, dt: number): void {
 		if (u.def.kind === 'cruiser') {
 			if (!steamCruiser(w, u, dt)) continue;
 		} else move(w, u, dt);
-		if (u.def.kind === 'searchlight') searchlight(w, u, dt);
+		if (u.def.kind === 'medic') tend(u, w.units, dt);
+		else if (u.def.kind === 'searchlight') searchlight(w, u, dt);
 		else if (u.def.weapon) engage(w, u, dt);
 		if (u.aux) bossWeapons(w, u, dt);
 	}
@@ -61,6 +115,8 @@ export function updateUnits(w: World, dt: number): void {
 
 function siegeLine(u: Unit): number {
 	if (u.def.kind === 'artillery') return WORLD.baseAttackX + 480;
+	if (u.def.kind === 'rocketTruck') return WORLD.baseAttackX + 420;
+	if (u.def.kind === 'mortar') return WORLD.baseAttackX + 260;
 	if (u.def.kind === 'tank') return WORLD.baseAttackX + 70;
 	if (u.def.kind === 'superTank') return WORLD.baseAttackX + 150;
 	return WORLD.baseAttackX + u.def.half[0] * 2;
@@ -103,10 +159,12 @@ function move(w: World, u: Unit, dt: number): void {
 		if (u.deployed >= 4 && u.stateTime > 3) u.state = 'advance';
 	}
 	// Friendly armour in the way: stop and fight it out instead of driving through.
-	const ally =
-		u.dir < 0 ? w.allies.ahead(u.x, def.weapon ? Math.min(def.range * 0.7, 240) : 260) : null;
+	const lob = def.weapon ? LOB[def.weapon] : undefined;
+	const reach = lob ? lob.range * 0.8 : def.weapon ? Math.min(def.range * 0.7, 240) : 260;
+	const ally = u.dir < 0 ? w.allies.ahead(u.x, reach) : null;
 	// Armed units keep creeping in until the range is short, then stand and fight.
-	if (ally) want = def.weapon && u.x - ally.x > CLOSE ? want * CREEP : 0;
+	// Indirect fire stops as soon as the column is in reach.
+	if (ally) want = def.weapon && !lob && u.x - ally.x > CLOSE ? want * CREEP : 0;
 	// Stand on a checkpoint until it is theirs.
 	if (u.dir < 0 && w.war.holdingAt(u.x, 'enemy')) want = 0;
 	// Keep convoy spacing: slow behind whoever is just ahead in the lane. Bridging
@@ -168,6 +226,30 @@ function engage(w: World, u: Unit, dt: number): void {
 	u.cooldown -= dt;
 	const ox = u.x,
 		oy = u.y + u.def.half[1] * 2;
+	const lob = kind ? LOB[kind] : undefined;
+	if (lob) {
+		const a = w.allies.nearest(ox, oy, lob.range);
+		if (a) return bombard(w, u, dt, spec, lob, a.x);
+		if (u.state === 'siege') return siege(w, u, dt);
+		u.aimPitch = moveToward(u.aimPitch, 0.1, dt * 0.5);
+		return;
+	}
+	if (kind === 'rpg') {
+		// Anti-tank teams only take on the column, armour first.
+		const a = w.allies.nearest(ox, oy, u.def.range, true);
+		if (a) {
+			const t = Math.abs(a.x - ox) / spec.speed;
+			const ty = a.y + a.def.half[1] + 0.5 * WORLD.gravity * t * t;
+			if (aimAt(u, dt, a.x, ty, ox, oy)) {
+				if (u.state === 'advance') {
+					u.state = 'hold';
+					u.stateTime = 0;
+				}
+				fire(w, u, dt, spec, a.x, ty, t, true);
+			}
+		} else if (u.state === 'siege') siege(w, u, dt);
+		return;
+	}
 	// Air defences shoot at whichever friendly aircraft is closer: the player or the wingman.
 	const p = nearestFriendly(w, ox, oy);
 	// Small arms turn on paratroopers that land close by.
@@ -182,11 +264,14 @@ function engage(w: World, u: Unit, dt: number): void {
 	// Ground guns turn on the friendly column once it is close (mobile AA keeps watching the sky).
 	if (
 		kind === 'rifle' ||
+		kind === 'sniper' ||
 		kind === 'mg' ||
 		kind === 'cannon' ||
 		(kind === 'autocannon' && u.def.kind !== 'spaag')
 	) {
-		const a = w.allies.nearest(ox, oy, Math.min(u.def.range, ALLY_REACH));
+		// Snipers pick troops off from beyond where everyone else opens up.
+		const reach = kind === 'sniper' ? u.def.range : Math.min(u.def.range, ALLY_REACH);
+		const a = w.allies.nearest(ox, oy, reach);
 		if (a) {
 			const t = Math.abs(a.x - ox) / Math.max(spec.speed, 1);
 			const gravity = kind === 'cannon' ? WORLD.gravity : 4;
@@ -253,17 +338,7 @@ function fire(
 	atGround = false
 ): void {
 	const kind = u.def.weapon;
-	if (u.burst > 0) {
-		u.gap -= dt;
-		if (u.gap > 0) return;
-		u.gap = spec.burstGap;
-		u.burst--;
-	} else {
-		if (u.cooldown > 0) return;
-		u.cooldown = spec.interval * rnd.range(0.8, 1.25);
-		u.burst = spec.burst - 1;
-		u.gap = spec.burstGap;
-	}
+	if (!trigger(u, spec, dt)) return;
 	const m = muzzlePoint(u, m3);
 	const rookie = 1.5 - Math.min(w.wave, 10) * 0.07;
 	const spread = spec.spread * rookie * (atGround ? GROUND_SPREAD : 1) * (w.spotted ? 0.55 : 1);
@@ -289,7 +364,8 @@ function fire(
 		w.sound.play('flak', m[0], m[1], 0.7);
 		return;
 	}
-	if (kind === 'cannon') {
+	if (kind === 'cannon' || kind === 'rpg') {
+		const rpg = kind === 'rpg';
 		w.shells.push({
 			kind: 'tank',
 			x: m[0],
@@ -303,11 +379,13 @@ function fire(
 			radius: 6,
 			owner: 'enemy',
 			trail: 0,
-			aimX
+			aimX,
+			punch: rpg ? RPG_PUNCH : u.def.kind === 'lightTank' ? LIGHT_PUNCH : undefined,
+			pierce: rpg ? RPG_PIERCE : undefined
 		});
-		w.fx.muzzleFlash(m[0], m[1], m[2], Math.cos(a), Math.sin(a), 3, [12, 6, 2]);
-		w.fx.gunSmoke(m[0], m[1], m[2], 3.5);
-		w.sound.play('tankGun', m[0], m[1], 0.8);
+		w.fx.muzzleFlash(m[0], m[1], m[2], Math.cos(a), Math.sin(a), rpg ? 1.6 : 3, [12, 6, 2]);
+		w.fx.gunSmoke(m[0], m[1], m[2], rpg ? 2 : 3.5);
+		w.sound.play('tankGun', m[0], m[1], rpg ? 0.45 : 0.8);
 		return;
 	}
 	spawnBullet(w, {
@@ -322,11 +400,11 @@ function fire(
 		owner: 'enemy',
 		tracer: true,
 		color: spec.tracer,
-		size: kind === 'rifle' ? 0.1 : kind === 'autocannon' ? 0.26 : 0.18,
+		size: kind === 'rifle' || kind === 'sniper' ? 0.1 : kind === 'autocannon' ? 0.26 : 0.18,
 		explosive: 0,
 		aimX
 	});
-	if (kind !== 'rifle' || rnd.chance(0.5)) {
+	if ((kind !== 'rifle' && kind !== 'sniper') || rnd.chance(0.5)) {
 		w.fx.muzzleFlash(
 			m[0],
 			m[1],
@@ -337,7 +415,42 @@ function fire(
 			spec.tracer
 		);
 	}
-	w.sound.play(kind === 'autocannon' ? 'aaGun' : kind === 'mg' ? 'mg' : 'rifle', m[0], m[1], 0.45);
+	w.sound.play(
+		kind === 'autocannon' ? 'aaGun' : kind === 'mg' ? 'mg' : 'rifle',
+		m[0],
+		m[1],
+		kind === 'sniper' ? 0.7 : 0.45
+	);
+}
+
+/** Burst timing: true when the next round should leave the barrel. */
+function trigger(u: Unit, spec: EnemyWeapon, dt: number): boolean {
+	if (u.burst > 0) {
+		u.gap -= dt;
+		if (u.gap > 0) return false;
+		u.gap = spec.burstGap;
+		u.burst--;
+		return true;
+	}
+	if (u.cooldown > 0) return false;
+	u.cooldown = spec.interval * rnd.range(0.8, 1.25);
+	u.burst = spec.burst - 1;
+	u.gap = spec.burstGap;
+	return true;
+}
+
+/** Mortars, howitzers and rocket launchers drop rounds on the friendly column. */
+function bombard(w: World, u: Unit, dt: number, spec: EnemyWeapon, lob: Lob, tx: number): void {
+	aimAt(u, dt, tx, u.y + 400, u.x, u.y);
+	u.aimPitch = moveToward(u.aimPitch, lob.theta, dt * 0.6);
+	if (u.def.category === 'infantry' && u.state === 'advance') {
+		u.state = 'hold';
+		u.stateTime = 0;
+	}
+	if (!trigger(u, spec, dt)) return;
+	const m = muzzlePoint(u, m3);
+	lobShell(w, m[0], m[1], m[2], tx + rnd.gauss(lob.scatter), lob.theta, 0, 'enemy');
+	w.sound.play(u.def.weapon === 'artillery' ? 'artillery' : 'tankGun', m[0], m[1], 0.55);
 }
 
 function missileSite(
@@ -398,9 +511,10 @@ function missileSite(
 function siege(w: World, u: Unit, dt: number): void {
 	const tx = rnd.range(WORLD.baseMinX + 60, WORLD.baseMaxX - 20);
 	const kind = u.def.weapon;
-	if (kind === 'artillery') {
+	const lob = kind ? LOB[kind] : undefined;
+	if (lob) {
 		aimAt(u, dt, tx, u.y + 400, u.x, u.y);
-		u.aimPitch = moveToward(u.aimPitch, 0.75, dt * 0.5);
+		u.aimPitch = moveToward(u.aimPitch, lob.theta, dt * 0.5);
 	} else {
 		aimAt(u, dt, tx, w.ground(tx) + 3, u.x, u.y + u.def.half[1] * 2);
 	}
@@ -408,8 +522,8 @@ function siege(w: World, u: Unit, dt: number): void {
 	const spec = ENEMY_WEAPONS[kind ?? 'rifle'];
 	u.cooldown = spec.interval * rnd.range(0.9, 1.6);
 	const m = muzzlePoint(u, m3);
-	if (kind === 'artillery' || kind === 'cannon') {
-		const theta = kind === 'artillery' ? 0.9 : 0.25;
+	if (lob || kind === 'cannon' || kind === 'rpg') {
+		const theta = lob?.theta ?? 0.25;
 		const dist = Math.abs(tx - m[0]);
 		const v = Math.sqrt((13 * dist) / Math.sin(2 * theta));
 		const a = tx < m[0] ? Math.PI - theta : theta;
@@ -430,7 +544,7 @@ function siege(w: World, u: Unit, dt: number): void {
 		w.fx.muzzleFlash(m[0], m[1], m[2], Math.cos(a), Math.sin(a), 3.2, [12, 6, 2]);
 		w.fx.gunSmoke(m[0], m[1], m[2], 4);
 		w.sound.play(kind === 'artillery' ? 'artillery' : 'tankGun', m[0], m[1], 0.7);
-	} else if (kind === 'rifle' || kind === 'mg' || kind === 'autocannon') {
+	} else if (kind === 'rifle' || kind === 'sniper' || kind === 'mg' || kind === 'autocannon') {
 		const a = Math.atan2(w.ground(tx) + 3 - m[1], tx - m[0]) + rnd.gauss(0.03);
 		spawnBullet(w, {
 			x: m[0],

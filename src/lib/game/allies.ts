@@ -7,21 +7,40 @@ import { UNITS } from './defs-units';
 import type { AirUnit } from './enemy-air';
 import { launchMissile, spawnBullet } from './projectiles';
 import type { Unit, UnitDef } from './types';
-import { aimAt, wreck } from './unit-ai';
+import { aimAt, lobShell, wreck, type Lob } from './unit-ai';
 import { muzzlePoint } from './unit-pose';
 import { MARCH } from './war';
 import type { World } from './world';
 
 /** Troops and vehicles our side can send up the road. */
-export type AllyKind = 'rifleman' | 'manpads' | 'jeep' | 'truck' | 'tank' | 'apc' | 'spaag';
+export type AllyKind =
+	| 'rifleman'
+	| 'manpads'
+	| 'sniper'
+	| 'atTrooper'
+	| 'mortar'
+	| 'medic'
+	| 'jeep'
+	| 'truck'
+	| 'tank'
+	| 'lightTank'
+	| 'apc'
+	| 'spaag'
+	| 'rocketTruck';
 export const ALLY_KINDS: readonly AllyKind[] = [
 	'rifleman',
 	'manpads',
+	'sniper',
+	'atTrooper',
+	'mortar',
+	'medic',
 	'jeep',
 	'truck',
 	'tank',
+	'lightTank',
 	'apc',
-	'spaag'
+	'spaag',
+	'rocketTruck'
 ];
 
 /** How hard enemy small arms hit a friendly unit (their rounds are tuned against aircraft). */
@@ -37,6 +56,11 @@ export const CREEP = 0.35;
 export const CLOSE = 120;
 /** Unarmed (or sky-watching) units keep further back from a fight. */
 const HOLD_UNARMED = 320;
+/** A medic patches up hurt infantry within this many metres, at this many hit points a second. */
+const HEAL_RADIUS = 16;
+const HEAL_RATE = 3;
+/** Indirect fire holds off a target with our own troops this close to it. */
+const DANGER_CLOSE = 25;
 /** Gap the column keeps between vehicles, and between soldiers. */
 const SPACING = 7;
 const SPACING_INFANTRY = 1.4;
@@ -55,6 +79,10 @@ interface AllyGun {
 	air?: boolean;
 	/** Heat-seeking missiles at aircraft. */
 	missile?: boolean;
+	/** Goes for vehicles before troops. */
+	antiArmor?: boolean;
+	/** Indirect fire, lobbed from behind the line. */
+	lob?: Lob;
 }
 
 const GUNS: Partial<Record<AllyKind, AllyGun>> = {
@@ -70,7 +98,49 @@ const GUNS: Partial<Record<AllyKind, AllyGun>> = {
 	},
 	apc: { range: 380, interval: 2.4, burst: 6, gap: 0.09, damage: 7, pierce: 0.35, speed: 800 },
 	jeep: { range: 340, interval: 2, burst: 6, gap: 0.1, damage: 4, pierce: 0.1, speed: 600 },
+	lightTank: {
+		range: 380,
+		interval: 3,
+		burst: 1,
+		gap: 0,
+		damage: 32,
+		pierce: 0.6,
+		speed: 420,
+		shell: true
+	},
 	rifleman: { range: 280, interval: 1.8, burst: 3, gap: 0.16, damage: 2.6, pierce: 0, speed: 520 },
+	sniper: { range: 440, interval: 4, burst: 1, gap: 0, damage: 16, pierce: 0.1, speed: 900 },
+	atTrooper: {
+		range: 300,
+		interval: 6,
+		burst: 1,
+		gap: 0,
+		damage: 80,
+		pierce: 0.9,
+		speed: 170,
+		shell: true,
+		antiArmor: true
+	},
+	mortar: {
+		range: 480,
+		interval: 5,
+		burst: 1,
+		gap: 0,
+		damage: 0,
+		pierce: 0,
+		speed: 0,
+		lob: { range: 480, theta: 1.15, scatter: 9 }
+	},
+	rocketTruck: {
+		range: 950,
+		interval: 14,
+		burst: 6,
+		gap: 0.2,
+		damage: 0,
+		pierce: 0,
+		speed: 0,
+		lob: { range: 950, theta: 0.75, scatter: 22 }
+	},
 	spaag: {
 		range: 620,
 		interval: 2,
@@ -95,7 +165,14 @@ const GUNS: Partial<Record<AllyKind, AllyGun>> = {
 };
 
 /** Our infantry is better equipped than the enemy's: it takes a few more rounds to drop. */
-const HP: Partial<Record<AllyKind, number>> = { rifleman: 20, manpads: 20 };
+const HP: Partial<Record<AllyKind, number>> = {
+	rifleman: 20,
+	manpads: 20,
+	sniper: 16,
+	atTrooper: 20,
+	mortar: 20,
+	medic: 18
+};
 
 const DEFS = {} as Record<AllyKind, UnitDef>;
 for (const kind of ALLY_KINDS) {
@@ -114,6 +191,22 @@ export function allyDef(kind: AllyKind): UnitDef {
 }
 
 const m3: [number, number, number] = [0, 0, 0];
+
+/** A medic patches up the most badly hurt soldier near them, on either side. */
+export function tend(medic: Unit, list: readonly Unit[], dt: number): void {
+	let patient: Unit | null = null;
+	let worst = 1;
+	for (const u of list) {
+		if (u === medic || !u.alive || u.def.category !== 'infantry') continue;
+		if (Math.abs(u.x - medic.x) > HEAL_RADIUS) continue;
+		const left = u.hp / u.def.hp;
+		if (left < worst) {
+			worst = left;
+			patient = u;
+		}
+	}
+	if (patient) patient.hp = Math.min(patient.def.hp, patient.hp + HEAL_RATE * dt);
+}
 
 /**
  * Our own army pushing up the road toward the enemy HQ. Units halt to trade
@@ -165,13 +258,24 @@ export class Allies {
 		return best;
 	}
 
-	/** Nearest live friendly unit to (x, y) within `range`, for enemy gunners. */
-	nearest(x: number, y: number, range: number): Unit | null {
+	/**
+	 * Nearest live friendly unit to (x, y) within `range`, for enemy gunners.
+	 * `armourFirst` passes over troops for any vehicle up to twice as far.
+	 */
+	nearest(x: number, y: number, range: number, armourFirst = false): Unit | null {
 		let best: Unit | null = null;
 		let bestD = range;
 		for (const u of this.list) {
 			if (!u.alive) continue;
 			const d = Math.hypot(u.x - x, u.y - y);
+			if (d > range) continue;
+			if (armourFirst && u.def.category === 'infantry') {
+				if (d * 2 < bestD) {
+					bestD = d * 2;
+					best = u;
+				}
+				continue;
+			}
 			if (d < bestD) {
 				bestD = d;
 				best = u;
@@ -211,11 +315,18 @@ export class Allies {
 		return null;
 	}
 
-	/** An enemy tank round reaching a friendly unit. */
-	shellHit(x0: number, y0: number, x1: number, y1: number): Unit | null {
+	/** An enemy tank round (or anti-tank rocket) reaching a friendly unit. */
+	shellHit(
+		x0: number,
+		y0: number,
+		x1: number,
+		y1: number,
+		punch = TANK_ROUND,
+		pierce = 0.7
+	): Unit | null {
 		for (const u of this.list) {
 			if (!u.alive || segmentVsUnit(u, x0, y0, x1, y1, 0.3) < 0) continue;
-			this.hit(u, TANK_ROUND, 0.7);
+			this.hit(u, punch, pierce);
 			return u;
 		}
 		return null;
@@ -251,7 +362,8 @@ export class Allies {
 			}
 			u.stateTime += dt;
 			this.drive(w, u, dt);
-			this.engage(w, u, dt);
+			if (u.def.kind === 'medic') tend(u, this.list, dt);
+			else this.engage(w, u, dt);
 			if (hq && u.state === 'siege') hq.damage(w, u.def.siege * dt);
 		}
 	}
@@ -278,9 +390,16 @@ export class Allies {
 		const gun = GUNS[def.kind as AllyKind];
 		let want = infantry ? def.speed * MARCH : CRUISE;
 		const b = this.blocker(w, u);
-		const hold = gun && !gun.air ? Math.min(HOLD, gun.range * 0.8) : HOLD_UNARMED;
+		// Direct-fire units creep in to close range; medics keep up with the riflemen they look after.
+		const close = gun && !gun.air && !gun.lob ? CLOSE : def.kind === 'medic' ? CLOSE + 15 : 0;
+		// Indirect fire halts as soon as the enemy is in reach.
+		const hold = gun?.lob
+			? gun.lob.range * 0.8
+			: close
+				? Math.min(HOLD, (gun?.range ?? HOLD) * 0.8)
+				: HOLD_UNARMED;
 		// Armed units keep creeping in under fire until the range is short, then stand and fight.
-		if (b && b.dist < hold) want = gun && !gun.air && b.dist > CLOSE ? want * CREEP : 0;
+		if (b && b.dist < hold) want = close && b.dist > close ? want * CREEP : 0;
 		const gap = infantry ? SPACING_INFANTRY : SPACING;
 		for (const o of this.list) {
 			if (o === u || !o.alive || Math.abs(o.z - u.z) > 2.6) continue;
@@ -326,7 +445,8 @@ export class Allies {
 		for (const o of w.units) {
 			if (!o.alive || !inBattlePlane(o)) continue;
 			// Facing the enemy: things already behind count for more distance.
-			const d = Math.abs(o.x - u.x) * (o.x < u.x ? 1.6 : 1);
+			let d = Math.abs(o.x - u.x) * (o.x < u.x ? 1.6 : 1);
+			if (gun.antiArmor && o.def.category === 'infantry') d *= 2;
 			if (d < best) {
 				best = d;
 				foe = o;
@@ -347,6 +467,7 @@ export class Allies {
 			u.aimPitch = damp(u.aimPitch, 0.05, 1, dt);
 			return;
 		}
+		if (gun.lob) return this.bombard(w, u, gun, gun.lob, tx, dt);
 		const dx = Math.abs(tx - ox);
 		const g = gun.shell ? WORLD.gravity : 4;
 		const tof = dx / gun.speed;
@@ -391,13 +512,26 @@ export class Allies {
 			owner: 'player',
 			tracer: true,
 			color: [4, 9, 14],
-			size: kind === 'apc' ? 0.24 : kind === 'rifleman' ? 0.1 : 0.16,
+			size: kind === 'apc' ? 0.24 : kind === 'rifleman' || kind === 'sniper' ? 0.1 : 0.16,
 			explosive: 0,
 			aimX: tx
 		});
-		if (kind !== 'rifleman' || rnd.chance(0.5))
+		const smallArms = kind === 'rifleman' || kind === 'sniper';
+		if (!smallArms || rnd.chance(0.5))
 			w.fx.muzzleFlash(m[0], m[1], m[2], cx, cy, kind === 'apc' ? 1.2 : 0.7, [8, 9, 12]);
-		w.sound.play(kind === 'apc' ? 'aaGun' : kind === 'rifleman' ? 'rifle' : 'mg', m[0], m[1], 0.35);
+		w.sound.play(kind === 'apc' ? 'aaGun' : smallArms ? 'rifle' : 'mg', m[0], m[1], 0.35);
+	}
+
+	/** Mortars and rocket artillery drop rounds on the enemy from behind our own line. */
+	private bombard(w: World, u: Unit, gun: AllyGun, lob: Lob, tx: number, dt: number): void {
+		aimAt(u, dt, tx, u.y + 400, u.x, u.y);
+		u.aimPitch = damp(u.aimPitch, lob.theta, 2, dt);
+		// Hold off rather than drop it on our own troops.
+		for (const o of this.list) if (o.alive && Math.abs(o.x - tx) < DANGER_CLOSE) return;
+		if (!this.trigger(u, gun, dt)) return;
+		const m = muzzlePoint(u, m3);
+		lobShell(w, m[0], m[1], m[2], tx + rnd.gauss(lob.scatter), lob.theta, 0, 'player');
+		w.sound.play(u.def.kind === 'rocketTruck' ? 'artillery' : 'tankGun', m[0], m[1], 0.45);
 	}
 
 	/** Mobile AA and missile troopers keep the sky over the column clear. */

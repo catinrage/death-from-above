@@ -1,5 +1,5 @@
 import { clamp } from '../engine/math';
-import { Rng, fx as rnd } from '../engine/rng';
+import { pickWeighted, Rng, fx as rnd } from '../engine/rng';
 import type { MeshName } from '../models';
 import type { AllyKind } from './allies';
 import { WORLD } from './constants';
@@ -92,34 +92,41 @@ function startOwner(i: number, n: number): Side | null {
 export function planGroup(wave: number, rng: Rng, scale = 1): AllyKind[] {
 	let budget = (18 + wave * 10) * scale;
 	const out: AllyKind[] = [];
-	const squad = rng.int(2, 4);
-	for (let i = 0; i < squad; i++) {
-		out.push('rifleman');
-		budget -= UNITS.rifleman.cost;
-	}
-	const pool: [AllyKind, number][] = [
-		['jeep', 3],
-		['tank', wave >= 2 ? 2 + wave * 0.15 : 0.6],
-		['apc', wave >= 2 ? 2 : 0.6],
-		['manpads', wave >= 3 ? 1.2 : 0],
-		['spaag', wave >= 4 ? 1 : 0]
-	];
-	const total = pool.reduce((s, [, w]) => s + w, 0);
-	// Always at least one vehicle: infantry alone would never reach the HQ.
-	for (let first = true; first || budget > 0; first = false) {
-		let r = rng.next() * total;
-		let kind: AllyKind = 'jeep';
-		for (const [k, w] of pool) {
-			r -= w;
-			if (r <= 0) {
-				kind = k;
-				break;
-			}
-		}
+	const add = (kind: AllyKind): void => {
 		out.push(kind);
 		budget -= UNITS[kind].cost;
+	};
+	const squad = rng.int(2, 4);
+	for (let i = 0; i < squad; i++) add(i === 0 || rng.chance(0.6) ? 'rifleman' : soldier(wave, rng));
+	const vehicles: [AllyKind, number][] = [
+		['jeep', 3],
+		['lightTank', 1.6],
+		['tank', wave >= 2 ? 2 + wave * 0.15 : 0.6],
+		['apc', wave >= 2 ? 2 : 0.6],
+		['spaag', wave >= 4 ? 1 : 0],
+		['rocketTruck', wave >= 5 ? 0.6 : 0]
+	];
+	// Always at least one vehicle: infantry alone would never reach the HQ.
+	add(pickWeighted(vehicles, rng, 'jeep'));
+	while (budget > 0) {
+		add(rng.chance(0.35) ? soldier(wave, rng) : pickWeighted(vehicles, rng, 'jeep'));
 	}
 	return out;
+}
+
+/** A specialist to stiffen a squad. */
+function soldier(wave: number, rng: Rng): AllyKind {
+	return pickWeighted<AllyKind>(
+		[
+			['atTrooper', 1.4],
+			['medic', 1],
+			['sniper', wave >= 2 ? 0.8 : 0.3],
+			['mortar', wave >= 2 ? 1 : 0.3],
+			['manpads', wave >= 3 ? 1.2 : 0]
+		],
+		rng,
+		'atTrooper'
+	);
 }
 
 export interface HqStructure {
@@ -338,7 +345,8 @@ export class War {
 	/** Our bombs landing on the HQ do nothing: say why, once. */
 	blastAt(w: World, x: number, by: Owner): void {
 		if (!this.active || this.hinted || by !== 'player' || !this.hq.contains(x)) return;
-		if (this.hq.destroyed) return;
+		// Our own troops shelling the wire set off blasts there too: that is no time for the hint.
+		if (this.hq.destroyed || w.allies.list.some((u) => u.alive && u.state === 'siege')) return;
 		this.hinted = true;
 		w.events.message(
 			'HQ IS HARDENED',

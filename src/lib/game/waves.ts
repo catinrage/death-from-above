@@ -1,4 +1,4 @@
-import { Rng } from '../engine/rng';
+import { pickWeighted, Rng } from '../engine/rng';
 import { WORLD } from './constants';
 import { MOBILE_KINDS, STATIC_KINDS, UNITS } from './defs-units';
 import { isBossKind, spawnBoss } from './boss';
@@ -82,19 +82,34 @@ function leadFor(wave: number, rng: Rng, bias: WaveTweaks['lead'] = {}): UnitKin
 		['truck', 3],
 		['jeep', 3],
 		['tank', wave >= 2 ? 3 + wave * 0.3 : 0],
+		['lightTank', wave >= 2 ? 2.2 : 0],
 		['apc', wave >= 3 ? 2.5 : 0],
 		['spaag', wave >= 2 ? 1.8 : 0],
 		['sam', wave >= 4 ? 1.2 : 0],
-		['artillery', wave >= 4 ? 1.3 : 0]
+		['artillery', wave >= 4 ? 1.3 : 0],
+		['rocketTruck', wave >= 5 ? 1 : 0]
 	];
 	for (const entry of pool) entry[1] *= bias[entry[0]] ?? 1;
-	const total = pool.reduce((s, [, w]) => s + w, 0);
-	let r = rng.next() * total;
-	for (const [k, w] of pool) {
-		r -= w;
-		if (r <= 0) return k;
-	}
-	return 'truck';
+	return pickWeighted(pool, rng, 'truck');
+}
+
+/** Heavy launchers that only ever lead a convoy, never ride along as an escort. */
+const REAR_KINDS: readonly UnitKind[] = ['sam', 'artillery', 'rocketTruck'];
+
+/** Weighted pick of a soldier for a squad: mostly riflemen, specialists as the war goes on. */
+function soldierFor(wave: number, rng: Rng): UnitKind {
+	return pickWeighted(
+		[
+			['rifleman', 6],
+			['manpads', wave >= 3 ? 1.6 : 0],
+			['atTrooper', wave >= 2 ? 1.2 : 0],
+			['sniper', wave >= 2 ? 0.8 : 0],
+			['mortar', wave >= 3 ? 0.9 : 0],
+			['medic', wave >= 2 ? 0.6 : 0]
+		],
+		rng,
+		'rifleman'
+	);
 }
 
 /** Composes a wave from a budget that grows with the wave number. */
@@ -128,17 +143,20 @@ export function planWave(
 		for (let i = 0; i < escorts && budget > 0; i++) {
 			const infantry = rng.chance(0.6);
 			const kind: UnitKind = infantry
-				? wave >= 3 && rng.chance(0.25)
-					? 'manpads'
-					: 'rifleman'
+				? soldierFor(wave, rng)
 				: rng.pick(
-						MOBILE_KINDS.filter((k) => UNITS[k].minWave <= wave && k !== 'sam' && k !== 'artillery')
+						MOBILE_KINDS.filter(
+							(k) =>
+								UNITS[k].minWave <= wave &&
+								UNITS[k].category !== 'infantry' &&
+								!REAR_KINDS.includes(k)
+						)
 					);
 			at += infantry ? rng.range(0.4, 1) : rng.range(2.2, 3.4);
 			if (infantry) {
 				const squad = rng.int(2, 4);
 				for (let s = 0; s < squad && budget > 0; s++)
-					add(kind, at + s * 0.35, rng.range(-3.2, 3.2));
+					add(s === 0 ? kind : soldierFor(wave, rng), at + s * 0.35, rng.range(-3.2, 3.2));
 			} else {
 				add(kind, at, lane());
 			}
