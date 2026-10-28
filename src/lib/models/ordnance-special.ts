@@ -153,3 +153,102 @@ export function parachute(): Float32Array {
 	}
 	return b.build();
 }
+
+const FRAG = mat(0x6a6a4a, 0.6, 0.3);
+const SKIP = mat(0x3c4a46, 0.55, 0.45);
+const GLIDE = mat(0x8c96a4, 0.45, 0.45);
+const HUNTER = mat(0x4a3a44, 0.5, 0.4);
+const HUNTER_BAND = mat(0xff8fb8, 0.4, 0, 0.8);
+const CRYO = mat(0xdde8ee, 0.35, 0.3);
+const CRYO_GLOW = mat(0xbff4ff, 0.2, 0, 1.6);
+const TESLA = mat(0x30283c, 0.4, 0.6);
+const TESLA_COIL = mat(0xb08a3a, 0.35, 0.8);
+const TESLA_GLOW = mat(0xc49bff, 0.3, 0, 2.4);
+const MINE = mat(0x4a4c36, 0.7, 0.3);
+
+/** A plain lathed bomb body along X, nose at +len/2. */
+function body(b: MeshBuilder, len: number, r: number, m: Material, segments = 12): void {
+	const h = len / 2;
+	b.lathe(
+		[
+			[0.0, -h],
+			[r * 0.7, -h + 0.05],
+			[r, -h * 0.5],
+			[r, h * 0.55],
+			[r * 0.55, h * 0.88],
+			[0.0, h]
+		],
+		segments,
+		m,
+		{ axis: 'x' }
+	);
+}
+
+/** Airburst bomb: stubby, with a long proximity-fuze probe on the nose. */
+export function bombFrag(): Float32Array {
+	const b = new MeshBuilder();
+	body(b, 1.7, 0.22, FRAG);
+	b.push().translate(0.8, 0, 0).cylinder(0.03, 0.03, 0.55, 6, P.bombDark, { axis: 'x' }).pop();
+	b.push().translate(-0.1, 0, 0).cylinder(0.225, 0.225, 0.1, 12, P.bombYellow, { axis: 'x' }).pop();
+	fins(b, -0.75, 0.4, 0.6, FRAG);
+	return b.build();
+}
+
+/** Skip bomb: a squat drum with end rims, rolled out of the bay. */
+export function bombSkip(): Float32Array {
+	const b = new MeshBuilder();
+	b.push().translate(0, 0, -0.55).cylinder(0.45, 0.45, 1.1, 14, SKIP, { axis: 'z' }).pop();
+	for (const z of [-0.58, 0.5])
+		b.push().translate(0, 0, z).cylinder(0.48, 0.48, 0.08, 14, P.bombDark, { axis: 'z' }).pop();
+	return b.build();
+}
+
+/** Glide bomb: slim body with long straight wings and a twin tail. */
+export function bombGlide(): Float32Array {
+	const b = new MeshBuilder();
+	body(b, 2.2, 0.18, GLIDE);
+	b.box(0.35, 0.03, 3.2, GLIDE, 0.05, 0.12, 0);
+	fins(b, -0.95, 0.35, 0.7, GLIDE);
+	return b.build();
+}
+
+/** Hunter dispenser: dark body with a pink band, four seekers packed inside. */
+export function bombHunter(): Float32Array {
+	const b = new MeshBuilder();
+	body(b, 2.0, 0.24, HUNTER);
+	for (const x of [-0.3, 0.3])
+		b.push().translate(x, 0, 0).cylinder(0.245, 0.245, 0.08, 12, HUNTER_BAND, { axis: 'x' }).pop();
+	fins(b, -0.85, 0.45, 0.65, HUNTER);
+	return b.build();
+}
+
+/** Cryo canister: frosted white with a glowing ice-blue window. */
+export function bombCryo(): Float32Array {
+	const b = new MeshBuilder();
+	body(b, 1.9, 0.24, CRYO);
+	b.push().translate(-0.15, 0, 0).cylinder(0.245, 0.245, 0.35, 12, CRYO_GLOW, { axis: 'x' }).pop();
+	fins(b, -0.8, 0.42, 0.62, CRYO);
+	return b.build();
+}
+
+/** Tesla bomb: copper coil wound round a dark core, glowing at the tip. */
+export function bombTesla(): Float32Array {
+	const b = new MeshBuilder();
+	body(b, 1.9, 0.2, TESLA);
+	for (let k = 0; k < 5; k++)
+		b.push()
+			.translate(-0.4 + k * 0.16, 0, 0)
+			.cylinder(0.24, 0.24, 0.06, 12, TESLA_COIL, { axis: 'x' })
+			.pop();
+	b.push().translate(0.95, 0, 0).sphere(0.1, 8, 6, TESLA_GLOW).pop();
+	fins(b, -0.8, 0.4, 0.6, TESLA);
+	return b.build();
+}
+
+/** Land mine lying on the ground: a flat disc with a pressure plate. */
+export function landMine(): Float32Array {
+	const b = new MeshBuilder();
+	b.cylinder(0.45, 0.4, 0.16, 12, MINE);
+	b.push().translate(0, 0.16, 0).cylinder(0.16, 0.16, 0.05, 10, P.bombDark).pop();
+	return b.build();
+}

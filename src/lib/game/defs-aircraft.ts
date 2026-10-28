@@ -122,7 +122,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 			color: [9, 6.5, 2.2],
 			explosive: 0
 		},
-		loadout: { gp: 8, cluster: 3, napalm: 2, guided: 2, emp: 1, cruise: 1 },
+		loadout: { gp: 8, stick: 2, cluster: 3, napalm: 2, guided: 2, tesla: 2, emp: 1, cruise: 1 },
 		regen: 2.4,
 		missiles: 6,
 		hardpoints: [
@@ -172,7 +172,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 			color: [6, 7, 10],
 			explosive: 0
 		},
-		loadout: { gp: 6, penetrator: 2, guided: 3, emp: 2, nuke: 1 },
+		loadout: { gp: 6, penetrator: 2, guided: 3, glide: 2, cryo: 1, emp: 2, nuke: 1 },
 		regen: 2.6,
 		missiles: 8,
 		hardpoints: [
@@ -220,7 +220,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 			color: [10, 4.2, 1.4],
 			explosive: 2.5
 		},
-		loadout: { gp: 10, cluster: 3, napalm: 3, penetrator: 2, chemical: 2, para: 2 },
+		loadout: { gp: 10, frag: 3, cluster: 3, napalm: 3, penetrator: 2, chemical: 2, para: 2 },
 		regen: 2.2,
 		missiles: 4,
 		hardpoints: [
@@ -280,7 +280,16 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 			color: [9, 6, 2],
 			explosive: 0
 		},
-		loadout: { gp: 18, cluster: 5, napalm: 4, chemical: 3, para: 2, thunder: 2, ballistic: 1 },
+		loadout: {
+			gp: 18,
+			cluster: 5,
+			napalm: 4,
+			mines: 2,
+			chemical: 3,
+			para: 2,
+			thunder: 2,
+			ballistic: 1
+		},
 		regen: 1.3,
 		missiles: 4,
 		hardpoints: [],
@@ -326,7 +335,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 			color: [10, 4.5, 1.2],
 			explosive: 2.2
 		},
-		loadout: { gp: 6, cluster: 4, napalm: 2, guided: 2, para: 1, rockets: 4 },
+		loadout: { gp: 6, cluster: 4, napalm: 2, guided: 2, hunter: 2, cryo: 1, para: 1, rockets: 4 },
 		regen: 2.4,
 		missiles: 6,
 		hardpoints: [
@@ -380,7 +389,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 			color: [9, 7, 2.5],
 			explosive: 0
 		},
-		loadout: { gp: 6, cluster: 2, guided: 3, cruise: 2, emp: 1, arm: 2 },
+		loadout: { gp: 6, cluster: 2, guided: 3, glide: 2, cruise: 2, emp: 1, arm: 2 },
 		regen: 2.6,
 		missiles: 6,
 		hardpoints: [
@@ -431,7 +440,16 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 			color: [10, 5, 1.6],
 			explosive: 1.5
 		},
-		loadout: { gp: 8, cluster: 3, napalm: 3, penetrator: 1, chemical: 2, rockets: 4, gunpod: 1 },
+		loadout: {
+			gp: 8,
+			cluster: 3,
+			napalm: 3,
+			skip: 2,
+			penetrator: 1,
+			chemical: 2,
+			rockets: 4,
+			gunpod: 1
+		},
 		regen: 2.2,
 		missiles: 4,
 		hardpoints: [
@@ -485,7 +503,16 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 			color: [9, 6.5, 2.2],
 			explosive: 0
 		},
-		loadout: { gp: 10, cluster: 3, napalm: 4, guided: 1, ballistic: 1, gunpod: 1 },
+		loadout: {
+			gp: 10,
+			cluster: 3,
+			napalm: 4,
+			skip: 2,
+			guided: 1,
+			hunter: 1,
+			ballistic: 1,
+			gunpod: 1
+		},
 		regen: 2.3,
 		missiles: 4,
 		hardpoints: [
@@ -539,7 +566,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 			color: [9, 6, 2],
 			explosive: 0
 		},
-		loadout: { gp: 24, cluster: 6, penetrator: 3, cruise: 3, thunder: 2, nuke: 1 },
+		loadout: { gp: 24, stick: 3, cluster: 6, penetrator: 3, cruise: 3, thunder: 2, nuke: 1 },
 		regen: 1.2,
 		missiles: 0,
 		hardpoints: [],
@@ -599,7 +626,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 			aimed: true,
 			heavy: { every: 2.6, speed: 330, muzzle: [-6, -0.6, -4.4] }
 		},
-		loadout: { gp: 2, guided: 3 },
+		loadout: { gp: 2, guided: 3, tesla: 1 },
 		regen: 3,
 		missiles: 6,
 		hardpoints: [],
@@ -648,7 +675,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 			explosive: 1.2,
 			aimed: true
 		},
-		loadout: { gp: 2, guided: 2, rockets: 4 },
+		loadout: { gp: 2, frag: 2, guided: 2, rockets: 4 },
 		regen: 3,
 		missiles: 8,
 		hardpoints: [
@@ -743,7 +770,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 			color: [9, 6.5, 2.2],
 			explosive: 0
 		},
-		loadout: { gp: 6, penetrator: 1 },
+		loadout: { gp: 6, skip: 2, penetrator: 1 },
 		regen: 2.2,
 		missiles: 0,
 		hardpoints: [
@@ -800,7 +827,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 			color: [9, 6, 2],
 			explosive: 0.8
 		},
-		loadout: { gp: 10, cluster: 3, napalm: 3, chemical: 1 },
+		loadout: { gp: 10, frag: 2, cluster: 3, napalm: 3, mines: 2, chemical: 1 },
 		regen: 2.2,
 		missiles: 2,
 		hardpoints: [
@@ -853,7 +880,7 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 		stallSpeed: 34,
 		cruise: 66,
 		gun: null,
-		loadout: { gp: 20, cluster: 6, cruise: 3, thunder: 2 },
+		loadout: { gp: 20, cluster: 6, glide: 2, cruise: 3, thunder: 2 },
 		regen: 1.3,
 		missiles: 0,
 		hardpoints: [],

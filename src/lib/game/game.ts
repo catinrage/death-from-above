@@ -1119,7 +1119,8 @@ export class Game {
 				svx + Math.cos(p.angle) * boost,
 				svy + Math.sin(p.angle) * boost,
 				def.drag,
-				pts
+				pts,
+				def.lift
 			);
 			if (p === w.player) this.sightX = hit.x;
 			lo = Math.min(lo, hit.x);

@@ -93,10 +93,11 @@ export function updateUnits(w: World, dt: number): void {
 			continue;
 		}
 		u.stateTime += dt;
+		if (u.frost && u.frost > 0) u.frost = Math.max(0, u.frost - dt);
 		if (u.stun > 0) {
-			// Knocked out by an EMP: dead engines, dead radar, sparks from the wiring.
+			// Knocked out by an EMP (sparks from the wiring) or frozen by a cryo bomb.
 			u.stun -= dt;
-			if (rnd.chance(dt * 4))
+			if (!u.frost && rnd.chance(dt * 4))
 				w.fx.impact(u.x + rnd.gauss(1), u.y + u.def.half[1] * 1.6, u.z, 'metal');
 			continue;
 		}

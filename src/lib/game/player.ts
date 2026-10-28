@@ -27,6 +27,8 @@ import {
 	POD_RESET,
 	ROCKETS_PER_POD,
 	ROCKET_SPEED,
+	STICK_COUNT,
+	STICK_GAP,
 	type BlastSpec,
 	type BombDef
 } from './defs-bombs';
@@ -202,6 +204,9 @@ export class Player implements Trackable {
 	/** Rockets still to leave the pods in the current ripple, and the rail they leave from. */
 	private rocketQueue = 0;
 	private rocketGap = 0;
+	/** Stick bombs still to leave the bay, and the time to the next one. */
+	private stickQueue = 0;
+	private stickGap = 0;
 	private rocketRail = 0;
 	readonly ammo: Record<BombId, number>;
 	selected: BombId = 'gp';
@@ -362,6 +367,7 @@ export class Player implements Trackable {
 		this.gunPod(dt, inp, w);
 		this.ordnance(dt, inp, w);
 		this.rippleRockets(dt, w);
+		this.rippleStick(dt, w);
 		this.launchers(dt, inp, w);
 		this.countermeasures(dt, inp, w);
 		this.rearm(dt, w);
@@ -953,6 +959,29 @@ export class Player implements Trackable {
 			launchSpecial(w, this, def.id, designate);
 			return;
 		}
+		if (def.id === 'stick') {
+			this.stickQueue += STICK_COUNT - 1;
+			this.stickGap = this.stickInterval();
+		}
+		this.dropFromBay(w, def, designate);
+	}
+
+	/** Seconds between stick bombs so they land STICK_GAP metres apart. */
+	private stickInterval(): number {
+		return STICK_GAP / Math.max(25, Math.abs(this.vx));
+	}
+
+	/** Lets the rest of a stick go, one at a time, so the bombs land in a line. */
+	private rippleStick(dt: number, w: World): void {
+		if (this.stickQueue <= 0) return;
+		this.stickGap -= dt;
+		if (this.stickGap > 0) return;
+		this.stickGap = this.stickInterval();
+		this.stickQueue--;
+		this.dropFromBay(w, BOMBS.stick, null);
+	}
+
+	private dropFromBay(w: World, def: BombDef, designate: Designation | null): void {
 		const hp = this.def.hardpoints;
 		const local = hp.length > 0 ? hp[this.hardpoint++ % hp.length] : [0.5, -1.7, 0];
 		const p = this.localToWorld(local);

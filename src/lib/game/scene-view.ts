@@ -325,6 +325,12 @@ export class SceneView {
 				style.r = 0.95;
 				style.g = 1.05;
 				style.b = 1.35;
+			} else if (u.alive && u.frost) {
+				// Frozen by a cryo bomb: rimed in ice-white until it thaws.
+				const f = Math.min(1, u.frost / 2);
+				style.r = 1 + f * 0.6;
+				style.g = 1 + f * 0.9;
+				style.b = 1 + f * 1.3;
 			}
 			this.skip.clear();
 			const parts = u.def.parts;
