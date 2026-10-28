@@ -1,6 +1,7 @@
 import type { AlertState } from '../audio/cockpit';
 import { noAlerts } from '../audio/cockpit';
 import { WORLD } from './constants';
+import { WHEEL_BRAKE } from './gear';
 import type { Player } from './player';
 import type { World } from './world';
 
@@ -10,6 +11,13 @@ const LOW_ALT = 22;
 const GEAR_ALT = 35;
 const GEAR_SPEED = 1.8;
 const GEAR_RANGE = 300;
+/** Runway end: slower than this (m/s) is a taxi, not a roll worth warning about. */
+const RUNWAY_TAXI = 6;
+/** Warn once the runway left is under the braking distance times this, plus this many metres. */
+const RUNWAY_BRAKE_FACTOR = 1.3;
+const RUNWAY_MARGIN = 30;
+/** A landing counts from this height (m) over the runway with the gear down and not climbing. */
+const RUNWAY_FLARE_ALT = 15;
 
 /** Which cockpit alerts the aircraft's state calls for right now. */
 export function cockpitAlerts(w: World, p: Player): AlertState {
@@ -21,6 +29,7 @@ export function cockpitAlerts(w: World, p: Player): AlertState {
 	s.altitude = !s.pullUp && !p.landed && !overRunway && alt < LOW_ALT;
 	s.stall = p.stalled && !p.landed;
 	s.gear = gearWarning(w, p, alt);
+	s.runway = runwayEnd(w, p, alt) > 0;
 	s.missile = w.missiles.some((m) => m.target === p && m.alive);
 	s.lock = p.lockProgress > 0.75;
 	s.fire = p.hp < p.def.hp * 0.18;
@@ -37,6 +46,22 @@ export function gearWarning(w: World, p: Player, alt = p.y - w.surface.clearance
 	if (p.flight !== 'fixed' || p.landed || p.gear.down) return false;
 	const near = p.x > WORLD.runwayMinX - GEAR_RANGE && p.x < WORLD.runwayMaxX + GEAR_RANGE;
 	return near && alt < GEAR_ALT && p.vy < -1 && p.speed < p.def.stallSpeed * GEAR_SPEED;
+}
+
+/**
+ * Metres of runway left ahead of a take-off or landing roll that is running out of
+ * room to stop on the wheel brakes; 0 while there is room (or not on the runway).
+ */
+export function runwayEnd(w: World, p: Player, alt = p.y - w.surface.clearance(p.x)): number {
+	if (p.flight !== 'fixed' || !p.alive || p.gear.parked || !p.gear.down) return 0;
+	if (p.x < WORLD.runwayMinX || p.x > WORLD.runwayMaxX) return 0;
+	const flaring = !p.landed && alt < RUNWAY_FLARE_ALT && p.vy <= 0;
+	if (!p.landed && !flaring) return 0;
+	const v = Math.abs(p.vx);
+	if (v < RUNWAY_TAXI) return 0;
+	const left = p.vx > 0 ? WORLD.runwayMaxX - p.x : p.x - WORLD.runwayMinX;
+	const stop = ((v * v) / (2 * WHEEL_BRAKE)) * RUNWAY_BRAKE_FACTOR + RUNWAY_MARGIN;
+	return left < stop ? Math.max(1, left) : 0;
 }
 
 /** Range and screen bearing (radians, 0 = right, clockwise) of the closest missile homing on the aircraft. */

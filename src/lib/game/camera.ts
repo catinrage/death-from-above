@@ -15,6 +15,8 @@ const BEYOND = 45;
 const MAX_REACH = 340;
 /** Lowest the ground line may sit below centre, as a fraction of the half-height (~68% down). */
 const GROUND_LINE = 0.36;
+/** Plain velocity lead never puts the aircraft further than this share of the half-width off centre. */
+const LEAD_SHARE = 0.45;
 /** Camera pitch for the usual side-on shot and for looking down on the gunship's orbit. */
 export const SIDE_PITCH = 5 * DEG;
 export const ORBIT_PITCH = 16 * DEG;
@@ -133,6 +135,11 @@ export class CameraRig {
 			y = Math.min(Math.max(y, top - halfH), bottom + halfH);
 		}
 		const halfH = dist * tanH;
+		if (!span && !wing) {
+			// Zoomed in (the take-off roll) a full-speed lead would push the aircraft off the edge.
+			const reach = halfH * this.aspect * LEAD_SHARE;
+			x = t.x + clamp(x - t.x, -reach, reach);
+		}
 		// Down on the runway the margin below the aircraft reaches underground and centres the
 		// shot on dark foreground: keep the ground line low (~68% down) with sky above instead.
 		y = Math.max(y, groundY + halfH * GROUND_LINE - this.groundBias);

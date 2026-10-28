@@ -6,6 +6,7 @@ export type Alert =
 	| 'stall'
 	| 'lock'
 	| 'gear'
+	| 'runway'
 	| 'damage'
 	| 'altitude'
 	| 'ceiling'
@@ -20,6 +21,7 @@ export const ALERT_ORDER: readonly Alert[] = [
 	'stall',
 	'lock',
 	'gear',
+	'runway',
 	'damage',
 	'altitude',
 	'ceiling',
@@ -48,6 +50,7 @@ export const ALERTS: Record<Alert, AlertSpec> = {
 	stall: { file: 'stall', text: 'Stall. Stall.', repeat: 1.8, tone: 'none' },
 	lock: { file: 'lock', text: 'Warning. Locked on.', repeat: 5, tone: 'warning' },
 	gear: { file: 'too-low-gear', text: 'Too low. Gear.', repeat: 3, tone: 'warning', pending: true },
+	runway: { file: 'runway-end', text: 'Runway end.', repeat: 2, tone: 'warning', pending: true },
 	damage: { file: 'damage', text: 'Warning. Damage critical.', repeat: 9, tone: 'warning' },
 	altitude: { file: 'altitude', text: 'Altitude. Altitude.', repeat: 3, tone: 'caution' },
 	ceiling: { file: 'ceiling', text: 'Altitude ceiling.', repeat: 6, tone: 'caution' },

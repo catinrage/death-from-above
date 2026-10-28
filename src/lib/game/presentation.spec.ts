@@ -110,11 +110,15 @@ describe('CameraRig bomb framing', () => {
 		expect(ground && ground[1] > 600 && ground[1] < 820).toBe(true);
 	});
 
-	it('falls back to a plain velocity lead without a sight', () => {
+	it('falls back to a plain velocity lead without a sight, capped to stay well in frame', () => {
 		const cam = new CameraRig();
 		cam.interest = null;
+		cam.snap({ x: 0, y: 100, vx: 30, vy: 0 }, 0);
+		expect(cam.x).toBeCloseTo(30);
 		cam.snap({ x: 0, y: 100, vx: 80, vy: 0 }, 0);
-		expect(cam.x).toBeCloseTo(80);
+		const halfW = cam.viewExtents().halfW;
+		expect(cam.x).toBeGreaterThan(30);
+		expect(cam.x).toBeLessThanOrEqual(halfW * 0.45 + 1e-6);
 	});
 });
 
@@ -130,6 +134,25 @@ describe('CameraRig on the runway', () => {
 			const plane = cam.project(1000, 12, 0, 1940, 1000);
 			expect(ground && ground[1] > 600 && ground[1] < 760).toBe(true);
 			expect(plane && plane[1] > 500 && plane[1] < ground![1]).toBe(true);
+		}
+	});
+});
+
+describe('CameraRig take-off roll', () => {
+	it('keeps the aircraft well inside the frame while it accelerates down the runway', () => {
+		const cam = new CameraRig();
+		cam.aspect = 1.93;
+		const t = { x: 90, y: 12, vx: 0, vy: 0 };
+		cam.interest = null;
+		cam.snap(t, 10);
+		for (let i = 0; i < 20 * 8; i++) {
+			const dt = 1 / 20;
+			t.vx = Math.min(60, t.vx + 9 * dt);
+			t.x += t.vx * dt;
+			cam.follow(dt, t, 10);
+			cam.update(dt, 10);
+			const s = cam.project(t.x, t.y, 0, 1600, 830);
+			expect(s && s[0] > 1600 * 0.15 && s[0] < 1600 * 0.85).toBe(true);
 		}
 	});
 });

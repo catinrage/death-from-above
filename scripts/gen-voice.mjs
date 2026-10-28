@@ -24,6 +24,7 @@ const COCKPIT = {
 	stall: 'Stall. Stall.',
 	lock: 'Warning. Locked on.',
 	'too-low-gear': 'Too low. Gear.',
+	'runway-end': 'Runway end.',
 	damage: 'Warning. Damage critical.',
 	altitude: 'Altitude. Altitude.',
 	ceiling: 'Altitude ceiling.',

@@ -280,6 +280,11 @@
 		{/if}
 		{#if hud.pullUp}<div class="warn">PULL UP</div>{/if}
 		{#if hud.stall}<div class="warn">STALL</div>{/if}
+		{#if hud.runwayEnd > 0}
+			<div class="warn">
+				RUNWAY END <small>{Math.round(hud.runwayEnd)} m · V brakes · W rotate</small>
+			</div>
+		{/if}
 		{#if hud.boundary > 0}
 			<div class="warn">
 				RETURN TO COMBAT AREA <small>{Math.max(0, BOUNDS_GRACE - hud.boundary).toFixed(1)}</small>
@@ -290,7 +295,7 @@
 				NO-FIRE ZONE <small>{hud.noFire}</small>
 			</div>{/if}
 		{#if hud.braking}<div class="brake">AIRBRAKE</div>{/if}
-		{#if hud.takeoff}<div class="takeoff">
+		{#if hud.takeoff && !hud.runwayEnd}<div class="takeoff">
 				Release brakes: D or Shift · pull up with W · B raises the gear
 			</div>{/if}
 		{#if hud.bayJammed}<div class="warn soft">BOMB BAY JAMMED</div>{/if}

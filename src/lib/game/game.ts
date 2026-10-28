@@ -74,7 +74,7 @@ import {
 	type CreditAward,
 	type UpgradeLevels
 } from './progression';
-import { cockpitAlerts, incomingThreats, lockThreat, missileThreat } from './warnings';
+import { cockpitAlerts, incomingThreats, lockThreat, missileThreat, runwayEnd } from './warnings';
 import { RESOLVE } from './projectiles';
 import { SHOAL } from './river';
 import { World } from './world';
@@ -1374,6 +1374,7 @@ export class Game {
 			inbound: !!p && w.missiles.some((m) => m.target === p),
 			stall: !!p?.stalled && !!p.alive,
 			pullUp: !!p && p.alive && p.vy < -12 && p.y - g < Math.max(40, -p.vy * 2.2),
+			runwayEnd: p ? runwayEnd(w, p) : 0,
 			boundary: p?.outOfBounds ?? 0,
 			ceiling: !!p?.ceiling && !!p.alive,
 			rearming: !!p?.rearming && !!p.alive,
