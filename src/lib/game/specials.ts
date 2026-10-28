@@ -1,7 +1,7 @@
 import { angleDiff, clamp } from '../engine/math';
 import { fx as rnd } from '../engine/rng';
-import { explode } from './combat';
-import { BOMBS } from './defs-bombs';
+import { damageUnit, explode, inBattlePlane } from './combat';
+import { BOMBS, FREEZE_TIME, TESLA_DAMAGE, TESLA_JUMPS, TESLA_REACH } from './defs-bombs';
 import type { Player } from './player';
 import { trackUnit } from './targeting';
 import { predictImpact } from './weapons';
@@ -276,4 +276,51 @@ export function nuclearBlast(w: World, x: number, y: number, z: number, by: Owne
 	w.sound.boom(4.5, x, y);
 	w.sound.play('thunder', x, y, 1.5);
 	w.events.slowmo(0.2, 1.8);
+}
+
+/** Cryo: everything in the radius freezes solid: stopped, silenced and brittle. */
+export function cryoBlast(w: World, x: number, y: number, z: number, by: Owner): void {
+	const r = BOMBS.cryo.blast.radius;
+	explode(w, x, y, z, BOMBS.cryo.blast, by, { visual: 'none' });
+	for (const u of w.units) {
+		if (!u.alive || !inBattlePlane(u) || Math.abs(u.x - x) > r + u.def.half[0]) continue;
+		u.stun = Math.max(u.stun, FREEZE_TIME);
+		u.frost = FREEZE_TIME;
+		u.speed = 0;
+		u.panic = 0;
+	}
+	w.fx.frostBurst(x, y, z, r);
+	w.sound.play('emp', x, y, 0.9, 0.6);
+}
+
+/**
+ * Tesla: lightning leaps from the impact to the nearest enemy, then on to the
+ * nearest one it has not struck yet, as long as each hop is short enough.
+ */
+export function teslaStrike(w: World, x: number, y: number, z: number, by: Owner): Unit[] {
+	const struck: Unit[] = [];
+	let fromX = x,
+		fromY = y + 1;
+	for (let k = 0; k < TESLA_JUMPS; k++) {
+		let next: Unit | null = null;
+		let best = TESLA_REACH;
+		for (const u of w.units) {
+			if (!u.alive || !inBattlePlane(u) || struck.includes(u)) continue;
+			const d = Math.hypot(u.x - fromX, u.y + u.def.half[1] - fromY);
+			if (d < best) {
+				best = d;
+				next = u;
+			}
+		}
+		if (!next) break;
+		const toY = next.y + next.def.half[1];
+		w.fx.lightning(fromX, fromY, next.x, toY, z);
+		struck.push(next);
+		damageUnit(w, next, TESLA_DAMAGE, 0.8, by, fromX, 'blast');
+		fromX = next.x;
+		fromY = toY;
+	}
+	w.lights.add(x, y + 3, z, [0.8, 0.6, 1.6], 120, 60, { life: 0.35 });
+	w.sound.play('emp', x, y, 1, 1.4);
+	return struck;
 }

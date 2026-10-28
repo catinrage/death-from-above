@@ -2,6 +2,7 @@
 	import { fly, fade } from 'svelte/transition';
 	import type { HudMessage, HudSnapshot } from '$lib/game/hud';
 	import { BOUNDS_GRACE } from '$lib/game/player';
+	import { BOMBS } from '$lib/game/defs-bombs';
 	import WeaponIcon from './WeaponIcon.svelte';
 
 	interface Props {
@@ -244,6 +245,12 @@
 	</section>
 
 	<section class="bombs">
+		{#key hud.selected}
+			<!-- What the weapon just picked is for, in one line; fades after a few seconds. -->
+			<p class="weapon-tip" style:--c={BOMBS[hud.selected].color}>
+				<b>{BOMBS[hud.selected].short}</b>{BOMBS[hud.selected].tip}
+			</p>
+		{/key}
 		{#each hud.bombs as b (b.id)}
 			<div
 				class="slot"
@@ -977,6 +984,38 @@
 		transform: translateX(-50%);
 		display: flex;
 		gap: 6px;
+	}
+
+	.weapon-tip {
+		position: absolute;
+		left: 50%;
+		bottom: calc(100% + 14px);
+		transform: translateX(-50%);
+		margin: 0;
+		padding: 5px 12px;
+		white-space: nowrap;
+		font-size: 13px;
+		color: #e8edf2;
+		background: rgba(8, 10, 16, 0.6);
+		border-left: 2px solid var(--c);
+		pointer-events: none;
+		animation: tip-fade 4s ease forwards;
+	}
+
+	.weapon-tip b {
+		margin-right: 8px;
+		color: var(--c);
+		letter-spacing: 0.08em;
+	}
+
+	@keyframes tip-fade {
+		0%,
+		75% {
+			opacity: 1;
+		}
+		100% {
+			opacity: 0;
+		}
 	}
 
 	.slot {

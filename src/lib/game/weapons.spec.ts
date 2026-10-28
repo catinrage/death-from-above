@@ -85,3 +85,104 @@ describe('explosions', () => {
 		expect(kills).toContain('Supply Truck');
 	});
 });
+
+describe('more bomb types', () => {
+	const step = (w: ReturnType<typeof testWorld>, seconds: number): void => {
+		for (let i = 0; i < seconds * 60; i++) updateBombs(w, 1 / 60);
+	};
+
+	it('every bomb has a plain one-line tip for new pilots', () => {
+		for (const def of Object.values(BOMBS)) {
+			expect(def.tip.length, def.id).toBeGreaterThan(10);
+			expect(def.tip.length, def.id).toBeLessThan(70);
+		}
+	});
+
+	it('airburst kills soldiers over a wide circle without a crater, but not tanks', () => {
+		const w = testWorld();
+		const before = w.ground(1500);
+		const near = w.spawnUnit('rifleman', 1490, 0);
+		const wide = w.spawnUnit('rifleman', 1515, 0);
+		const tank = w.spawnUnit('tank', 1500, 0);
+		dropBomb(w, BOMBS.frag, 1495, before + 60, 0, 0, -10, 0);
+		step(w, 5);
+		expect(near.alive).toBe(false);
+		expect(wide.alive).toBe(false);
+		expect(tank.alive).toBe(true);
+		expect(w.ground(1500)).toBeCloseTo(before, 1);
+	});
+
+	it('a skip bomb bounces along the ground before the big blast', () => {
+		const w = testWorld();
+		const b = dropBomb(w, BOMBS.skip, 1300, w.ground(1300) + 12, 0, 80, 0, 0);
+		let firstTouch = Number.NaN;
+		for (let i = 0; i < 60 * 10 && b.alive; i++) {
+			updateBombs(w, 1 / 60);
+			if (b.hops === 1 && Number.isNaN(firstTouch)) firstTouch = b.x;
+		}
+		expect(b.alive).toBe(false);
+		expect(b.hops).toBe(3);
+		expect(b.x - firstTouch).toBeGreaterThan(20);
+	});
+
+	it('a glide bomb lands far beyond a plain bomb, where the sight says', () => {
+		const w = testWorld();
+		const x = 1000,
+			y = w.ground(1000) + 150;
+		const plain = predictImpact(w, x, y, 70, 0, BOMBS.gp.drag, null);
+		const glide = predictImpact(w, x, y, 70, 0, BOMBS.glide.drag, null, BOMBS.glide.lift);
+		expect(glide.x - x).toBeGreaterThan((plain.x - x) * 2);
+		const b = dropBomb(w, BOMBS.glide, x, y, 0, 70, 0, 0);
+		let lastX = b.x;
+		for (let i = 0; i < 60 * 30 && b.alive; i++) {
+			lastX = b.x;
+			updateBombs(w, 1 / 60);
+		}
+		expect(Math.abs(lastX - glide.x)).toBeLessThan(8);
+	});
+
+	it('a hunter sends a seeker onto each vehicle below', () => {
+		const w = testWorld();
+		const tanks = [1460, 1500, 1540].map((x) => w.spawnUnit('tank', x, 0));
+		dropBomb(w, BOMBS.hunter, 1470, w.ground(1470) + 140, 0, 30, 0, 0);
+		step(w, 8);
+		for (const t of tanks) expect(t.alive).toBe(false);
+	});
+
+	it('mines lie in wait and blow under the next vehicle to reach them', () => {
+		const w = testWorld();
+		dropBomb(w, BOMBS.mines, 1300, w.ground(1300) + 90, 0, 40, 0, 0);
+		step(w, 6);
+		const laid = w.bombs.filter((b) => b.rest >= 0);
+		expect(laid.length).toBeGreaterThan(3);
+		const truck = w.spawnUnit('truck', laid[0].x + 0.5, 0);
+		step(w, 0.1);
+		expect(truck.alive).toBe(false);
+		expect(w.bombs.filter((b) => b.rest >= 0).length).toBe(laid.length - 1);
+	});
+
+	it('cryo freezes enemies in place and frozen ones take double damage', () => {
+		const w = testWorld();
+		const a = w.spawnUnit('tank', 1500, 0);
+		const b = w.spawnUnit('tank', 1800, 0);
+		dropBomb(w, BOMBS.cryo, 1500, w.ground(1500) + 30, 0, 0, -10, 0);
+		step(w, 3);
+		expect(a.stun).toBeGreaterThan(0);
+		expect(a.frost).toBeGreaterThan(0);
+		const hpA = a.hp,
+			hpB = b.hp;
+		explode(w, 1500, w.ground(1500) + 1, 0, BOMBS.gp.blast, 'player');
+		explode(w, 1800, w.ground(1800) + 1, 0, BOMBS.gp.blast, 'player');
+		expect(hpA - a.hp).toBeCloseTo((hpB - b.hp) * 2, 0);
+	});
+
+	it('tesla lightning jumps from enemy to enemy but not across a wide gap', () => {
+		const w = testWorld();
+		const chain = [1500, 1520, 1540, 1560].map((x) => w.spawnUnit('rifleman', x, 0));
+		const far = w.spawnUnit('rifleman', 1660, 0);
+		dropBomb(w, BOMBS.tesla, 1500, w.ground(1500) + 30, 0, 0, -10, 0);
+		step(w, 3);
+		for (const u of chain) expect(u.alive).toBe(false);
+		expect(far.alive).toBe(true);
+	});
+});

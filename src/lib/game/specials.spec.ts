@@ -317,3 +317,20 @@ describe('special ordnance', () => {
 		expect(foe.alive).toBe(false);
 	});
 });
+
+describe('stick bombs', () => {
+	it('drops a stick one bomb at a time so they land in a line', () => {
+		const w = testWorld();
+		const p = flying(w, 'b1', 1200, 120);
+		const landed = new Map<number, number>();
+		release(w, p, 'stick');
+		for (let i = 0; i < 60 * 8; i++) {
+			run(w, 1 / 60);
+			for (const b of w.bombs) if (!b.alive && b.def.id === 'stick') landed.set(b.id, b.x);
+		}
+		const xs = [...landed.values()];
+		expect(xs.length).toBe(6);
+		xs.sort((a, b) => a - b);
+		for (let k = 1; k < xs.length; k++) expect(xs[k] - xs[k - 1]).toBeGreaterThan(4);
+	});
+});

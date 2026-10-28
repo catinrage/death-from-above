@@ -510,6 +510,59 @@ export class Effects {
 		}
 	}
 
+	/** Lightning bolt: a jagged chain of bright glows between two points. */
+	lightning(x0: number, y0: number, x1: number, y1: number, z: number): void {
+		const n = Math.max(4, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 2));
+		let ox = 0,
+			oy = 0;
+		for (let s = 0; s <= n; s++) {
+			const t = s / n;
+			// Kinks wander and come back to the line at both ends.
+			const j = s === 0 || s === n ? 0 : 1.6;
+			ox = clamp(ox + rnd.gauss(j), -3, 3);
+			oy = clamp(oy + rnd.gauss(j), -3, 3);
+			const p = this.make(
+				Shape.Glow,
+				x0 + (x1 - x0) * t + ox * (1 - Math.abs(t * 2 - 1) * 0.5),
+				y0 + (y1 - y0) * t + oy * (1 - Math.abs(t * 2 - 1) * 0.5),
+				z,
+				rnd.range(0.12, 0.22)
+			);
+			p.size0 = p.size1 = rnd.range(0.9, 1.6);
+			this.color(p, 9, 7, 18, 1, 3, 2, 8, 0);
+			this.ps.spawn(p);
+		}
+		this.lights.add(x1, y1, z, [0.8, 0.6, 1.6], 60, 30, { life: 0.2 });
+		this.impact(x1, y1, z, 'metal');
+	}
+
+	/** Cryo: a cold white flash and a ring of frost rolling out over the ground. */
+	frostBurst(x: number, y: number, z: number, radius: number): void {
+		this.lights.add(x, y + 2, z, [0.8, 1.2, 1.6], 160, radius * 1.6, { life: 0.6 });
+		this.flash(0.35);
+		const ring = this.make(Shape.Ring, x, y + 1, z, 0.8);
+		ring.size0 = 3;
+		ring.size1 = radius * 2.2;
+		this.color(ring, 6, 9, 12, 1, 1.5, 2.5, 4, 0);
+		this.ps.spawn(ring);
+		for (let i = 0; i < 80; i++) {
+			const a = rnd.range(0, Math.PI);
+			const sp = rnd.range(0.3, 1) * radius * 1.4;
+			const p = this.make(Shape.Smoke, x, y + 0.5, z + rnd.gauss(2), rnd.range(1.2, 2.4));
+			p.vx = Math.cos(a) * sp;
+			p.vy = Math.sin(a) * sp * 0.25;
+			p.size0 = rnd.range(1, 2);
+			p.size1 = rnd.range(4, 7);
+			this.color(p, 1.6, 1.9, 2.2, 0.8, 1.2, 1.4, 1.6, 0);
+			p.drag = 2.4;
+			p.gravity = 0.4;
+			p.fadeIn = 0.05;
+			p.flags = PFlag.Wind;
+			this.ps.spawn(p);
+		}
+		this.shake(x, y, 0.2);
+	}
+
 	/** The nuke's first instant: a white sun, a sky-wide flash and a fast shock shell. */
 	nukeFlash(x: number, y: number, z: number): void {
 		this.lights.add(x, y, z, [1.6, 1.4, 1.1], 900, 900, { life: 2.5 });
