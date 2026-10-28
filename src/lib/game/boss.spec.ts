@@ -276,7 +276,7 @@ describe('boss waves', () => {
 		expect(boss.orders.filter((o) => o.kind === 'cruiser')).toHaveLength(1);
 	});
 
-	it('bring one every fifth endless wave, alternating', () => {
+	it('bring one every fifth wave of the war, alternating', () => {
 		expect([4, 5, 6, 10, 15, 20].map(warBoss)).toEqual([
 			undefined,
 			'superTank',

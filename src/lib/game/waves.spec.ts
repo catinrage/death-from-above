@@ -107,7 +107,7 @@ describe('mission waves', () => {
 		expect(d.wave).toBe(2);
 	});
 
-	it('keeps escalating in endless mode', () => {
+	it('keeps escalating as the war goes on', () => {
 		expect(warTweaks(3)).toEqual({ budget: 1, fighters: undefined, helis: undefined });
 		expect(warTweaks(10).budget).toBeGreaterThan(1.2);
 		expect(warTweaks(15).fighters).toBeGreaterThan(4);

@@ -25,8 +25,8 @@ const BANK_RATE = 7;
 /** Seconds mist takes to roll in or burn off. */
 const FRONT = 6;
 
-/** Endless mode cycles these, one per wave, after two clear waves to learn the ropes. */
-const ENDLESS: readonly WeatherSpec[] = [
+/** The war cycles these, one per wave, after two clear waves to learn the ropes. */
+const SCHEDULE: readonly WeatherSpec[] = [
 	{ kind: 'clear', wind: 2 },
 	{ kind: 'clear', wind: -3 },
 	{ kind: 'mist', wind: 3 },
@@ -39,9 +39,9 @@ const ENDLESS: readonly WeatherSpec[] = [
 	{ kind: 'clear', wind: 11 }
 ];
 
-/** Weather for an endless wave (1-based). */
+/** Weather for a wave of the war (1-based). */
 export function weatherForWave(wave: number): WeatherSpec {
-	return ENDLESS[(Math.max(1, wave) - 1) % ENDLESS.length];
+	return SCHEDULE[(Math.max(1, wave) - 1) % SCHEDULE.length];
 }
 
 /**
