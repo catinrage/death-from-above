@@ -10,6 +10,10 @@ import type { World } from './world';
 
 export type AirKind = 'fighter' | 'heli';
 
+/** How far ahead of the friendly spearhead a gunship hovers, and how far its rockets reach. */
+const ROCKET_STANDOFF = 220;
+const ROCKET_REACH = 420;
+
 const CRASH: BlastSpec = {
 	radius: 14,
 	damage: 140,
@@ -206,8 +210,11 @@ export class AirUnit implements Trackable {
 		this.rocketCd -= dt;
 		const ground = w.surface.clearance(this.x);
 		const near = p ? Math.hypot(p.x - this.x, p.y - this.y) : Infinity;
-		const atBase = this.x < WORLD.baseMaxX + 520;
-		let wantVx = atBase ? 0 : -24;
+		// Gunships hunt the friendly army's spearhead; with none on the road they hold off the airfield.
+		const prey = w.allies.spearhead();
+		const station = prey ? prey.x + ROCKET_STANDOFF : WORLD.baseMaxX + 520;
+		const onStation = this.x < station;
+		let wantVx = onStation ? 0 : -24;
 		if (near < 420) wantVx *= 0.3;
 		this.vx = damp(this.vx, wantVx, 0.8, dt);
 		const wantY = ground + 46 + Math.sin(w.time * 0.7 + this.id) * 8;
@@ -238,10 +245,13 @@ export class AirUnit implements Trackable {
 			w.fx.muzzleFlash(this.x + 2.8, this.y + 1.2, 0, Math.cos(a), Math.sin(a), 0.8, [12, 5, 2]);
 			w.sound.play('mg', this.x, this.y, 0.4, 1.1);
 		}
-		if (atBase && this.rocketCd <= 0) {
+		if (prey && this.rocketCd <= 0 && Math.abs(prey.x - this.x) < ROCKET_REACH) {
+			// Rockets for the troops on the ground; bases are too hard a target from the air.
 			this.rocketCd = rnd.range(2.5, 4);
-			const tx = rnd.range(WORLD.baseMinX + 40, WORLD.baseMaxX - 20);
-			const a = Math.atan2(w.surface.clearance(tx) - this.y, tx - this.x);
+			// Lead the target by the rockets' time of flight.
+			const tof = Math.hypot(prey.x - this.x, prey.y - this.y) / 160;
+			const tx = prey.x + prey.speed * prey.dir * tof + rnd.gauss(3);
+			const a = Math.atan2(prey.y + 0.5 - this.y, tx - this.x);
 			w.shells.push({
 				kind: 'rocket',
 				x: this.x,
@@ -256,7 +266,6 @@ export class AirUnit implements Trackable {
 				owner: 'enemy',
 				trail: 0
 			});
-			w.base.damage(w, 6);
 			w.sound.play('missileLaunch', this.x, this.y, 0.5, 1.6);
 		}
 		if (this.hp < this.maxHp * 0.5 && rnd.chance(dt * 15))

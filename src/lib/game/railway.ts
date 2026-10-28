@@ -68,6 +68,7 @@ export function railBridgeSpec(line: RailLine, river: River): BridgeSpec | null 
 		zWeight: 0,
 		// Engineers bridge gaps for the road; the line waits for the next wave.
 		pontoons: false,
+		indestructible: true,
 		name: 'RAIL SPAN',
 		score: SPAN_SCORE,
 		down: ['RAIL BRIDGE DOWN', 'No train is crossing the river now'],

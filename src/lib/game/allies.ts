@@ -108,6 +108,13 @@ export class Allies {
 		return lead === -Infinity ? null : Math.max(0, this.goal(w) - lead);
 	}
 
+	/** The friendly unit furthest up the road (what enemy gunships go for), or null. */
+	spearhead(): Unit | null {
+		let best: Unit | null = null;
+		for (const u of this.list) if (u.alive && (!best || u.x > best.x)) best = u;
+		return best;
+	}
+
 	/** Nearest live friendly vehicle to (x, y) within `range`, for enemy gunners. */
 	nearest(x: number, y: number, range: number): Unit | null {
 		let best: Unit | null = null;

@@ -332,11 +332,7 @@ export class WaveDirector {
 		if (o.kind === 'train') {
 			if (!w.railway) return;
 			w.railway.spawnTrain(w, trainConsist(w.wave));
-			w.events.message(
-				'ARMOURED TRAIN',
-				'Tear up the track ahead of it or drop the rail bridge',
-				'warn'
-			);
+			w.events.message('ARMOURED TRAIN', 'Tear up the track ahead of it', 'warn');
 			return;
 		}
 		w.spawnUnit(o.kind, WORLD.enemySpawnX + w.rng.range(0, 30), o.z, -1);

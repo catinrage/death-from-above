@@ -117,7 +117,7 @@ describe('MissionTracker', () => {
 		expect(t.count(['tank'])).toBe(1);
 	});
 
-	it('counts downed aircraft and a dropped bridge span', () => {
+	it('counts downed aircraft', () => {
 		const w = testWorld();
 		const t = new MissionTracker(MISSIONS.find((x) => x.id === 'contested-skies')!);
 		const a = new AirUnit(w.newId(), 'heli', 1500, 80);
@@ -127,9 +127,6 @@ describe('MissionTracker', () => {
 		a.dying = true;
 		t.update(w);
 		expect(t.count(['fighter', 'heli'])).toBe(1);
-		const b = new MissionTracker(MISSIONS.find((x) => x.id === 'the-crossing')!);
-		b.update(w);
-		expect(b.bridgeDown).toBe(false);
 	});
 
 	it('completes when every objective is met', () => {

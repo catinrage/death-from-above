@@ -35,7 +35,7 @@ export function bigKillAt(w: World, x: number, y: number, z: number, b: BlastSpe
 	const r = b.radius;
 	if (r <= 0) return null;
 	const bridge = w.bridge;
-	if (bridge) {
+	if (bridge && !bridge.indestructible) {
 		for (const s of bridge.spans) {
 			if (!s.down && bridge.blastDamage(s, x, y, z, r, b.damage, b.pierce) >= s.hp) return 'bridge';
 		}
