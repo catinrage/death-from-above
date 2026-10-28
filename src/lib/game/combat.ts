@@ -1,4 +1,4 @@
-import type { BlastSpec } from './defs-bombs';
+import { FROZEN_DAMAGE, type BlastSpec } from './defs-bombs';
 import { killUnit } from './deaths';
 import type { Owner, Unit } from './types';
 import type { World } from './world';
@@ -116,7 +116,9 @@ export function damageUnit(
 ): void {
 	if (!u.alive || amount <= 0) return;
 	const armorK = 1 - u.def.armor * (1 - Math.min(pierce, 1));
-	u.hp -= amount * armorK;
+	// Frozen solid: brittle, everything hits harder.
+	const brittle = u.frost && u.frost > 0 ? FROZEN_DAMAGE : 1;
+	u.hp -= amount * armorK * brittle;
 	u.flash = Math.min(1, u.flash + 0.6);
 	u.lastHitBy = by;
 	if (u.def.category === 'infantry' && cause !== 'bullet') u.panic = 2.5;

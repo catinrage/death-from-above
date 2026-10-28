@@ -21,7 +21,20 @@ const CHAIN_KILLS = 3;
 export type BigKill = 'bridge' | 'chain';
 
 /** Weapons with their own spectacle (or none worth following). */
-const SKIP = new Set(['cluster', 'thunder', 'nuke', 'emp', 'chemical', 'para']);
+const SKIP = new Set([
+	'cluster',
+	'thunder',
+	'nuke',
+	'emp',
+	'chemical',
+	'para',
+	'stick',
+	'frag',
+	'skip',
+	'hunter',
+	'mines',
+	'cryo'
+]);
 
 /** A unit whose death is a fireball that reaches its neighbours (fuel depots). */
 const chains = (u: Unit): boolean => u.def.death === 'blast' && u.def.boom > 2;
@@ -74,7 +87,7 @@ export function bigKillAt(w: World, x: number, y: number, z: number, b: BlastSpe
 
 /** Where a falling bomb will come down, and how soon (simulation seconds). */
 function landing(w: World, b: Bomb): { x: number; y: number; t: number } {
-	const hit = predictImpact(w, b.x, b.y, b.vx, b.vy, b.def.drag, null);
+	const hit = predictImpact(w, b.x, b.y, b.vx, b.vy, b.def.drag, null, b.def.lift);
 	// Guided bombs steer onto their mark; trust it over the ballistic arc.
 	if (b.def.id === 'guided' && !Number.isNaN(b.aimX))
 		return { ...hit, x: b.aimX, y: w.ground(b.aimX) };

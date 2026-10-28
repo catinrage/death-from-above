@@ -19,7 +19,15 @@ export type BombId =
 	| 'nuke'
 	| 'rockets'
 	| 'arm'
-	| 'gunpod';
+	| 'gunpod'
+	| 'stick'
+	| 'frag'
+	| 'skip'
+	| 'glide'
+	| 'hunter'
+	| 'mines'
+	| 'cryo'
+	| 'tesla';
 export type AircraftId =
 	| 'kestrel'
 	| 'wraith'
@@ -191,6 +199,8 @@ export interface Unit {
 	fall: number;
 	/** Seconds left knocked out by an EMP. */
 	stun: number;
+	/** Seconds left frozen solid by a cryo bomb (also stunned); frozen units take extra damage. */
+	frost?: number;
 	/** Bosses only: aim and timers of the secondary weapon mounts. */
 	aux?: AuxMount;
 }

@@ -65,7 +65,8 @@
 		>
 			<span class="sw"></span>
 			<span class="wn">
-				<strong>{BOMBS[b].short}</strong>
+				<strong title={BOMBS[b].desc}>{BOMBS[b].short}</strong>
+				<small class="tip">{BOMBS[b].tip}</small>
 				<small>{WEIGHT[b]} pt · max {MAX_COUNT[b]}</small>
 			</span>
 			<span class="stepper">
@@ -322,6 +323,11 @@
 		font-size: 11px;
 		letter-spacing: 0.08em;
 		color: var(--ink-faint);
+	}
+
+	.wn small.tip {
+		letter-spacing: 0;
+		color: var(--ink-dim);
 	}
 
 	.stepper {
