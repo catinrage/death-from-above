@@ -3,7 +3,14 @@ import { Player } from './player';
 import { launchMissile } from './projectiles';
 import { testWorld } from './test-world';
 import { WORLD } from './constants';
-import { cockpitAlerts, incomingThreats, lockThreat, missileThreat, runwayEnd } from './warnings';
+import {
+	cockpitAlerts,
+	gearUpWarning,
+	incomingThreats,
+	lockThreat,
+	missileThreat,
+	runwayEnd
+} from './warnings';
 
 describe('cockpit warnings', () => {
 	it('reports the closest missile homing on the aircraft and where it is', () => {
@@ -118,5 +125,36 @@ describe('runway end warning', () => {
 		// Climbing away (a go-around) or gear up: not a landing.
 		p.vy = 4;
 		expect(runwayEnd(w, p)).toBe(0);
+	});
+});
+
+describe('gear down warning', () => {
+	const airborne = (x: number, alt: number) => {
+		const w = testWorld();
+		const p = new Player('kestrel', x, w.surface.clearance(x) + alt, 0);
+		w.player = p;
+		p.hasFlown = true;
+		p.vx = 60;
+		p.gear.extend();
+		return { w, p };
+	};
+
+	it('is quiet on the runway, in the climb-out and on the approach', () => {
+		const { w, p } = airborne(WORLD.runwayMinX + 60, 0);
+		p.park(w);
+		expect(gearUpWarning(w, p)).toBe(false);
+		const climb = airborne(WORLD.runwayMaxX + 200, 80);
+		expect(gearUpWarning(climb.w, climb.p)).toBe(false);
+	});
+
+	it('tells the pilot to raise the gear once clear of the runway', () => {
+		const { w, p } = airborne(WORLD.runwayMaxX + 900, 60);
+		expect(gearUpWarning(w, p)).toBe(true);
+		expect(cockpitAlerts(w, p).gearDown).toBe(true);
+		// High over the field counts too; gear coming up silences it.
+		const high = airborne(WORLD.runwayMaxX + 100, 200);
+		expect(gearUpWarning(high.w, high.p)).toBe(true);
+		p.gear.toggle(false);
+		expect(gearUpWarning(w, p)).toBe(false);
 	});
 });

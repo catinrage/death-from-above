@@ -74,7 +74,14 @@ import {
 	type CreditAward,
 	type UpgradeLevels
 } from './progression';
-import { cockpitAlerts, incomingThreats, lockThreat, missileThreat, runwayEnd } from './warnings';
+import {
+	cockpitAlerts,
+	gearUpWarning,
+	incomingThreats,
+	lockThreat,
+	missileThreat,
+	runwayEnd
+} from './warnings';
 import { RESOLVE } from './projectiles';
 import { SHOAL } from './river';
 import { World } from './world';
@@ -1319,7 +1326,8 @@ export class Game {
 			respawn: q.crashed ? this.squadron.respawnIn(1) : 0,
 			out: !!this.squadron.seats[1]?.out,
 			threat: q.alive && (q.lockedBy > 0 || this.world.missiles.some((m) => m.target === q)),
-			noPad: !this.input.p2Ready()
+			noPad: !this.input.p2Ready(),
+			gearDown: gearUpWarning(this.world, q)
 		};
 	}
 
@@ -1375,6 +1383,7 @@ export class Game {
 			stall: !!p?.stalled && !!p.alive,
 			pullUp: !!p && p.alive && p.vy < -12 && p.y - g < Math.max(40, -p.vy * 2.2),
 			runwayEnd: p ? runwayEnd(w, p) : 0,
+			gearDown: !!p && gearUpWarning(w, p),
 			boundary: p?.outOfBounds ?? 0,
 			ceiling: !!p?.ceiling && !!p.alive,
 			rearming: !!p?.rearming && !!p.alive,

@@ -10,6 +10,7 @@ export type Alert =
 	| 'damage'
 	| 'altitude'
 	| 'ceiling'
+	| 'gearDown'
 	| 'boundary'
 	| 'overheat'
 	| 'winchester';
@@ -25,6 +26,7 @@ export const ALERT_ORDER: readonly Alert[] = [
 	'damage',
 	'altitude',
 	'ceiling',
+	'gearDown',
 	'boundary',
 	'overheat',
 	'winchester'
@@ -54,6 +56,7 @@ export const ALERTS: Record<Alert, AlertSpec> = {
 	damage: { file: 'damage', text: 'Warning. Damage critical.', repeat: 9, tone: 'warning' },
 	altitude: { file: 'altitude', text: 'Altitude. Altitude.', repeat: 3, tone: 'caution' },
 	ceiling: { file: 'ceiling', text: 'Altitude ceiling.', repeat: 6, tone: 'caution' },
+	gearDown: { file: 'gear-down', text: 'Gear down.', repeat: 8, tone: 'caution', pending: true },
 	boundary: { file: 'boundary', text: 'Warning. Leaving combat area.', repeat: 5, tone: 'caution' },
 	overheat: { file: 'overheat', text: 'Guns overheat.', repeat: 0, tone: 'caution' },
 	winchester: { file: 'winchester', text: 'Winchester.', repeat: 0, tone: 'none' }

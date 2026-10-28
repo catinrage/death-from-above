@@ -70,6 +70,8 @@ export interface Player2Hud {
 	threat: boolean;
 	/** No gamepad is connected to fly it. */
 	noPad: boolean;
+	/** Flying clear of the runway with the gear still down. */
+	gearDown: boolean;
 }
 
 /** Everything the HUD shows, refreshed ~15 times a second. */
@@ -117,6 +119,8 @@ export interface HudSnapshot {
 	pullUp: boolean;
 	/** Metres of runway left when a take-off or landing roll is running out of room; 0 otherwise. */
 	runwayEnd: number;
+	/** Flying clear of the runway with the gear still down. */
+	gearDown: boolean;
 	boundary: number;
 	ceiling: boolean;
 	rearming: boolean;
@@ -228,6 +232,7 @@ export function emptyHud(): HudSnapshot {
 		stall: false,
 		pullUp: false,
 		runwayEnd: 0,
+		gearDown: false,
 		boundary: 0,
 		ceiling: false,
 		rearming: false,
