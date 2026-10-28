@@ -91,7 +91,7 @@ export const MISSIONS: readonly Mission[] = [
 			'An armoured spearhead with mobile AA in tow, and behind it the Behemoth, a super-heavy tank. Tanks shrug off guns: use bombs, the bunker buster or missiles on their tops.',
 		biome: 'jungle',
 		env: [1.1],
-		weather: [{ kind: 'rain', wind: -6 }],
+		weather: [{ kind: 'mist', wind: -3 }],
 		waves: {
 			last: 2,
 			offset: 2,
@@ -179,7 +179,7 @@ export const MISSIONS: readonly Mission[] = [
 		env: [2.6, 3, 3.6],
 		weather: [
 			{ kind: 'clear', wind: 3 },
-			{ kind: 'storm', wind: 10 }
+			{ kind: 'mist', wind: 4 }
 		],
 		waves: {
 			last: 3,
@@ -203,7 +203,7 @@ export const MISSIONS: readonly Mission[] = [
 			'SAM launchers and their radars are shutting down the sky, and a river cruiser is on its way to guard the bridge. Destroy them. Flare when the seeker closes, and kill the radar first to slow their locks.',
 		biome: 'snow',
 		env: [4.1],
-		weather: [{ kind: 'snow', wind: -5 }],
+		weather: [{ kind: 'mist', wind: -5 }],
 		waves: {
 			last: 2,
 			offset: 4,
