@@ -66,7 +66,7 @@ sits between the missile and you, so drop them as the missile closes from behind
 early burn out, and the seeker picks you up again. Head-on shots and radar-guided SAMs are much
 harder to fool, and your afterburner makes you a brighter target.
 
-**Your wingman** (callsign Two) flies an F-16 with you in campaign and endless sorties, taking off
+**Your wingman** (callsign Two) flies an F-16 with you in the war, taking off
 once you are airborne. It starts on the attack, picking its own targets: bandits coming after you first, then the most dangerous
 thing on the ground nearby. Press `T` to send it after your target (your first lock, whatever is
 under the reticle, or the best target ahead), `H` to have it hunt the air defences (SAM sites and
@@ -76,7 +76,7 @@ itself. Enemies shoot at whichever of you is closer and its kills count toward y
 shot down you hear its mayday, and it stays down for the rest of the wave; a replacement climbs out
 from the airfield as the next wave starts.
 
-**Local co-op.** Pick **2P** in the Sortie menu (campaign or endless) to fly with a friend on one
+**Local co-op.** Pick **2P** in the Sortie menu for the war to fly with a friend on one
 screen. Player one keeps the keyboard and mouse (and a second gamepad, if one is plugged in); player
 two flies a second aircraft from the gamepad, with a green beacon and a P2 tag, in place of the AI wingman. The camera frames
 both, enemies go after whichever aircraft is closer, and the two of you share one score and a pool of
@@ -92,8 +92,7 @@ and losing your aircraft doesn't hand you a fresh one.
   Viper, Su-25 Frogfoot, F-4E Phantom II and B-1B Lancer. Each has its own handling, boost effect
   (afterburner, rocket bottles, stealth plasma or water-injection smoke) and weapons it can mount;
   trade payload points between them in the loadout editor. Choices are saved per aircraft.
-- **Credits and upgrades** — campaign missions (more for later missions and for stars you haven't
-  earned before) and endless runs (score and waves held) pay credits. Spend them in the hangar to
+- **Credits and upgrades** — every battle pays credits for its score, plus a purse for a win. Spend them in the hangar to
   buy aircraft (the Kestrel and Grizzly are free) and to upgrade each airframe's armour, engine,
   payload racks, flares, guns and missile rails, three levels each.
 - **Ordnance** — GP bombs that regenerate, cluster bombs, napalm, a bunker buster, a laser-guided
@@ -132,7 +131,7 @@ and losing your aircraft doesn't hand you a fresh one.
   launchers with radar lock, howitzers, flak batteries, pillboxes, radar stations, fuel depots
   (chain reactions), searchlights at night, interceptors that dogfight you and gunships that rocket
   your ground forces (no aircraft can hurt the airfield itself).
-- **Bosses** — each campaign act ends with one, and endless mode sends one every fifth wave, with
+- **Bosses** — every fifth wave of the war brings one, with
   its own health bar:
   - **Behemoth**: a super-heavy tank twice a battle tank's length, with a long main gun and a rear
     AA turret that tracks aircraft. It takes a stack of bombs or a few bunker busters.
@@ -142,20 +141,16 @@ and losing your aircraft doesn't hand you a fresh one.
   - **Railway gun**: coupled between a locomotive and a flak wagon, it runs down the railway, pulls
     up across the river and lobs heavy shells onto the airfield. Tear up the track ahead of it to
     hold it out of range; it fires from wherever it stops once the airfield is in reach.
-- **Three ways to play** — pick one from the Sortie menu:
+- **Two ways to play** — pick one from the Sortie menu:
   - **Training**: fourteen guided lessons, each with its own practice targets, covering take-off, steering,
     guns, bombs, ordnance selection, guided missiles, focus, flares, afterburner and airbrake, and
-    rearming. You can't be shot down for good, and Enter skips a lesson.
-  - **Campaign**: nine missions that get harder as you go, each ending at a stronger enemy HQ and
-    most with goals of their own on the way (ambush the convoy at the bridge, kill the tanks, hold
-    three checkpoints at once, silence the flak, hunt the SAM sites, clear the sky).
-    Iron Column ends with the Behemoth, Wild Weasel with the river cruiser and the final mission
-    with the railway gun.
-    Winning one unlocks the next and earns up to three stars (win, airfield above 70%, no aircraft
-    lost). Progress and best scores are saved in the browser.
-  - **Endless**: front after front. Each time your troops level the HQ (3,000 points times the
-    front) the enemy digs in a stronger one, while its waves keep growing and more aircraft join
-    past wave eleven; your five best runs are kept on a local leaderboard. The sky moves from golden hour through sunset, dusk and night to dawn.
+    rearming. You can't be shot down for good, and Enter skips a lesson. New pilots are pointed here
+    first.
+  - **The war**: one battle on a randomly picked map. It opens with a two-line briefing and an
+    objectives panel (reach the HQ, checkpoints held, keep the airfield). Enemy waves keep growing,
+    more aircraft join past wave eleven, and the sky moves from golden hour through sunset, dusk and
+    night to dawn, with mist rolling in now and then. You win when our troops level the HQ (3,000
+    points); you lose if the airfield falls or every aircraft is shot down. Your best score is kept.
 - **Physics** — lift/drag/stall flight model, ballistic and guided ordnance, a rigid-body solver for
   wreckage tumbling across deformable terrain, craters and scorch marks that cool from glowing
   embers to charcoal.
