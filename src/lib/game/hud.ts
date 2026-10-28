@@ -1,5 +1,3 @@
-import type { ObjectiveStatus } from './campaign';
-import type { StrikeId } from './campaign-map';
 import type { Systems } from './damage';
 import type { BigKill } from './killcam';
 import type { CreditAward } from './progression';
@@ -8,18 +6,27 @@ import type { AircraftId, BombId } from './types';
 import type { BiomeId } from './biomes';
 import type { WingOrder } from './wingman';
 
-/** How a sortie is played: training, a campaign mission, or endless waves. */
-export type GameMode = 'tutorial' | 'campaign' | 'endless';
+/** How a sortie is played: flight training, or the war itself. */
+export type GameMode = 'tutorial' | 'war';
 
 export type ModeStart = (
 	| { mode: 'tutorial' }
-	| { mode: 'endless'; biome?: BiomeId }
-	/** A campaign mission, softened by the strike flown ahead of it. */
-	| { mode: 'campaign'; mission: string; strike?: StrikeId | null }
+	/** The war, on a given map (a random one when left out). */
+	| { mode: 'war'; biome?: BiomeId }
 ) & {
 	/** Local two-player co-op: a second aircraft flown from a gamepad (not in training). */
 	coop?: boolean;
 };
+
+/** One line of the objectives panel. */
+export interface ObjectiveStatus {
+	label: string;
+	/** "3/6", or empty for yes/no goals. */
+	count: string;
+	done: boolean;
+	/** A constraint that is broken. */
+	failed?: boolean;
+}
 
 export type GamePhase = 'loading' | 'title' | 'playing' | 'paused' | 'gameover';
 export type Tone = 'info' | 'warn' | 'good';
@@ -90,8 +97,6 @@ export interface WarHud {
 	hq: number;
 	hqDown: boolean;
 	hqUnderFire: boolean;
-	/** Endless: which HQ this is. */
-	front: number;
 	/** Friendly units in the field. */
 	army: number;
 	/** Seconds to the next reinforcement group. */
@@ -115,11 +120,11 @@ export interface HudSnapshot {
 	multiplier: number;
 	comboTime: number;
 	wave: number;
-	/** "WAVE 3", "WAVE 2/4" or "TRAINING". */
+	/** "WAVE 3" or "TRAINING". */
 	waveLabel: string;
 	waveState: string;
 	mode: GameMode;
-	/** Campaign mission name. */
+	/** Heading over the objectives panel. */
 	mission: string;
 	objectives: ObjectiveStatus[];
 	/** The boss on the field and how much of it is left. */
@@ -197,18 +202,10 @@ export interface HudSnapshot {
 export interface GameOverStats {
 	mode: GameMode;
 	outcome: 'failed' | 'complete';
-	/** Mission name (campaign), or the mode's name. */
+	/** The mode's name. */
 	title: string;
-	missionId?: string;
-	/** Campaign: stars earned, and what each one was for. */
-	stars?: number;
-	starNotes?: { label: string; got: boolean }[];
-	/** Campaign: the mission this win unlocked (or replays into). */
-	nextMission?: string;
 	/** Credits this sortie paid, line by line, and the wallet after it (not for training). */
 	credits?: CreditAward & { balance: number };
-	/** Endless: place on the local leaderboard (0 = off the board). */
-	rank?: number;
 	score: number;
 	wave: number;
 	kills: number;
@@ -239,7 +236,7 @@ export function emptyHud(): HudSnapshot {
 		wave: 0,
 		waveLabel: '',
 		waveState: 'idle',
-		mode: 'endless',
+		mode: 'war',
 		mission: '',
 		objectives: [],
 		boss: null,

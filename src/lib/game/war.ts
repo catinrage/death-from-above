@@ -47,12 +47,8 @@ const STAGE_BEHIND = 70;
 export const ENEMY_EDGE = 2.2;
 /** In a war, infantry on both sides moves at this multiple of its walking pace (the road is long). */
 export const MARCH = 1.6;
-/** HQ strength at the first front of a war that sets none. */
+/** HQ strength in a war that sets none. */
 export const HQ_HP = 1500;
-/** Endless: seconds between an HQ falling and the enemy setting up the next one. */
-const REBUILD_DELAY = 14;
-/** Each new front's HQ is this much stronger than the last. */
-const FRONT_GROWTH = 1.25;
 
 export interface WarSetup {
 	/** Strength of the enemy HQ. */
@@ -61,8 +57,6 @@ export interface WarSetup {
 	reinforce?: number;
 	/** The first group out, instead of a planned one. */
 	opening?: readonly AllyKind[];
-	/** Endless: a fallen HQ is replaced by a stronger one further on. */
-	fronts?: boolean;
 }
 
 /** Where the checkpoints stand: one at each side of the river crossing and one in each half of the road. */
@@ -229,7 +223,7 @@ export class EnemyHQ {
 	}
 }
 
-/** Emplacements dug in around the HQ when a front opens: they keep our troops off the wire. */
+/** Emplacements dug in around the HQ when the war starts: they keep our troops off the wire. */
 const HQ_DEFENCES: { kind: UnitKind; dx: number; z: number }[] = [
 	{ kind: 'bunker', dx: -70, z: -11 },
 	{ kind: 'flak', dx: -130, z: -11 },
@@ -241,8 +235,6 @@ export class War {
 	active = false;
 	readonly hq = new EnemyHQ();
 	checkpoints: Checkpoint[] = [];
-	/** Endless: how many HQs this run has faced. */
-	front = 1;
 	/** HQs destroyed this game. */
 	hqsDestroyed = 0;
 	/** Checkpoints taken by our troops / lost to theirs, this game. */
@@ -262,7 +254,6 @@ export class War {
 		this.active = true;
 		this.setup = setup;
 		this.rng = new Rng(seed * 3571 + 17);
-		this.front = 1;
 		this.hqsDestroyed = 0;
 		this.taken = this.lost = this.groups = 0;
 		this.hinted = false;
@@ -359,26 +350,14 @@ export class War {
 		if (!this.active) return;
 		this.capture(w, dt);
 		this.hq.update(w, dt);
-		if (this.hq.destroyed && this.hqsDestroyed < this.front) this.hqFell(w);
-		if (this.hq.destroyed && this.setup.fronts && this.hq.fallen > REBUILD_DELAY) this.nextFront(w);
+		if (this.hq.destroyed && this.hqsDestroyed === 0) this.hqFell(w);
 		this.reinforce(w, dt);
 	}
 
 	/** The HQ just fell: count it and tell everyone. */
 	private hqFell(w: World): void {
 		this.hqsDestroyed++;
-		w.events.message(
-			'ENEMY HQ DESTROYED',
-			this.setup.fronts ? 'They are falling back to a new line' : 'The sector is ours',
-			'good'
-		);
-	}
-
-	private nextFront(w: World): void {
-		this.front++;
-		this.hq.reset(Math.round((this.setup.hqHp ?? HQ_HP) * FRONT_GROWTH ** (this.front - 1)));
-		this.fortify(w);
-		w.events.message(`FRONT ${this.front}`, 'The enemy has dug in a new HQ', 'warn');
+		w.events.message('ENEMY HQ DESTROYED', 'The sector is ours', 'good');
 	}
 
 	/** Digs in the HQ's own guns. */

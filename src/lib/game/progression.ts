@@ -1,4 +1,3 @@
-import { loadProgress } from './campaign';
 import { AIRCRAFT, AIRCRAFT_ORDER, type AircraftDef } from './defs-aircraft';
 import { capacityOf } from './loadout';
 import type { AircraftId } from './types';
@@ -7,8 +6,8 @@ import type { AircraftId } from './types';
  * Persistent progression: credits earned from sorties, spent in the hangar on
  * per-aircraft upgrades. Every airframe and every store is available from the
  * start; credits only make them better. Everything here is pure except the
- * load/save pair at the bottom, so other systems (a campaign map, daily
- * challenges) can award credits with `grant` and save the result.
+ * load/save pair at the bottom, so other systems can award credits with
+ * `grant` and save the result.
  */
 
 export type UpgradeId = 'armor' | 'engine' | 'payload' | 'flares' | 'guns' | 'missiles';
@@ -135,36 +134,17 @@ function award(lines: CreditLine[]): CreditAward {
 	return { lines: kept, total: kept.reduce((s, l) => s + l.amount, 0) };
 }
 
-/** Credits per star the first time it is earned on a mission. */
+/** Credits per campaign star an older save had earned (the campaign has since gone). */
 export const STAR_CREDITS = 150;
 
-/**
- * A finished campaign mission. Wins pay a base that grows with the mission's
- * place in the campaign, plus a bonus for stars not earned there before, so
- * replays still pay but can't farm the star bonus. Failures pay a little for
- * the damage done.
- */
-export function missionCredits(o: {
-	index: number;
-	won: boolean;
-	score: number;
-	stars: number;
-	prevStars: number;
-}): CreditAward {
-	if (!o.won) return award([{ label: 'Damage done', amount: o.score / 50 }]);
-	const newStars = Math.max(0, o.stars - o.prevStars);
-	return award([
-		{ label: 'Mission pay', amount: 100 + 60 * o.index },
-		{ label: 'Score', amount: o.score / 25 },
-		{ label: `New stars ×${newStars}`, amount: newStars * STAR_CREDITS }
-	]);
-}
+/** What winning a battle pays on top of the score. */
+export const VICTORY_CREDITS = 400;
 
-/** A finished endless run: score plus a bonus for every wave held. */
-export function endlessCredits(o: { score: number; wavesCleared: number }): CreditAward {
+/** A finished battle: its score, plus a purse for bringing the enemy HQ down. */
+export function battleCredits(o: { score: number; won: boolean }): CreditAward {
 	return award([
 		{ label: 'Score', amount: o.score / 25 },
-		{ label: `Waves held ×${o.wavesCleared}`, amount: o.wavesCleared * 50 }
+		{ label: 'Victory', amount: o.won ? VICTORY_CREDITS : 0 }
 	]);
 }
 
@@ -215,8 +195,23 @@ export function loadProgression(legacy?: { stars: number }): Progression {
 
 /** Reads saved progression, migrating an older save's campaign stars. */
 export function loadOrMigrate(): Progression {
-	const stars = Object.values(loadProgress()).reduce((s, m) => s + m.stars, 0);
-	return loadProgression({ stars });
+	return loadProgression({ stars: campaignStars() });
+}
+
+/** Stars an older save earned in the campaign, which has since been retired. */
+function campaignStars(): number {
+	try {
+		const raw: unknown = JSON.parse(localStorage.getItem('dfa.campaign') ?? '{}');
+		if (!raw || typeof raw !== 'object') return 0;
+		let n = 0;
+		for (const r of Object.values(raw as Record<string, unknown>)) {
+			const stars = (r as { stars?: unknown } | null)?.stars;
+			if (typeof stars === 'number' && stars > 0) n += Math.min(3, Math.floor(stars));
+		}
+		return n;
+	} catch {
+		return 0;
+	}
 }
 
 export function saveProgression(p: Progression): void {

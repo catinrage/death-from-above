@@ -15,14 +15,14 @@ import { Player } from './player';
 import {
 	STAR_CREDITS,
 	UPGRADES,
+	VICTORY_CREDITS,
 	buyUpgrade,
-	endlessCredits,
+	battleCredits,
 	extraPayload,
 	grant,
 	levelOf,
 	loadOrMigrate,
 	loadProgression,
-	missionCredits,
 	newProgression,
 	nextCost,
 	payloadBonus,
@@ -144,31 +144,12 @@ describe('upgraded airframes', () => {
 });
 
 describe('earning credits', () => {
-	it('pays more for later missions and new stars, not for repeated stars', () => {
-		const first = missionCredits({ index: 0, won: true, score: 2500, stars: 3, prevStars: 0 });
-		expect(first.total).toBe(100 + 100 + 3 * STAR_CREDITS);
-		const replay = missionCredits({ index: 0, won: true, score: 2500, stars: 3, prevStars: 3 });
-		expect(replay.total).toBe(200);
-		expect(replay.lines.map((l) => l.label)).not.toContain('New stars ×0');
-		const better = missionCredits({ index: 0, won: true, score: 2500, stars: 3, prevStars: 1 });
-		expect(better.total - replay.total).toBe(2 * STAR_CREDITS);
-		const late = missionCredits({ index: 7, won: true, score: 2500, stars: 1, prevStars: 1 });
-		expect(late.total).toBeGreaterThan(replay.total);
-	});
-
-	it('pays a little for a failed mission', () => {
-		const a = missionCredits({ index: 3, won: false, score: 5000, stars: 3, prevStars: 0 });
-		expect(a.total).toBe(100);
-		expect(missionCredits({ index: 3, won: false, score: 0, stars: 1, prevStars: 0 }).total).toBe(
-			0
-		);
-	});
-
-	it('pays endless runs for score and waves held, in whole credits', () => {
-		const a = endlessCredits({ score: 1010, wavesCleared: 3 });
-		expect(a.total).toBe(40 + 150);
-		expect(a.lines.every((l) => Number.isInteger(l.amount))).toBe(true);
-		expect(endlessCredits({ score: 0, wavesCleared: 0 })).toEqual({ lines: [], total: 0 });
+	it('pays a battle for its score, and a purse for winning it, in whole credits', () => {
+		const lost = battleCredits({ score: 1010, won: false });
+		expect(lost.total).toBe(40);
+		expect(lost.lines.every((l) => Number.isInteger(l.amount))).toBe(true);
+		expect(battleCredits({ score: 1010, won: true }).total).toBe(40 + VICTORY_CREDITS);
+		expect(battleCredits({ score: 0, won: false })).toEqual({ lines: [], total: 0 });
 	});
 });
 

@@ -96,7 +96,7 @@
 					{/each}
 				</span>
 				<span class="end theirs" class:alert={war.hqUnderFire} class:down={war.hqDown}>
-					{war.hqDown ? 'HQ DOWN' : war.front > 1 ? `HQ ${war.front}` : 'ENEMY HQ'}
+					{war.hqDown ? 'HQ DOWN' : 'ENEMY HQ'}
 					{#if !war.hqDown}
 						<span class="track"><span class="fill" style:transform="scaleX({war.hq})"></span></span>
 					{/if}

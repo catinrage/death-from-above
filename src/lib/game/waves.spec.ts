@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { UNITS } from './defs-units';
 import { testWorld } from './test-world';
 import type { UnitKind } from './types';
-import { endlessTweaks, planWave, waveBonus, WaveDirector } from './waves';
+import { warTweaks, planWave, waveBonus, WaveDirector } from './waves';
 
 const ground = (kinds: string[]): UnitKind[] =>
 	kinds.filter((k) => k !== 'fighter' && k !== 'heli' && k !== 'train') as UnitKind[];
@@ -108,10 +108,10 @@ describe('mission waves', () => {
 	});
 
 	it('keeps escalating in endless mode', () => {
-		expect(endlessTweaks(3)).toEqual({ budget: 1, fighters: undefined, helis: undefined });
-		expect(endlessTweaks(10).budget).toBeGreaterThan(1.2);
-		expect(endlessTweaks(15).fighters).toBeGreaterThan(4);
-		expect(endlessTweaks(60).fighters).toBe(7);
+		expect(warTweaks(3)).toEqual({ budget: 1, fighters: undefined, helis: undefined });
+		expect(warTweaks(10).budget).toBeGreaterThan(1.2);
+		expect(warTweaks(15).fighters).toBeGreaterThan(4);
+		expect(warTweaks(60).fighters).toBe(7);
 		expect(waveBonus(5, 1)).toBeGreaterThan(waveBonus(1, 1));
 		expect(waveBonus(5, 0.2)).toBeLessThan(waveBonus(5, 1));
 		expect(waveBonus(3, 1) % 10).toBe(0);

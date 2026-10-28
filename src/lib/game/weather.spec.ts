@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { environmentAt } from './environment';
 import { BOMBS } from './defs-bombs';
-import { MISSIONS } from './campaign';
 import { Player } from './player';
 import { IR_RANGE, launchMissile, updateProjectiles } from './projectiles';
 import { testWorld } from './test-world';
@@ -173,15 +172,11 @@ describe('heat seekers in bad weather', () => {
 });
 
 describe('weather schedule and look', () => {
-	it('opens endless with clear waves, then brings every kind of weather', () => {
+	it('opens the war with clear waves, then brings every kind of weather', () => {
 		expect(weatherForWave(1).kind).toBe('clear');
 		expect(weatherForWave(2).kind).toBe('clear');
 		const kinds = new Set(Array.from({ length: 10 }, (_, i) => weatherForWave(i + 1).kind));
 		expect(kinds).toEqual(new Set(['clear', 'rain', 'storm', 'snow']));
-	});
-
-	it('gives some campaign missions bad weather', () => {
-		expect(MISSIONS.some((m) => m.weather?.some((s) => s.kind !== 'clear'))).toBe(true);
 	});
 
 	it('dims the sun and thickens fog under cloud', () => {

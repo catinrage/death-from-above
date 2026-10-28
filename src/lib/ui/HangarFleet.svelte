@@ -17,7 +17,7 @@
 <nav class="fleet m-panel m-wipe" aria-label="Aircraft" use:parallax={6}>
 	<header>
 		<button class="m-btn back" data-back onclick={onBack} aria-label="Back to menu">‹ Menu</button>
-		<span class="wallet" title="Credits, earned from campaign missions and endless runs">
+		<span class="wallet" title="Credits, earned in battle">
 			{wallet.credits.toLocaleString()} <small>cr</small>
 		</span>
 	</header>

@@ -30,7 +30,7 @@ interface Preset {
 
 const k = (c: RGB, s: number): RGB => [c[0] * s, c[1] * s, c[2] * s];
 
-/** Time-of-day looks the campaign cycles through, one step per wave. */
+/** Time-of-day looks a battle cycles through, one step per wave. */
 export const PRESETS: readonly Preset[] = [
 	{
 		name: 'Golden Hour',

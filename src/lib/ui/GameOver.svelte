@@ -1,16 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { fade } from 'svelte/transition';
-	import { missionById } from '$lib/game/campaign';
-	import {
-		canStrike,
-		loadStrikes,
-		saveStrike,
-		sectorOf,
-		STRIKE_IDS,
-		STRIKES,
-		type StrikeId
-	} from '$lib/game/campaign-map';
 	import type { GameOverStats, ModeStart } from '$lib/game/hud';
 	import Letters from './Letters.svelte';
 	import { countUp, menu, powerOn } from './menu-fx';
@@ -19,53 +9,27 @@
 		stats: GameOverStats;
 		onRetry: () => void;
 		onTitle: () => void;
-		/** Fly something else straight away (next mission, or the campaign after training). */
+		/** Fly something else straight away (the war, after training). */
 		onLaunch: (start: ModeStart) => void;
 	}
 
 	let { stats, onRetry, onTitle, onLaunch }: Props = $props();
 
 	const won = $derived(stats.outcome === 'complete');
-	const next = $derived(stats.nextMission ? missionById(stats.nextMission) : undefined);
-	/** After a win, the strike to fly ahead of the next mission. */
-	const striking = $derived(won && stats.mode === 'campaign' && !!next && canStrike(next.id));
-	// svelte-ignore state_referenced_locally
-	let strike = $state<StrikeId | null>(next ? (loadStrikes()[next.id] ?? null) : null);
-	const nextSector = $derived(next ? sectorOf(next.id) : undefined);
-	const balance = $derived(stats.credits?.balance ?? 0);
-
-	function pickStrike(id: StrikeId): void {
-		if (!next) return;
-		strike = strike === id ? null : id;
-		saveStrike(next.id, strike);
-	}
 	/** The Enter / primary action. */
 	const primary = $derived.by((): { label: string; run: () => void } => {
 		if (won && stats.mode === 'tutorial')
-			return {
-				label: 'Start the campaign',
-				run: () => onLaunch({ mode: 'campaign', mission: 'first-light' })
-			};
-		if (won && next)
-			return {
-				label: `Next: ${next.name}`,
-				run: () => onLaunch({ mode: 'campaign', mission: next.id, strike })
-			};
-		return {
-			label: won ? 'Fly it again' : stats.mode === 'endless' ? 'Fly again' : 'Retry',
-			run: onRetry
-		};
+			return { label: 'Go to war', run: () => onLaunch({ mode: 'war' }) };
+		return { label: won ? 'Fight again' : 'Try again', run: onRetry };
 	});
 	const kicker = $derived(
 		stats.mode === 'tutorial'
 			? won
 				? 'Training complete'
 				: 'Training'
-			: stats.mode === 'campaign'
-				? won
-					? `${stats.title} · mission complete`
-					: `${stats.title} · mission failed`
-				: 'Endless · run over'
+			: won
+				? 'Victory'
+				: 'Defeat'
 	);
 
 	const minutes = $derived(Math.floor(stats.time / 60));
@@ -129,26 +93,13 @@
 		<span class="stamp" aria-hidden="true">{won ? 'Complete' : 'Failed'}</span>
 		<p class="m-kicker kicker">Debrief · {kicker}</p>
 		<h2><Letters text={stats.reason} delay={350} stagger={22} /></h2>
-		{#if stats.mode === 'campaign' && won && stats.starNotes}
-			<ul class="stars">
-				{#each stats.starNotes as n, i (i)}
-					<li class:got={n.got} style:--d="{0.7 + i * 0.25}s">
-						<i>★</i>
-						<span>{n.label}</span>
-					</li>
-				{/each}
-			</ul>
-		{/if}
 		<div class="headline">
 			{#if stats.mode !== 'tutorial'}
 				<div class="score m-rise" style:--d="500ms">
-					<span class="m-label">{stats.mode === 'campaign' ? 'Mission score' : 'Final score'}</span>
+					<span class="m-label">Final score</span>
 					<strong>{shownScore.toLocaleString()}</strong>
 					{#if stats.newBest}<em class="best">New personal best</em>
 					{:else if stats.best > 0}<em class="dim">Best {stats.best.toLocaleString()}</em>{/if}
-					{#if stats.mode === 'endless' && stats.rank}
-						<em class="rank">#{stats.rank} on your leaderboard</em>
-					{/if}
 				</div>
 			{/if}
 			{#if stats.credits}
@@ -174,35 +125,6 @@
 				</div>
 			{/each}
 		</dl>
-		{#if striking && next}
-			<div class="strike m-rise" style:--d="1000ms">
-				<p>
-					The front moves up{nextSector ? ` to ${nextSector.name}` : ''}. Pick a target to hit
-					before {next.name}:
-				</p>
-				<div class="chips" role="radiogroup" aria-label="Strike target">
-					{#each STRIKE_IDS as id (id)}
-						<button
-							role="radio"
-							aria-checked={strike === id}
-							class="m-tile"
-							class:on={strike === id}
-							disabled={balance < STRIKES[id].cost && strike !== id}
-							title={STRIKES[id].effect}
-							data-nav
-							onclick={() => pickStrike(id)}>{STRIKES[id].name} <b>{STRIKES[id].cost} cr</b></button
-						>
-					{/each}
-				</div>
-				<small class="effect"
-					>{strike
-						? balance < STRIKES[strike].cost
-							? `Not enough credits: flies at full strength`
-							: STRIKES[strike].effect
-						: 'No strike: full strength'}</small
-				>
-			</div>
-		{/if}
 		<div class="actions">
 			<button class="m-btn m-primary m-wipe" style:--d="900ms" data-nav onclick={primary.run}>
 				<span>{primary.label}</span>
@@ -301,42 +223,6 @@
 		text-shadow: 0 0 40px rgba(255, 170, 60, 0.35);
 	}
 
-	.stars {
-		list-style: none;
-		display: flex;
-		gap: 26px;
-		margin: 8px 0 0;
-		padding: 0;
-	}
-
-	.stars li {
-		display: grid;
-		justify-items: center;
-		gap: 4px;
-		font-size: 13px;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		color: var(--ink-faint);
-	}
-
-	.stars i {
-		font-style: normal;
-		font-size: 44px;
-		line-height: 1;
-		color: rgba(255, 255, 255, 0.12);
-	}
-
-	.stars li.got {
-		color: var(--ink);
-	}
-
-	.stars li.got i {
-		color: var(--amber);
-		text-shadow: 0 0 22px var(--amber-glow);
-		animation: star 0.5s cubic-bezier(0.2, 1.5, 0.5, 1) both;
-		animation-delay: var(--d);
-	}
-
 	@keyframes star {
 		from {
 			scale: 2.4;
@@ -398,10 +284,6 @@
 		color: var(--ink-faint);
 	}
 
-	em.rank {
-		color: var(--amber);
-	}
-
 	.credits ul {
 		display: grid;
 		gap: 2px;
@@ -454,50 +336,6 @@
 		color: var(--danger);
 	}
 
-	.strike {
-		display: grid;
-		justify-items: center;
-		gap: 8px;
-		margin-top: 4px;
-	}
-
-	.strike p {
-		margin: 0;
-		font-size: 15px;
-		color: var(--ink-dim);
-	}
-
-	.chips {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: center;
-		gap: 6px;
-	}
-
-	.chips button {
-		display: block;
-		padding: 8px 14px;
-		font-family: var(--display);
-		font-size: 13px;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-	}
-
-	.chips button b {
-		font-weight: 400;
-		opacity: 0.6;
-	}
-
-	.chips button.on {
-		color: var(--amber);
-	}
-
-	.strike .effect {
-		font-size: 13px;
-		letter-spacing: 0.06em;
-		color: var(--ink-faint);
-	}
-
 	.actions {
 		display: flex;
 		flex-wrap: wrap;
@@ -518,10 +356,6 @@
 	@media (max-height: 640px) {
 		.score strong {
 			font-size: 44px;
-		}
-
-		.stars i {
-			font-size: 32px;
 		}
 	}
 

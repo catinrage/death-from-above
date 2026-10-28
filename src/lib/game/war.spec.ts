@@ -133,23 +133,12 @@ describe('enemy HQ', () => {
 		expect(w.allies.list.every((u) => u.x < w.war.hq.x0)).toBe(true);
 	});
 
-	it('is rebuilt stronger on the next front in endless', () => {
-		const w = testWorld();
-		w.war.start(w, { fronts: true, hqHp: 500 }, 1);
-		w.war.nextGroup = 1e9;
-		w.war.hq.damage(w, 500);
-		run(w, 20, () => w.war.front === 2);
-		expect(w.war.front).toBe(2);
-		expect(w.war.hq.destroyed).toBe(false);
-		expect(w.war.hq.maxHp).toBeGreaterThan(500);
-	});
-
-	it('stays down in a campaign mission', () => {
+	it('stays down once it falls, and counts once', () => {
 		const w = war();
 		w.war.hq.damage(w, w.war.hq.maxHp);
 		run(w, 20);
 		expect(w.war.hq.destroyed).toBe(true);
-		expect(w.war.front).toBe(1);
+		expect(w.war.hqsDestroyed).toBe(1);
 	});
 });
 

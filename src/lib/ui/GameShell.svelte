@@ -11,8 +11,7 @@
 		type HudSnapshot,
 		type ModeStart
 	} from '$lib/game/hud';
-	import { loadProgress, type CampaignProgress } from '$lib/game/campaign';
-	import { readBoard, readTrained, type EndlessRun } from '$lib/game/records';
+	import { readTrained } from '$lib/game/records';
 	import type { AircraftId } from '$lib/game/types';
 	import { PopupLayer } from './popups';
 	import { TargetingLayer } from './targeting-layer';
@@ -74,8 +73,6 @@
 	let modeOpen = $state(false);
 	/** What the last sortie flew: Restart and Retry repeat it. */
 	let lastStart = $state<ModeStart | null>(null);
-	let progress = $state<CampaignProgress>(loadProgress());
-	let board = $state<EndlessRun[]>(readBoard());
 	let trained = $state(readTrained());
 	let error = $state('');
 
@@ -136,13 +133,11 @@
 
 	function refreshRecords(): void {
 		best = readBestScore();
-		progress = loadProgress();
-		board = readBoard();
 		trained = readTrained();
 		wallet = loadProgression();
 	}
 
-	/** Opens the mode chooser (training, campaign, endless). */
+	/** Opens the mode chooser (training or the war). */
 	function chooseMode(): void {
 		refreshRecords();
 		modeOpen = true;
@@ -160,14 +155,12 @@
 		hangarOpen = false;
 		if (game) game.showcase = false;
 		game?.newGame(settings.aircraft, loadout, start, upgrades);
-		// A strike flown ahead of a campaign mission spends credits.
-		wallet = loadProgression();
 		canvas.focus();
 	}
 
 	/** Flies the last sortie again. */
 	function sortie(): void {
-		launch(lastStart ?? { mode: 'endless' });
+		launch(lastStart ?? { mode: 'war' });
 	}
 
 	function toTitle(): void {
@@ -308,11 +301,8 @@
 
 	{#if phase === 'title' && modeOpen}
 		<ModeSelect
-			{progress}
-			{board}
 			{best}
 			{trained}
-			credits={wallet.credits}
 			initial={lastStart}
 			onLaunch={launch}
 			onClose={() => (modeOpen = false)}

@@ -21,7 +21,7 @@ export interface WavePlan {
 }
 
 /**
- * Adjustments a mission (or the endless escalation) makes to the generated
+ * Adjustments the war's escalation makes to the generated
  * waves. Everything is optional; an empty object reproduces the stock waves.
  */
 export interface WaveTweaks {
@@ -58,6 +58,8 @@ export interface WaveOptions {
 	 * next one forms up, and the sequence never ends by itself.
 	 */
 	rolling?: boolean;
+	/** The first wave sets off without its own announcement (the battle opens with a briefing). */
+	quietStart?: boolean;
 }
 
 /** A rolling wave is spent once this share of what it sent is gone... */
@@ -211,25 +213,25 @@ export function planWave(
 }
 
 /**
- * Endless escalation: past the hand-tuned early waves the columns keep
+ * The war's escalation: past the hand-tuned early waves the columns keep
  * growing and more aircraft join them.
  */
-export function endlessTweaks(wave: number): WaveTweaks {
+export function warTweaks(wave: number): WaveTweaks {
 	const late = Math.max(0, wave - 11);
 	return {
-		boss: endlessBoss(wave),
+		boss: warBoss(wave),
 		budget: 1 + Math.max(0, wave - 6) * 0.07,
 		fighters: late > 0 ? Math.min(4 + Math.floor(late / 3), 7) : undefined,
 		helis: late > 0 ? Math.min(4 + Math.floor(late / 3), 6) : undefined
 	};
 }
 
-const ENDLESS_BOSSES: UnitKind[] = ['superTank', 'cruiser', 'railGun'];
+const WAR_BOSSES: UnitKind[] = ['superTank', 'cruiser', 'railGun'];
 
-/** Every fifth endless wave brings a boss: the tank, the cruiser and the railway gun in turn. */
-export function endlessBoss(wave: number): UnitKind | undefined {
+/** Every fifth wave of the war brings a boss: the tank, the cruiser and the railway gun in turn. */
+export function warBoss(wave: number): UnitKind | undefined {
 	if (wave % 5 !== 0) return undefined;
-	return ENDLESS_BOSSES[(wave / 5 - 1) % ENDLESS_BOSSES.length];
+	return WAR_BOSSES[(wave / 5 - 1) % WAR_BOSSES.length];
 }
 
 /** Score for beating a wave: grows with the wave and with what is left of the airfield. */
@@ -262,7 +264,7 @@ export class WaveDirector {
 		return wave + (this.opts.offset ?? 0);
 	}
 
-	/** "WAVE 2/4" in a mission, "WAVE 7" in an open-ended run. */
+	/** "WAVE 2/4" with a last wave set, "WAVE 7" in an open-ended run. */
 	get label(): string {
 		return this.opts.last && !this.opts.rolling
 			? `WAVE ${this.wave}/${this.opts.last}`
@@ -282,6 +284,7 @@ export class WaveDirector {
 			w.wingman?.reinforce(w);
 		}
 		this.timer = 3.5;
+		if (wave === 1 && this.opts.quietStart) return;
 		const note = this.opts.briefings?.[wave - 1] ?? briefing(this.difficulty(wave));
 		w.events.message(this.label, note, 'info');
 		w.sound.play('siren', w.camera.x, w.camera.y, 0.7);
@@ -389,7 +392,7 @@ export class WaveDirector {
 
 function briefing(wave: number): string {
 	const notes: Record<number, string> = {
-		1: 'Infantry and trucks advancing — stop them before they reach the airfield',
+		1: 'Infantry and trucks moving up the road',
 		2: 'Armour and mobile AA guns spotted',
 		3: 'Flak batteries dug in. Missile troopers and gunships inbound',
 		4: 'SAM launchers and artillery. Use flares when locked',

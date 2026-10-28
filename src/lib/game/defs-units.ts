@@ -651,7 +651,7 @@ export const UNITS: Record<UnitKind, UnitDef> = {
 	}
 };
 
-/** One-off heavy units that lead a campaign act's last wave. */
+/** One-off heavy units that lead every fifth wave of the war. */
 export const BOSS_KINDS: UnitKind[] = ['superTank', 'cruiser', 'railGun'];
 
 export interface EnemyWeapon {

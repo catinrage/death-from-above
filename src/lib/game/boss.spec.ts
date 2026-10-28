@@ -7,7 +7,6 @@ import {
 	riverPoint,
 	spawnBoss
 } from './boss';
-import { MissionTracker, missionById } from './campaign';
 import { inBattlePlane } from './combat';
 import { isEmitting } from './arm';
 import { BOMBS } from './defs-bombs';
@@ -17,7 +16,7 @@ import { simulateWorld } from './simulate';
 import { testWorld } from './test-world';
 import type { Unit } from './types';
 import { dropBomb } from './weapons';
-import { endlessBoss, endlessTweaks, planWave, WaveDirector } from './waves';
+import { warBoss, warTweaks, planWave, WaveDirector } from './waves';
 import type { World } from './world';
 
 const DT = 1 / 60;
@@ -278,7 +277,7 @@ describe('boss waves', () => {
 	});
 
 	it('bring one every fifth endless wave, alternating', () => {
-		expect([4, 5, 6, 10, 15, 20].map(endlessBoss)).toEqual([
+		expect([4, 5, 6, 10, 15, 20].map(warBoss)).toEqual([
 			undefined,
 			'superTank',
 			undefined,
@@ -286,7 +285,7 @@ describe('boss waves', () => {
 			'railGun',
 			'superTank'
 		]);
-		expect(endlessTweaks(10).boss).toBe('cruiser');
+		expect(warTweaks(10).boss).toBe('cruiser');
 	});
 
 	it("don't clear until the boss is dead", () => {
@@ -305,24 +304,5 @@ describe('boss waves', () => {
 		boss!.alive = false;
 		waves.update(w, DT);
 		expect(waves.state).toBe('complete');
-	});
-
-	it('close each campaign act and count toward their goals', () => {
-		const iron = missionById('iron-column')!;
-		expect(iron.waves.tweaks?.(1).boss).toBeUndefined();
-		expect(iron.waves.tweaks?.(2).boss).toBe('superTank');
-		const weasel = missionById('wild-weasel')!;
-		expect(weasel.waves.tweaks?.(2).boss).toBe('cruiser');
-		const finale = missionById('death-from-above')!;
-		expect(finale.waves.tweaks?.(3).boss).toBeUndefined();
-		expect(finale.waves.tweaks?.(4).boss).toBe('railGun');
-
-		const w = testWorld();
-		const tracker = new MissionTracker(weasel);
-		const u = spawnBoss(w, 'cruiser');
-		tracker.update(w);
-		u.alive = false;
-		tracker.update(w);
-		expect(tracker.count(['cruiser'])).toBe(1);
 	});
 });
