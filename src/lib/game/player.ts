@@ -277,6 +277,14 @@ export class Player implements Trackable {
 		}
 	}
 
+	/**
+	 * Down at the airfield, where the ground crew can hand over another
+	 * aircraft. The gunship can't land, so a low pass over the runway does.
+	 */
+	get canChangeAircraft(): boolean {
+		return this.alive && this.rearming && (this.landed || this.flight === 'orbit');
+	}
+
 	get flight(): 'fixed' | 'rotor' | 'orbit' {
 		return this.def.flight ?? 'fixed';
 	}

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { AIRCRAFT, AIRCRAFT_ORDER } from '$lib/game/defs-aircraft';
-	import { AIRCRAFT_PRICE, owns, type Progression } from '$lib/game/progression';
+	import type { Progression } from '$lib/game/progression';
 	import type { AircraftId } from '$lib/game/types';
 	import { parallax } from './menu-fx';
 
@@ -22,28 +22,20 @@
 		</span>
 	</header>
 	<h2>Hangar</h2>
-	<p class="m-label count">Fleet · {wallet.owned.length}/{AIRCRAFT_ORDER.length} owned</p>
+	<p class="m-label count">Fleet · {AIRCRAFT_ORDER.length} airframes</p>
 	<ul>
 		{#each AIRCRAFT_ORDER as id, i (id)}
 			{@const a = AIRCRAFT[id]}
-			{@const locked = !owns(wallet, id)}
 			<li class="m-wipe" style:--i={i} style:--d="150ms">
 				<button
 					class="craft"
 					class:on={id === aircraft}
-					class:locked
 					onclick={() => onSelect(id)}
 					aria-pressed={id === aircraft}
 				>
 					<span class="idx" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
 					<span class="nm">{a.name}</span>
-					{#if locked}
-						<span class="sub price"
-							><i class="lock" aria-hidden="true"></i>{AIRCRAFT_PRICE[id].toLocaleString()} cr</span
-						>
-					{:else}
-						<span class="sub">{a.real ?? a.role}</span>
-					{/if}
+					<span class="sub">{a.real ?? a.role}</span>
 				</button>
 			</li>
 		{/each}
@@ -215,44 +207,12 @@
 		color: var(--amber);
 	}
 
-	.locked .nm {
-		color: var(--ink-dim);
-	}
-
 	.sub {
 		font-size: 13px;
 		color: var(--ink-dim);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-	}
-
-	.sub.price {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		color: var(--ink-faint);
-	}
-
-	.lock {
-		width: 8px;
-		height: 7px;
-		margin-top: 3px;
-		position: relative;
-		border: 1.5px solid currentColor;
-		border-radius: 1px;
-	}
-
-	.lock::before {
-		content: '';
-		position: absolute;
-		left: 0.5px;
-		bottom: 100%;
-		width: 4px;
-		height: 4px;
-		border: 1.5px solid currentColor;
-		border-bottom: 0;
-		border-radius: 3px 3px 0 0;
 	}
 
 	.keys {

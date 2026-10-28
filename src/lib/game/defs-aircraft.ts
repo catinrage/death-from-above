@@ -33,6 +33,9 @@ export interface AircraftDef {
 	name: string;
 	role: string;
 	blurb: string;
+	/** What it does best and where it struggles, shown on the hangar card. */
+	pros: readonly string[];
+	cons: readonly string[];
 	mesh: MeshName;
 	scale: number;
 	props: Vec3T[];
@@ -91,6 +94,8 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 		name: 'KESTREL',
 		role: 'Multirole fighter-bomber',
 		blurb: 'Fast and forgiving. Twin cannons and a balanced bomb rack.',
+		pros: ['Forgiving handling', 'Carries almost every store', 'Fast enough to run'],
+		cons: ['Average armour', 'Jack of all trades'],
 		mesh: 'kestrel',
 		scale: 1,
 		props: [],
@@ -142,6 +147,8 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 		name: 'WRAITH',
 		role: 'Stealth striker',
 		blurb: 'Radar struggles to lock it. Blistering speed, light payload.',
+		pros: ['Hardest to lock', 'Top speed and agility', 'Can carry the nuke'],
+		cons: ['Thin skin', 'Small rack, no area weapons'],
 		mesh: 'wraith',
 		scale: 1,
 		props: [],
@@ -188,6 +195,8 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 		name: 'GRIZZLY',
 		role: 'Armoured ground attack',
 		blurb: 'Soaks up flak. Its 30 mm cannon shreds armour on its own.',
+		pros: ['Soaks up flak', '30 mm cannon pierces armour'],
+		cons: ['Slow to climb and turn', 'No speed to dodge missiles'],
 		mesh: 'grizzly',
 		scale: 1,
 		props: [],
@@ -241,6 +250,8 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 		name: 'ALBATROSS',
 		role: 'Heavy bomber',
 		blurb: 'Ripple-drops sticks of bombs. A tail gunner guards your six.',
+		pros: ['Biggest bomb load', 'Tail gunner covers your six', 'Very tough'],
+		cons: ['Barely turns', 'Easy target for SAMs'],
 		mesh: 'albatross',
 		scale: 0.85,
 		props: [
@@ -290,6 +301,8 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 		real: 'A-10C Thunderbolt II',
 		role: 'Close air support',
 		blurb: 'Built around a seven-barrel 30 mm cannon. Slow, tough and terrifying.',
+		pros: ['Armour-shredding cannon', 'Very tough', 'Slow, steady gun runs'],
+		cons: ['Slow', 'No anti-radar missiles'],
 		mesh: 'a10',
 		scale: 0.85,
 		props: [],
@@ -342,6 +355,8 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 		real: 'F-16C Fighting Falcon',
 		role: 'Air superiority strike',
 		blurb: 'Fly-by-wire agility and a huge afterburner. Light hitter, hard to catch.',
+		pros: ['Best agility', 'Huge afterburner', 'Outruns missiles'],
+		cons: ['Fragile', 'Light-hitting gun'],
 		mesh: 'f16',
 		scale: 0.85,
 		props: [],
@@ -391,6 +406,8 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 		real: 'Su-25 Frogfoot',
 		role: 'Armoured attack',
 		blurb: 'Titanium tub, rugged twin engines and a rack full of dumb, dirty ordnance.',
+		pros: ['Rugged armour', 'Heavy dirty ordnance', 'Piercing cannon'],
+		cons: ['Middling speed', 'Few missiles'],
 		mesh: 'su25',
 		scale: 0.85,
 		props: [],
@@ -443,6 +460,8 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 		real: 'F-4E Phantom II',
 		role: 'Heavy fighter-bomber',
 		blurb: 'Two smoky J79s and a truckload of bombs. Brute force, Vietnam-era style.',
+		pros: ['Big rack and fast', 'Carries ballistic stores'],
+		cons: ['Heavy in turns', 'Only four missiles'],
 		mesh: 'f4',
 		scale: 0.8,
 		props: [],
@@ -495,6 +514,8 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 		real: 'B-1B Lancer',
 		role: 'Strategic bomber',
 		blurb: 'Four afterburning engines, ripple-releases sticks of heavy ordnance. Carries the nuke.',
+		pros: ['Huge payload, ripple drops', 'Fast for a bomber', 'Carries the nuke'],
+		cons: ['No guided missiles', 'Turns like a ship'],
 		mesh: 'b1',
 		scale: 0.7,
 		props: [],
@@ -545,6 +566,8 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 		role: 'Orbiting gunship',
 		blurb:
 			'Circles the target in a slow left-hand pylon turn while a 40 mm Bofors and a 105 mm howitzer fire out of the port side.',
+		pros: ['Very tough', 'Aimed 40 mm and 105 mm guns', 'Most flares'],
+		cons: ['Locked into a slow orbit', 'Tiny bomb rack'],
 		mesh: 'ac130',
 		scale: 0.55,
 		flight: 'orbit',
@@ -598,6 +621,8 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 		role: 'Attack helicopter',
 		blurb:
 			'Hovers, strafes and sets down anywhere. The chin gun tracks your reticle and Hellfires do the rest.',
+		pros: ['Hovers and lands anywhere', 'Aimed chin gun', 'Eight Hellfires'],
+		cons: ['Slow', 'Small rack'],
 		mesh: 'apache',
 		scale: 1,
 		flight: 'rotor',
@@ -649,6 +674,8 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 		role: 'Hunter-killer drone',
 		blurb:
 			'Slow, fragile and hard for radar to see. No gun: it kills with laser-guided bombs and Hellfires only.',
+		pros: ['Stealthy', 'Precise guided weapons only'],
+		cons: ['No gun', 'Fragile and slow'],
 		mesh: 'mq9',
 		scale: 0.9,
 		props: [[-5.4, 0, 0]],
@@ -688,6 +715,8 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 		role: 'Dive bomber',
 		blurb:
 			'Point the nose at the target and dive. The siren howls, the dive brakes bite and the bombs fall true.',
+		pros: ['Accurate dive bombing', 'Dive brakes hold the dive'],
+		cons: ['Weak gun', 'No missiles, few flares'],
 		mesh: 'stuka',
 		scale: 0.85,
 		props: [[5.95, 0, 0]],
@@ -741,6 +770,8 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 		role: 'Piston attack',
 		blurb:
 			'A propeller-driven dump truck: four 20 mm cannons, pylons everywhere and armour that laughs at rifle fire.',
+		pros: ['Lots of pylons', 'Four cannons', 'Shrugs off rifle fire'],
+		cons: ['Slow', 'Only two missiles'],
 		mesh: 'a1',
 		scale: 0.85,
 		props: [[5.95, 0, 0]],
@@ -798,6 +829,8 @@ export const AIRCRAFT: Record<AircraftId, AircraftDef> = {
 		role: 'Turboprop strategic bomber',
 		blurb:
 			'Eight contra-rotating propellers, twin 23 mm cannons in the tail turret and no forward gun at all.',
+		pros: ['Huge payload', 'Tail turret', 'Carries the nuke'],
+		cons: ['No forward gun', 'Slowest to turn'],
 		mesh: 'tu95',
 		scale: 0.5,
 		props: [

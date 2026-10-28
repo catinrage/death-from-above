@@ -13,11 +13,8 @@ import {
 } from './loadout';
 import { Player } from './player';
 import {
-	AIRCRAFT_PRICE,
-	STARTERS,
 	STAR_CREDITS,
 	UPGRADES,
-	buyAircraft,
 	buyUpgrade,
 	endlessCredits,
 	extraPayload,
@@ -28,7 +25,6 @@ import {
 	missionCredits,
 	newProgression,
 	nextCost,
-	owns,
 	payloadBonus,
 	sanitizeProgression,
 	saveProgression,
@@ -39,27 +35,17 @@ afterEach(() => vi.unstubAllGlobals());
 
 const rich = (): ReturnType<typeof newProgression> => grant(newProgression(), 100_000);
 
-describe('hangar purchases', () => {
-	it('starts with the free airframes and no credits', () => {
+describe('hangar upgrades', () => {
+	it('starts with no credits and no upgrades', () => {
 		const p = newProgression();
 		expect(p.credits).toBe(0);
-		expect(p.owned).toEqual(STARTERS);
-		expect(STARTERS).toContain('kestrel');
-		for (const id of AIRCRAFT_ORDER) expect(owns(p, id)).toBe(AIRCRAFT_PRICE[id] === 0);
+		expect(p.upgrades).toEqual({});
 	});
 
-	it('buys an aircraft only when it can be afforded', () => {
-		const price = AIRCRAFT_PRICE.a10;
-		const poor = grant(newProgression(), price - 1);
-		expect(buyAircraft(poor, 'a10')).toBe(poor);
-		const p = buyAircraft(grant(newProgression(), price + 5), 'a10');
-		expect(owns(p, 'a10')).toBe(true);
-		expect(p.credits).toBe(5);
-		expect(p.earned).toBe(price + 5);
-		// Already owned: nothing changes.
-		expect(buyAircraft(p, 'a10')).toBe(p);
-		// Owned list stays in hangar order.
-		expect(p.owned).toEqual(AIRCRAFT_ORDER.filter((id) => owns(p, id)));
+	it('lets every airframe be upgraded from the start', () => {
+		const p = rich();
+		for (const id of AIRCRAFT_ORDER)
+			expect(levelOf(buyUpgrade(p, id, 'armor'), id, 'armor')).toBe(1);
 	});
 
 	it('steps upgrades through their levels and stops at max', () => {
@@ -79,18 +65,16 @@ describe('hangar purchases', () => {
 		expect(levelOf(p, 'grizzly', 'armor')).toBe(0);
 	});
 
-	it('refuses upgrades on unowned aircraft, unaffordable levels and missing rails', () => {
-		expect(buyUpgrade(rich(), 'b1', 'armor').upgrades.b1).toBeUndefined();
+	it('refuses unaffordable levels and missing rails', () => {
 		const poor = newProgression();
 		expect(buyUpgrade(poor, 'kestrel', 'armor')).toBe(poor);
-		const bomber = buyAircraft(rich(), 'b1');
+		const bomber = rich();
 		expect(AIRCRAFT.b1.missiles).toBe(0);
 		expect(nextCost(bomber, 'b1', 'missiles')).toBeNull();
 		expect(buyUpgrade(bomber, 'b1', 'missiles')).toBe(bomber);
 		for (const id of AIRCRAFT_ORDER) {
 			if (AIRCRAFT[id].gun) continue;
-			const p = buyAircraft(rich(), id);
-			expect(nextCost(p, id, 'guns')).toBeNull();
+			expect(nextCost(rich(), id, 'guns')).toBeNull();
 			expect(upgradedDef(AIRCRAFT[id], { guns: 3 }).gun).toBeNull();
 		}
 	});
@@ -137,9 +121,8 @@ describe('upgraded airframes', () => {
 		expect(payloadBonus(10, { payload: 1 })).toBe(2);
 		let checked = 0;
 		for (const id of AIRCRAFT_ORDER) {
-			let p = buyAircraft(rich(), id);
 			const stock = stockLoadout(id);
-			p = buyUpgrade(p, id, 'payload');
+			const p = buyUpgrade(rich(), id, 'payload');
 			const extra = extraPayload(p, id);
 			expect(extra).toBeGreaterThan(0);
 			expect(capacityOf(id, extra)).toBe(capacityOf(id) + extra);
@@ -204,10 +187,11 @@ describe('saved progression', () => {
 			}
 		});
 		expect(p.credits).toBe(0);
-		expect(p.owned).toEqual(AIRCRAFT_ORDER.filter((id) => STARTERS.includes(id) || id === 'a10'));
+		// Saves from when airframes were bought keep their upgrades; the old fleet list is dropped.
+		expect(p).not.toHaveProperty('owned');
 		expect(p.upgrades.a10).toEqual({ armor: 3, guns: 1 });
-		// Not owned, so its upgrades are dropped.
-		expect(p.upgrades.wraith).toBeUndefined();
+		expect(p.upgrades.wraith).toEqual({ armor: 1 });
+		// No rails on the bomber.
 		expect(p.upgrades.b1).toBeUndefined();
 	});
 
@@ -219,14 +203,14 @@ describe('saved progression', () => {
 			getItem: (k: string) => data.get(k) ?? null,
 			setItem: (k: string, v: string) => void data.set(k, v)
 		});
-		const p = buyUpgrade(buyAircraft(rich(), 'f16'), 'f16', 'engine');
+		const p = buyUpgrade(rich(), 'f16', 'engine');
 		saveProgression(p);
 		expect(loadProgression()).toEqual(p);
 		data.set('dfa.progression', '{not json');
 		expect(loadProgression()).toEqual(newProgression());
 	});
 
-	it('pays older saves for their stars and keeps the aircraft they flew', () => {
+	it('pays older saves for their stars', () => {
 		const data = new Map<string, string>([
 			[
 				'dfa.campaign',
@@ -237,13 +221,10 @@ describe('saved progression', () => {
 			getItem: (k: string) => data.get(k) ?? null,
 			setItem: (k: string, v: string) => void data.set(k, v)
 		});
-		const p = loadOrMigrate('b1');
+		const p = loadOrMigrate();
 		expect(p.credits).toBe(5 * STAR_CREDITS);
-		expect(owns(p, 'b1')).toBe(true);
-		expect(owns(p, 'a10')).toBe(false);
 		// Once saved, the migration doesn't run again.
 		saveProgression(grant(p, 10));
-		expect(loadOrMigrate('wraith').credits).toBe(5 * STAR_CREDITS + 10);
-		expect(owns(loadOrMigrate('wraith'), 'wraith')).toBe(false);
+		expect(loadOrMigrate().credits).toBe(5 * STAR_CREDITS + 10);
 	});
 });
