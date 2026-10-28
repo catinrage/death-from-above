@@ -437,6 +437,13 @@ export class AudioEngine implements SoundSink {
 		this.warpFilter.frequency.setTargetAtTime(cutoff, ctx.currentTime, 0.06);
 	}
 
+	/** A menu tick at the listener: hover, select, or a lower one for backing out. */
+	menu(kind: 'hover' | 'select' | 'back'): void {
+		const [vol, pitch] =
+			kind === 'hover' ? [0.3, 1.18] : kind === 'select' ? [0.7, 1.4] : [0.6, 0.72];
+		this.play('select', this.listenerX, this.listenerY, vol, pitch);
+	}
+
 	play(id: SfxId, x: number, y: number, volume = 1, pitch = 1): void {
 		const ctx = this.ctx;
 		if (!ctx || ctx.state !== 'running') return;
@@ -590,7 +597,7 @@ export class AudioEngine implements SoundSink {
 				break;
 			case 'select':
 				dur = 0.05;
-				this.tone(v, t, 0.03, 'sine', 1700, 1500, 0.12);
+				this.tone(v, t, 0.03, 'sine', 1700 * pitch, 1500 * pitch, 0.12);
 				break;
 			case 'focusIn':
 				// Time sinks: a falling whoomp under a closing filter.

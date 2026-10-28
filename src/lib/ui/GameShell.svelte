@@ -44,6 +44,8 @@
 	import GameOver from './GameOver.svelte';
 	import Controls from './Controls.svelte';
 	import ModeSelect from './ModeSelect.svelte';
+	import { setMenuSound } from './menu-fx';
+	import './menu-theme.css';
 
 	let canvas: HTMLCanvasElement;
 	let popupRoot: HTMLDivElement;
@@ -102,6 +104,12 @@
 					(window as unknown as { __dfa: Game }).__dfa = game;
 				}
 				game.audio.setVolume(settings.volume);
+				const audio = game.audio;
+				setMenuSound((kind) => {
+					// A click is a user gesture: it may wake the audio up.
+					if (kind !== 'hover') void audio.unlock();
+					audio.menu(kind);
+				});
 				game.preview(settings.aircraft, loadout, upgrades);
 				game.start();
 			} catch (e) {
@@ -112,6 +120,7 @@
 		window.addEventListener('resize', onResize);
 		return () => {
 			clearTimeout(boot);
+			setMenuSound(null);
 			window.removeEventListener('resize', onResize);
 			game?.dispose();
 		};
@@ -143,6 +152,8 @@
 		lastStart = start;
 		over = null;
 		messages = [];
+		// Don't flash the attract-mode aircraft's racks until the sortie's first HUD frame.
+		hud = emptyHud();
 		showControls = false;
 		modeOpen = false;
 		void game?.audio.unlock();
