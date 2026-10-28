@@ -21,7 +21,7 @@ import { WORLD } from './constants';
 import { BOMBS, BOMB_ORDER, ROCKET_SPEED } from './defs-bombs';
 import { environmentAt, presetName } from './environment';
 import { applyWeather, CLEAR, weatherForWave, type WeatherSpec } from './weather';
-import { BIOME_ORDER, climateWeather, gradeEnvironment, type BiomeId } from './biomes';
+import { BIOME_ORDER, gradeEnvironment, type BiomeId } from './biomes';
 import type {
 	GameMode,
 	GameOverStats,
@@ -546,7 +546,7 @@ export class Game {
 	/** Sky and wind for a wave of the current sortie. */
 	private weatherFor(wave: number): WeatherSpec {
 		if (this.mode === 'tutorial') return CLEAR;
-		return climateWeather(weatherForWave(wave), this.world.biome);
+		return weatherForWave(wave);
 	}
 
 	private spawnPlayer(): void {
@@ -1234,7 +1234,7 @@ export class Game {
 			this.skyFlashDir = [Math.sin(a), -Math.cos(a)];
 			this.skyFlash = rnd.range(0.4, 1.2) * (0.3 + this.world.night);
 		}
-		this.skyFlash = Math.max(damp(this.skyFlash, 0, 6, dt), this.world.weather.flash * 2);
+		this.skyFlash = damp(this.skyFlash, 0, 6, dt);
 		this.renderer.setSkyFlash(this.skyFlashDir[0], this.skyFlashDir[1], this.skyFlash);
 	}
 

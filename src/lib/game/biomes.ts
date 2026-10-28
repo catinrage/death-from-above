@@ -1,7 +1,6 @@
 import type { Environment, RGB } from '../engine/renderer';
 import type { MeshName } from '../models';
 import type { TerrainShape } from './terrain';
-import type { WeatherKind, WeatherSpec } from './weather';
 
 export type BiomeId = 'temperate' | 'desert' | 'snow' | 'jungle' | 'city';
 
@@ -68,8 +67,6 @@ export interface Biome {
 	grade: Grade;
 	/** Colour multiplied into the distant mountain ranges. */
 	mountains: RGB;
-	/** Weather this climate can't have, and what falls instead. */
-	climate: Partial<Record<WeatherKind, WeatherKind>>;
 }
 
 const NEUTRAL: Grade = {
@@ -117,8 +114,7 @@ export const BIOMES: Readonly<Record<BiomeId, Biome>> = {
 			settlement: 'village'
 		},
 		grade: NEUTRAL,
-		mountains: [1, 1, 1],
-		climate: {}
+		mountains: [1, 1, 1]
 	},
 	desert: {
 		id: 'desert',
@@ -160,8 +156,7 @@ export const BIOMES: Readonly<Record<BiomeId, Biome>> = {
 			bounce: [1.5, 1.25, 0.95],
 			clouds: 0.35
 		},
-		mountains: [1.6, 1.15, 0.78],
-		climate: { rain: 'clear', snow: 'clear' }
+		mountains: [1.6, 1.15, 0.78]
 	},
 	snow: {
 		id: 'snow',
@@ -202,8 +197,7 @@ export const BIOMES: Readonly<Record<BiomeId, Biome>> = {
 			bounce: [2.2, 2.3, 2.6],
 			clouds: 1.25
 		},
-		mountains: [2.4, 2.5, 2.8],
-		climate: { rain: 'snow' }
+		mountains: [2.4, 2.5, 2.8]
 	},
 	jungle: {
 		id: 'jungle',
@@ -245,8 +239,7 @@ export const BIOMES: Readonly<Record<BiomeId, Biome>> = {
 			bounce: [0.75, 1.1, 0.7],
 			clouds: 1.3
 		},
-		mountains: [0.8, 1.05, 0.75],
-		climate: { snow: 'rain' }
+		mountains: [0.8, 1.05, 0.75]
 	},
 	city: {
 		id: 'city',
@@ -286,8 +279,7 @@ export const BIOMES: Readonly<Record<BiomeId, Biome>> = {
 			bounce: [0.9, 0.9, 0.95],
 			clouds: 1.1
 		},
-		mountains: [0.85, 0.85, 0.9],
-		climate: {}
+		mountains: [0.85, 0.85, 0.9]
 	}
 };
 
@@ -316,10 +308,4 @@ export function gradeEnvironment(env: Environment, biome: Biome): Environment {
 		contrast: env.contrast * g.contrast,
 		tint: mul(env.tint, g.tint)
 	};
-}
-
-/** Endless weather nudged to suit the climate: no snow in the desert, no rain on the snowfield. */
-export function climateWeather(spec: WeatherSpec, biome: Biome): WeatherSpec {
-	const kind = biome.climate[spec.kind];
-	return kind ? { ...spec, kind } : spec;
 }
