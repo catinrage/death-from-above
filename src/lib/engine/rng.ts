@@ -41,3 +41,14 @@ export class Rng {
 
 /** Shared non-deterministic generator for cosmetic effects. */
 export const fx = new Rng((Math.random() * 2 ** 31) | 0);
+
+/** Picks a key with probability proportional to its weight (`fallback` if every weight is 0). */
+export function pickWeighted<K>(pool: readonly (readonly [K, number])[], rng: Rng, fallback: K): K {
+	const total = pool.reduce((s, [, w]) => s + w, 0);
+	let r = rng.next() * total;
+	for (const [k, w] of pool) {
+		r -= w;
+		if (r <= 0 && w > 0) return k;
+	}
+	return fallback;
+}

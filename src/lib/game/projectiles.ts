@@ -57,6 +57,9 @@ export interface Shell {
 	trail: number;
 	/** Ground-to-ground fire: the x it was aimed at (see Bullet.aimX). */
 	aimX?: number;
+	/** Enemy fire: what a direct hit does to a friendly unit, and how much armour it defeats. */
+	punch?: number;
+	pierce?: number;
 }
 
 export interface Missile extends Trackable {
@@ -330,7 +333,7 @@ function updateShells(w: World, dt: number): void {
 		}
 		if (!detonate && s.kind === 'tank') {
 			if (s.owner === 'enemy') {
-				detonate = w.allies.shellHit(x0, y0, s.x, s.y) !== null;
+				detonate = w.allies.shellHit(x0, y0, s.x, s.y, s.punch, s.pierce) !== null;
 			} else {
 				// A friendly tank round: a direct hit does the real damage, the burst the rest.
 				for (const u of w.units) {

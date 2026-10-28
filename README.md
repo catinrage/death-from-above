@@ -101,8 +101,8 @@ and losing your aircraft doesn't hand you a fresh one.
   drops helicopters, blinds missiles), terrain-hugging cruise missiles, a ballistic missile that
   climbs out of sight and comes down at Mach 6, paratroopers who land and fight, the Thunderclap,
   the tactical nuke, and guided air-to-ground missiles fired in salvos.
-- **The war** — your reinforcements (riflemen, missile troopers, jeeps, tanks, APCs and AA
-  carriers) set off every 30 seconds from the furthest checkpoint you hold that isn't under attack,
+- **The war** — your reinforcements (riflemen and specialists, jeeps, light and battle tanks,
+  APCs, AA carriers and rocket artillery) set off every 30 seconds from the furthest checkpoint you hold that isn't under attack,
   or from the airfield. They creep in under fire, stand and fight at short range, and take damage
   from your bombs like anything else. Enemy waves are bigger, keep rolling in whether or not you
   wipe the last one out, and form up at the enemy's foremost checkpoint.
@@ -122,6 +122,11 @@ and losing your aircraft doesn't hand you a fresh one.
   and flattening the hospital costs 600; each also breaks your kill chain. Napalm and gas don't care
   who is standing in them, and a house that comes down takes its sheltering family with it. The bomb
   sight warns you when it is over a no-fire zone, and enemy emplacements never dig in there.
+- **Troop types** — both armies field the same specialists: snipers who pick off soldiers from
+  beyond rifle range, anti-tank troopers whose rockets go for armour first, mortar teams and rocket
+  artillery that stop well short of a fight and lob rounds onto it (ours hold fire when our own
+  troops are on the target), medics who patch up the soldiers around them, and fast, thin-skinned
+  light tanks. The enemy brings them in from wave 2, rocket artillery from wave 5.
 - **Enemies** — riflemen and missile troopers (ragdolls), gun jeeps, supply trucks (drop extra
   ordnance), tanks (turrets pop off), troop carriers (unload infantry), AA gun carriers, SAM
   launchers with radar lock, howitzers, flak batteries, pillboxes, radar stations, fuel depots

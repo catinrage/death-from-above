@@ -40,10 +40,16 @@ export type AircraftId =
 export type UnitKind =
 	| 'rifleman'
 	| 'manpads'
+	| 'sniper'
+	| 'atTrooper'
+	| 'mortar'
+	| 'medic'
 	| 'jeep'
 	| 'truck'
 	| 'engineer'
 	| 'tank'
+	| 'lightTank'
+	| 'rocketTruck'
 	| 'apc'
 	| 'spaag'
 	| 'sam'
@@ -62,7 +68,18 @@ export type UnitKind =
 	| 'boxcar';
 
 export type WeaponKind =
-	'rifle' | 'mg' | 'autocannon' | 'flak' | 'sam' | 'manpads' | 'cannon' | 'artillery';
+	| 'rifle'
+	| 'sniper'
+	| 'rpg'
+	| 'mortar'
+	| 'mg'
+	| 'autocannon'
+	| 'flak'
+	| 'sam'
+	| 'manpads'
+	| 'cannon'
+	| 'artillery'
+	| 'rockets';
 
 export type PartDrive =
 	| 'yaw'
