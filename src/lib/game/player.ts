@@ -403,8 +403,8 @@ export class Player implements Trackable {
 		if (this.boosting && !wasBoosting) this.ignition = 1;
 		// Afterburner spools up quickly and dies away a little slower.
 		this.boostLevel = damp(this.boostLevel, this.boosting ? 1 : 0, this.boosting ? 7 : 4, dt);
-		// About seven seconds of boost, back in about eight.
-		this.boostMeter = clamp(this.boostMeter + (this.boosting ? -0.14 : 0.125) * dt, 0, 1);
+		// About fourteen seconds of boost, back in about eight.
+		this.boostMeter = clamp(this.boostMeter + (this.boosting ? -0.07 : 0.125) * dt, 0, 1);
 		const braking = airbrake && inp.brake && !this.boosting && !this.landed;
 		if (braking && this.brakeLevel < 0.05) w.sound.play('airbrake', this.x, this.y, 0.9);
 		this.brakeLevel = damp(this.brakeLevel, braking ? 1 : 0, braking ? 6 : 4, dt);

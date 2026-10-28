@@ -11,6 +11,8 @@ const FRAME = 1 / 60;
 function bridgeWorld(): { w: World; mid: number; deckY: number } {
 	const w = testWorld();
 	if (!w.river || !w.bridge) throw new Error('test world has no river');
+	// The kill cam's bridge shot only applies to a crossing that can fall.
+	w.bridge.indestructible = false;
 	const span = w.bridge.spans[1];
 	return { w, mid: (span.x0 + span.x1) / 2, deckY: w.river.deckY };
 }
@@ -40,6 +42,12 @@ describe('bigKillAt', () => {
 		expect(bigKillAt(w, mid, deckY, 0, BOMBS.gp.blast)).toBe('bridge');
 		// Already down: nothing left to drop.
 		w.bridge!.spans[1].down = true;
+		expect(bigKillAt(w, mid, deckY, 0, BOMBS.penetrator.blast)).toBeNull();
+	});
+
+	it('never calls a bridge shot on an indestructible crossing', () => {
+		const { w, mid, deckY } = bridgeWorld();
+		w.bridge!.indestructible = true;
 		expect(bigKillAt(w, mid, deckY, 0, BOMBS.penetrator.blast)).toBeNull();
 	});
 

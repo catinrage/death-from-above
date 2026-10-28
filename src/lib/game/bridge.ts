@@ -54,6 +54,8 @@ export interface BridgeSpec {
 	zWeight: number;
 	/** Stranded road columns call up engineers to lay pontoons across fallen spans. */
 	pontoons: boolean;
+	/** Weapons only scar the steelwork: no span can fall. */
+	indestructible: boolean;
 	/** Kill feed name and score for a dropped span. */
 	name: string;
 	score: number;
@@ -79,6 +81,8 @@ export function roadBridgeSpec(river: River): BridgeSpec {
 		above: TRUSS_H,
 		zWeight: 1,
 		pontoons: true,
+		// Both armies need the crossing: it stands whatever is thrown at it.
+		indestructible: true,
 		name: 'BRIDGE SPAN',
 		score: SPAN_SCORE,
 		down: ['BRIDGE DOWN', 'The convoy is stranded on the far bank'],
@@ -133,6 +137,8 @@ export class Bridge {
 	readonly z: number;
 	readonly halfZ: number;
 	readonly hp: number;
+	/** Hits only flash the steelwork (starts from the spec; tests can switch it off). */
+	indestructible: boolean;
 	/** Seconds a column has sat at a gap with no crew on the way. */
 	private stall = 0;
 	private callCooldown = 0;
@@ -143,6 +149,7 @@ export class Bridge {
 		this.z = spec.z;
 		this.halfZ = spec.halfZ;
 		this.hp = spec.hp;
+		this.indestructible = spec.indestructible;
 		this.west = spec.west;
 		this.east = spec.east;
 		const len = (this.east - this.west) / spec.spans;
@@ -295,8 +302,9 @@ export class Bridge {
 			if (p.hp <= 0) this.sink(w, s, by);
 			return;
 		}
-		s.hp -= amount;
 		s.flash = Math.min(1, s.flash + 0.5);
+		if (this.indestructible) return;
+		s.hp -= amount;
 		if (s.hp <= 0) this.collapse(w, s, by);
 	}
 

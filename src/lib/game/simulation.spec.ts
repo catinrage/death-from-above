@@ -168,7 +168,7 @@ describe('enemy aircraft', () => {
 		expect(w.air.includes(f)).toBe(false);
 	});
 
-	it('lets gunships rocket the airfield', () => {
+	it('keeps gunships from damaging the airfield', () => {
 		const w = testWorld();
 		const guns = w.base.guns.splice(0);
 		const h = new AirUnit(
@@ -180,8 +180,22 @@ describe('enemy aircraft', () => {
 		w.air.push(h);
 		run(w, 10);
 		w.base.guns.push(...guns);
-		expect(w.base.hp).toBeLessThan(w.base.maxHp);
+		expect(w.base.hp).toBe(w.base.maxHp);
 		expect(h.alive).toBe(true);
+	});
+
+	it('sends gunships to rocket the friendly spearhead', () => {
+		const w = testWorld();
+		const guns = w.base.guns.splice(0);
+		w.allies.deploy(w, ['truck']);
+		const truck = w.allies.list[0];
+		const x = truck.x + 900;
+		const h = new AirUnit(w.newId(), 'heli', x, w.ground(x) + 50);
+		w.air.push(h);
+		run(w, 25);
+		w.base.guns.push(...guns);
+		expect(h.x).toBeGreaterThan(truck.x);
+		expect(truck.hp < truck.def.hp || !truck.alive).toBe(true);
 	});
 
 	it('has airfield flak that engages raiders', () => {

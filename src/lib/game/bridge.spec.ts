@@ -72,8 +72,21 @@ describe('bridge', () => {
 		expect(lowest).toBeCloseTo(deckY, 1);
 	});
 
-	it('takes three iron bombs on the deck, or one bunker buster, to drop a span', () => {
+	it('stands up to any bombing: the crossing is indestructible', () => {
 		const { w, deckY } = setup();
+		const span = w.bridge!.spans[1];
+		const mid = (span.x0 + span.x1) / 2;
+		for (let i = 0; i < 6; i++) explode(w, mid, deckY, 0, BOMBS.penetrator.blast, 'player');
+		expect(span.down).toBe(false);
+		expect(span.hp).toBe(SPAN_HP);
+		expect(span.flash).toBeGreaterThan(0);
+		expect(w.bridge!.deckAt(mid, 0)).toBeCloseTo(deckY, 1);
+		expect(w.railBridge?.indestructible).toBe(true);
+	});
+
+	it('takes three iron bombs on the deck, or one bunker buster, to drop a breakable span', () => {
+		const { w, deckY } = setup();
+		w.bridge!.indestructible = false;
 		const span = w.bridge!.spans[1];
 		const mid = (span.x0 + span.x1) / 2;
 		explode(w, mid, deckY, 0, BOMBS.gp.blast, 'player');

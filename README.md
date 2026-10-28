@@ -100,10 +100,10 @@ and losing your aircraft doesn't hand you a fresh one.
   climbs out of sight and comes down at Mach 6, paratroopers who land and fight, the Thunderclap,
   the tactical nuke, and guided air-to-ground missiles fired in salvos.
 - **Friendly column** — your own tanks, APCs, trucks and jeeps push up the road toward the far bank.
-  They halt to trade fire with whatever blocks the way, wait at a dropped span, and take damage from
-  your bombs like anything else. Clear their path from the air.
-- **The river** — the road crosses a river on a steel truss bridge. Drop a span and its traffic goes
-  into the water while the rest of the convoy is stranded; engineers rebuild it each wave.
+  They halt to trade fire with whatever blocks the way and take damage from your bombs like anything
+  else. Clear their path from the air.
+- **The river** — the road crosses a river on a steel truss bridge, and the railway on a viaduct
+  beside it. Both armies need the crossings, so they are built to take anything you drop on them.
 - **No-fire zones** — a field hospital and a village sit on the road between the airfield and the
   front, marked by red boards at each edge. Their people stroll between the houses and run indoors
   when bombs fall nearby. Killing a civilian costs 150 points, knocking down a home there costs 100,
@@ -114,7 +114,7 @@ and losing your aircraft doesn't hand you a fresh one.
   ordnance), tanks (turrets pop off), troop carriers (unload infantry), AA gun carriers, SAM
   launchers with radar lock, howitzers, flak batteries, pillboxes, radar stations, fuel depots
   (chain reactions), searchlights at night, interceptors that dogfight you and gunships that rocket
-  the airfield.
+  your ground forces (no aircraft can hurt the airfield itself).
 - **Bosses** — each campaign act ends with one, and endless mode sends one every fifth wave, with
   its own health bar:
   - **Behemoth**: a super-heavy tank twice a battle tank's length, with a long main gun and a rear
@@ -123,14 +123,14 @@ and losing your aircraft doesn't hand you a fresh one.
     the sky with twin flak mounts, a close-in gun and radar SAM pairs. It can't be hit until it
     drops anchor, and sinks onto the river bed when it dies.
   - **Railway gun**: coupled between a locomotive and a flak wagon, it runs down the railway, pulls
-    up across the river and lobs heavy shells onto the airfield. Cut the line or drop the viaduct to
+    up across the river and lobs heavy shells onto the airfield. Tear up the track ahead of it to
     hold it out of range; it fires from wherever it stops once the airfield is in reach.
 - **Three ways to play** — pick one from the Sortie menu:
   - **Training**: fourteen guided lessons, each with its own practice targets, covering take-off, steering,
     guns, bombs, ordnance selection, guided missiles, focus, flares, afterburner and airbrake, and
     rearming. You can't be shot down for good, and Enter skips a lesson.
-  - **Campaign**: nine missions that get harder as you go, each with its own objectives (drop the
-    bridge, kill the tanks, escort your own armour across the river, silence the flak, hunt the SAM sites, clear the sky, hold until dawn).
+  - **Campaign**: nine missions that get harder as you go, each with its own objectives (ambush the
+    convoy at the bridge, kill the tanks, escort your own armour across the river, silence the flak, hunt the SAM sites, clear the sky, hold until dawn).
     Iron Column ends with the Behemoth, Wild Weasel with the river cruiser and the final mission
     with the railway gun.
     Winning one unlocks the next and earns up to three stars (win, airfield above 70%, no aircraft

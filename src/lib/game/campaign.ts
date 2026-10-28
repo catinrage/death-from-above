@@ -10,7 +10,6 @@ export type Target = UnitKind | AirKind;
 export type Objective =
 	| { type: 'waves'; count: number }
 	| { type: 'destroy'; kinds: Target[]; count: number; label: string }
-	| { type: 'bridge' }
 	/** Get this many vehicles of the friendly column to the rally point. */
 	| { type: 'escort'; count: number };
 
@@ -57,21 +56,25 @@ export const MISSIONS: readonly Mission[] = [
 	{
 		id: 'the-crossing',
 		name: 'The Crossing',
-		tagline: 'Cut the bridge',
+		tagline: 'Ambush at the bridge',
 		brief:
-			'Their supply line runs over the steel bridge. Drop a span to strand the column on the far bank, then mop up what made it across.',
+			'Their supply line runs over the steel bridge. It is built to take anything we drop on it, so catch the trucks bunched up on the crossing instead.',
 		biome: 'desert',
 		env: [0.2],
 		waves: {
 			last: 2,
 			offset: 1,
-			tweaks: () => ({ lead: { truck: 2.5, jeep: 1.5 } }),
+			// Three trucks a wave so the five-truck goal can always be met.
+			tweaks: () => ({ lead: { truck: 2.5, jeep: 1.5 }, units: ['truck', 'truck', 'truck'] }),
 			briefings: [
-				'Supply convoy heading for the bridge. Drop a span with bombs',
-				'Engineers are rebuilding the bridge. Stop the next convoy'
+				'Supply convoy heading for the bridge. Hit the trucks as they cross',
+				'A second convoy behind the first. Stop it on the bridge'
 			]
 		},
-		objectives: [{ type: 'bridge' }, { type: 'waves', count: 2 }]
+		objectives: [
+			{ type: 'destroy', kinds: ['truck'], count: 5, label: 'Destroy supply trucks' },
+			{ type: 'waves', count: 2 }
+		]
 	},
 	{
 		id: 'iron-column',
@@ -107,7 +110,7 @@ export const MISSIONS: readonly Mission[] = [
 		name: 'Spearhead',
 		tagline: 'Escort the armoured column',
 		brief:
-			'Our own armour is pushing up the road to take the far bank. Clear the way ahead of it and keep the bridge standing: four of its six vehicles must reach the rally point.',
+			'Our own armour is pushing up the road to take the far bank. Clear the way ahead of it: four of its six vehicles must reach the rally point.',
 		env: [0.6],
 		biome: 'temperate',
 		waves: {
@@ -246,7 +249,7 @@ export const MISSIONS: readonly Mission[] = [
 				'The offensive begins. Everything is coming',
 				'Heavy armour and SAMs behind the first line',
 				'Night falls. Their air wing joins the attack',
-				'Final wave. Their railway gun is on the line: cut the track or drop the viaduct'
+				'Final wave. Their railway gun is on the line: cut the track ahead of it'
 			]
 		},
 		objectives: [
@@ -282,7 +285,6 @@ export interface ObjectiveStatus {
 export class MissionTracker {
 	/** Destroyed enemies by kind. */
 	readonly destroyed: Partial<Record<Target, number>> = {};
-	bridgeDown = false;
 	/** Lowest the airfield has been, as a fraction. */
 	baseLow = 1;
 	/** Friendly vehicles through to the rally point. */
@@ -309,13 +311,12 @@ export class MissionTracker {
 			if (u.alive) living.set(u.id, u.def.kind);
 			else this.tally(u.id, u.def.kind);
 		}
-		// Gone from the field without us seeing the wreck (e.g. dropped off a broken bridge).
+		// Gone from the field without us seeing the wreck (e.g. cleared away in the step it died).
 		for (const [id, kind] of this.living) if (!living.has(id)) this.tally(id, kind);
 		this.living = living;
 		for (const a of w.air) {
 			if (!a.alive || a.dying) this.tally(a.id, a.kind);
 		}
-		if (w.bridge && w.bridge.downCount > 0) this.bridgeDown = true;
 		this.baseLow = Math.min(this.baseLow, w.base.hp / w.base.maxHp);
 		this.escorted = w.allies.arrived;
 		this.escortLeft = w.allies.arrived + w.allies.alive();
@@ -337,8 +338,6 @@ export class MissionTracker {
 					const n = Math.min(this.count(o.kinds), o.count);
 					return { label: o.label, count: `${n}/${o.count}`, done: n >= o.count };
 				}
-				case 'bridge':
-					return { label: 'Drop a bridge span', count: '', done: this.bridgeDown };
 				case 'escort': {
 					const n = Math.min(this.escorted, o.count);
 					return {

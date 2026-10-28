@@ -84,8 +84,6 @@
 				return `Hold the airfield for ${o.count} waves`;
 			case 'destroy':
 				return `${o.label}: ${o.count}`;
-			case 'bridge':
-				return 'Drop a span of the river bridge';
 			case 'escort':
 				return `Get ${o.count} vehicles of the friendly column across the river`;
 		}
