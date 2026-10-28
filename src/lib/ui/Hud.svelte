@@ -2,6 +2,7 @@
 	import { fly, fade } from 'svelte/transition';
 	import type { HudMessage, HudSnapshot } from '$lib/game/hud';
 	import { BOUNDS_GRACE } from '$lib/game/player';
+	import WeaponIcon from './WeaponIcon.svelte';
 
 	interface Props {
 		hud: HudSnapshot;
@@ -227,6 +228,7 @@
 				style:--c={b.color}
 			>
 				<span class="key">{b.slot}</span>
+				<WeaponIcon id={b.id} class="ico" />
 				<span class="nm">{b.short}</span>
 				{#if b.heat !== undefined}
 					<span class="ct pod" class:hot={b.hot}
@@ -240,6 +242,7 @@
 		{#if hud.missilesMax > 0}
 			<div class="slot missile" class:sel={hud.locks > 0} class:empty={hud.missiles === 0}>
 				<span class="key">E</span>
+				<WeaponIcon id="aam" class="ico" />
 				<span class="nm">{hud.locks > 0 ? `LOCKED ${hud.locks}` : 'MISSILE'}</span>
 				<span class="ct">{hud.missiles}<em>/{hud.missilesMax}</em></span>
 			</div>
@@ -873,10 +876,10 @@
 		position: relative;
 		display: grid;
 		grid-template-columns: auto auto;
-		grid-template-rows: auto auto;
+		grid-template-rows: auto auto auto;
 		column-gap: 8px;
 		min-width: 92px;
-		padding: 8px 12px 7px;
+		padding: 6px 12px 7px;
 		background: rgba(8, 10, 16, 0.55);
 		border-bottom: 2px solid rgba(255, 255, 255, 0.08);
 		transition:
@@ -897,6 +900,29 @@
 
 	.slot.empty {
 		opacity: 0.4;
+	}
+
+	.slot :global(.ico) {
+		width: 40px;
+		height: 20px;
+		margin: 0 0 2px -3px;
+		color: var(--c);
+		opacity: 0.72;
+		filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.7));
+		transition:
+			opacity 0.15s ease,
+			filter 0.15s ease;
+	}
+
+	.slot.sel :global(.ico) {
+		opacity: 1;
+		filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.7))
+			drop-shadow(0 0 5px color-mix(in srgb, var(--c) 65%, transparent)) brightness(1.15);
+	}
+
+	.slot.empty :global(.ico) {
+		opacity: 0.5;
+		filter: grayscale(0.85) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.7));
 	}
 
 	.slot.missile {
@@ -1008,7 +1034,7 @@
 	}
 
 	.key {
-		grid-row: span 2;
+		grid-row: span 3;
 		align-self: center;
 		font-family: var(--display);
 		font-size: 12px;
@@ -1022,6 +1048,7 @@
 
 	.nm {
 		font-size: 12px;
+		white-space: nowrap;
 		letter-spacing: 0.16em;
 		color: var(--c);
 	}
