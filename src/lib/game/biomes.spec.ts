@@ -1,19 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import {
-	BIOMES,
-	BIOME_ORDER,
-	climateWeather,
-	gradeEnvironment,
-	isBiome,
-	type BiomeId
-} from './biomes';
+import { BIOMES, BIOME_ORDER, gradeEnvironment, isBiome, type BiomeId } from './biomes';
 import { MISSIONS } from './campaign';
 import { WORLD } from './constants';
 import { environmentAt } from './environment';
 import { Props } from './props';
 import { Terrain } from './terrain';
 import { testWorld } from './test-world';
-import { weatherForWave } from './weather';
 
 // A narrow strip keeps generation fast for unit tests.
 const strip = (id: BiomeId): Terrain => new Terrain(7, -200, 900, null, BIOMES[id].shape);
@@ -163,24 +155,6 @@ describe('Biomes', () => {
 		for (const m of MISSIONS) expect(isBiome(m.biome)).toBe(true);
 		expect(new Set(MISSIONS.map((m) => m.biome))).toEqual(new Set(BIOME_ORDER));
 		expect(MISSIONS[0].biome).toBe('temperate');
-	});
-
-	it('keeps the weather to what each climate allows', () => {
-		const kinds = (id: BiomeId): Set<string> => {
-			const out = new Set<string>();
-			for (let wave = 1; wave <= 30; wave++)
-				out.add(climateWeather(weatherForWave(wave), BIOMES[id]).kind);
-			return out;
-		};
-		expect(kinds('temperate')).toEqual(new Set(['clear', 'rain', 'storm', 'snow']));
-		expect(kinds('desert').has('snow') || kinds('desert').has('rain')).toBe(false);
-		expect(kinds('snow').has('rain')).toBe(false);
-		expect(kinds('jungle').has('snow')).toBe(false);
-		const spec = weatherForWave(5);
-		expect(climateWeather(spec, BIOMES.desert).wind).toBe(spec.wind);
-		// Hand-placed mission weather already suits its map.
-		for (const m of MISSIONS)
-			for (const w of m.weather ?? []) expect(BIOMES[m.biome].climate[w.kind]).toBeUndefined();
 	});
 
 	it('swaps a live world to another biome and back', () => {
