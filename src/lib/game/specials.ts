@@ -1,7 +1,14 @@
 import { angleDiff, clamp } from '../engine/math';
 import { fx as rnd } from '../engine/rng';
 import { damageUnit, explode, inBattlePlane } from './combat';
-import { BOMBS, FREEZE_TIME, TESLA_DAMAGE, TESLA_JUMPS, TESLA_REACH } from './defs-bombs';
+import {
+	BOMBS,
+	FREEZE_TIME,
+	TESLA_DAMAGE,
+	TESLA_JUMPS,
+	TESLA_REACH,
+	type BlastSpec
+} from './defs-bombs';
 import type { Player } from './player';
 import { trackUnit } from './targeting';
 import { predictImpact } from './weapons';
@@ -25,6 +32,12 @@ export interface Strike {
 	trail: number;
 	alive: boolean;
 	owner: Owner;
+	/** What goes off on arrival, when not the weapon's own warhead (the commander's strikes). */
+	blast?: BlastSpec;
+	/** A nuclear warhead. */
+	nuke?: boolean;
+	/** Seconds a cruise missile may fly before it gives up (default 14). */
+	life?: number;
 }
 
 const CRUISE_SPEED = 150;
@@ -33,7 +46,7 @@ const BALLISTIC_DELAY = 2.6;
 const BALLISTIC_SPEED = 430;
 
 /** A fixed spot on the battle line. */
-function groundPoint(w: World, x: number): Trackable {
+export function groundPoint(w: World, x: number): Trackable {
 	return { x, y: w.ground(x), z: 0, vx: 0, vy: 0, alive: true, heat: 0 };
 }
 
@@ -179,7 +192,8 @@ function cruise(w: World, s: Strike, dt: number): void {
 		);
 	}
 	const hitGround = s.y <= w.ground(s.x) + 0.5;
-	if (hitGround || Math.hypot(dx, t.y - s.y) < 3 || s.age > 14) detonate(w, s, 'cruise');
+	if (hitGround || Math.hypot(dx, t.y - s.y) < 3 || s.age > (s.life ?? 14))
+		detonate(w, s, 'cruise');
 }
 
 function ballistic(w: World, s: Strike, dt: number): void {
@@ -222,8 +236,10 @@ function ballistic(w: World, s: Strike, dt: number): void {
 function detonate(w: World, s: Strike, id: 'cruise' | 'ballistic'): void {
 	s.alive = false;
 	const y = Math.max(s.y, w.ground(s.x));
-	explode(w, s.x, y, s.z, BOMBS[id].blast, s.owner, { shake: BOMBS[id].blast.shake });
-	if (id === 'ballistic') {
+	if (s.nuke) return nuclearBlast(w, s.x, y + 30, s.z, s.owner);
+	const blast = s.blast ?? BOMBS[id].blast;
+	explode(w, s.x, y, s.z, blast, s.owner, { shake: blast.shake });
+	if (id === 'ballistic' && !s.blast) {
 		w.fx.shockwave(s.x, y, s.z, 120, 3, 0.9);
 		w.fx.dustRing(s.x, y, s.z, 4);
 		w.fx.flash(1.6);

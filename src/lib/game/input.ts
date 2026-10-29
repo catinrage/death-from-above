@@ -32,6 +32,32 @@ const POINTER_TIMEOUT = 4;
 /** Right-stick reticle speed in CSS px per second at full deflection. */
 const STICK_SPEED = 1100;
 
+/** CSS px from the left or right screen edge where a resting mouse scrolls the commander's map. */
+const EDGE_SCROLL = 18;
+
+/** One frame of the commander's controls. */
+export interface CommandInput {
+	/** -1 (toward our airfield) to 1 (toward the enemy). */
+	pan: number;
+	/** -1 zooms in, 1 out (held keys or stick). */
+	zoom: number;
+	/** Wheel notches this frame (+ is out). */
+	wheel: number;
+	/** Shift held: pan faster. */
+	fast: boolean;
+	/** Left click on the battlefield this frame. */
+	click: boolean;
+	/** Right click or Backspace: put the strike away. */
+	cancel: boolean;
+	/** Space: jump the view to the front line. */
+	front: boolean;
+	/** Mouse position in CSS px (-1 before it has moved). */
+	x: number;
+	y: number;
+	/** Key codes pressed this frame (order hotkeys). */
+	keys: string[];
+}
+
 /** Standard-mapping gamepad buttons. */
 const PAD = {
 	a: 0,
@@ -297,6 +323,44 @@ export class Input {
 		const y = usingStick ? this.stickY : this.mouseY;
 		const active = x >= 0 && (performance.now() - this.pointerTime) / 1000 < POINTER_TIMEOUT;
 		return { x, y, active };
+	}
+
+	/**
+	 * The commander's controls: panning (A/D, arrows, the screen edges or the
+	 * left stick), zoom (wheel, W/S, the right stick), a left click on the
+	 * battlefield, and right click to cancel aiming.
+	 */
+	command(cssW: number): CommandInput {
+		let pan = 0,
+			zoom = 0;
+		if (this.any(STEER.right)) pan += 1;
+		if (this.any(STEER.left)) pan -= 1;
+		if (this.any(STEER.up)) zoom -= 1;
+		if (this.any(STEER.down)) zoom += 1;
+		const [ax, , , ry] = this.pad.axes;
+		if (Math.abs(ax) > 0.25) pan = ax;
+		if (Math.abs(ry) > 0.25) zoom = ry;
+		// Resting the mouse on the left or right edge scrolls the map.
+		if (pan === 0 && this.mouseX >= 0 && this.mouseY >= 0) {
+			if (this.mouseX < EDGE_SCROLL) pan = -1;
+			else if (this.mouseX > cssW - EDGE_SCROLL) pan = 1;
+		}
+		const wheel = this.wheelSteps;
+		this.wheelSteps = 0;
+		const keys: string[] = [];
+		for (const code of this.pressed) keys.push(code);
+		return {
+			pan,
+			zoom,
+			wheel,
+			fast: this.any(BOOST),
+			click: this.pressed.has('Mouse0'),
+			cancel: this.pressed.has('Mouse2') || this.pressed.has('Backspace'),
+			front: this.pressed.has('Space') || this.pad.pressed(PAD.y),
+			x: this.mouseX,
+			y: this.mouseY,
+			keys
+		};
 	}
 
 	enterPressed(): boolean {

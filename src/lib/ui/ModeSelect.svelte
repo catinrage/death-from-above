@@ -6,6 +6,8 @@
 
 	interface Props {
 		best: number;
+		/** Best score as commander (kept apart from the pilots' one). */
+		bestCommand: number;
 		trained: boolean;
 		/** Mode to open on. */
 		initial: ModeStart | null;
@@ -13,7 +15,7 @@
 		onClose: () => void;
 	}
 
-	let { best, trained, initial, onLaunch, onClose }: Props = $props();
+	let { best, bestCommand, trained, initial, onLaunch, onClose }: Props = $props();
 
 	// The menu opens on the last mode flown, or training for a new pilot.
 	// svelte-ignore state_referenced_locally
@@ -24,7 +26,8 @@
 
 	const MODES: { id: GameMode; name: string; sub: string; code: string }[] = [
 		{ id: 'tutorial', name: 'Training', sub: 'Learn to fly and fight', code: 'TRN' },
-		{ id: 'war', name: 'The war', sub: 'Break through to the enemy HQ', code: 'WAR' }
+		{ id: 'war', name: 'The war', sub: 'Break through to the enemy HQ', code: 'WAR' },
+		{ id: 'command', name: 'Command', sub: 'Run the war from the ground', code: 'CMD' }
 	];
 	const tabIndex = $derived(MODES.findIndex((m) => m.id === tab));
 
@@ -37,12 +40,27 @@
 		'You lose if the airfield falls or every aircraft is shot down.'
 	];
 
+	/** The commander's game in five lines. */
+	const COMMAND_RULES = [
+		'The same war, but you stay on the ground and give the orders. You fly nothing.',
+		'Your war chest fills every second, faster for each checkpoint you hold and every kill.',
+		'Spend it on squads and armour that roll up the road, or on jets that fly their own sorties.',
+		'Pick a strike, then click the battlefield: barrages, cruise and ballistic missiles, a bomber, a nuke.',
+		'Only troops can destroy the HQ. You lose if the airfield falls.'
+	];
+
 	/** Set once the menu has launched or closed: its keys stay deaf while it fades out. */
 	let done = false;
 
 	function launch(): void {
 		done = true;
-		onLaunch(tab === 'war' ? { mode: 'war', coop } : { mode: 'tutorial' });
+		onLaunch(
+			tab === 'war'
+				? { mode: 'war', coop }
+				: tab === 'command'
+					? { mode: 'command' }
+					: { mode: 'tutorial' }
+		);
 	}
 
 	// Capture phase, so the title screen behind doesn't also act on Enter.
@@ -114,7 +132,8 @@
 					<small>
 						{#if m.id === 'tutorial' && !trained}Recommended first
 						{:else if m.id === 'tutorial'}Completed ✓
-						{:else if best > 0}Best {best.toLocaleString()}
+						{:else if m.id === 'command' && bestCommand > 0}Best {bestCommand.toLocaleString()}
+						{:else if m.id === 'war' && best > 0}Best {best.toLocaleString()}
 						{:else}{m.sub}{/if}
 					</small>
 				</button>
@@ -143,6 +162,20 @@
 								</li>
 								<li class="m-rise" style:--i="3" style:--d="150ms">Enter skips a lesson</li>
 							</ul>
+						</div>
+					{:else if tab === 'command'}
+						<div class="detail">
+							<p class="m-label">Command</p>
+							<h3>Lead the army</h3>
+							<ul class="rules">
+								{#each COMMAND_RULES as r, i (i)}
+									<li class="m-rise" style:--i={i} style:--d="150ms">{r}</li>
+								{/each}
+							</ul>
+							<p class="hint">
+								1–8 buy ground units, Q and E launch jets, Z X C V N pick a strike. A/D or the
+								screen edges pan the map, the wheel zooms and Space jumps to the front.
+							</p>
 						</div>
 					{:else}
 						<div class="detail">
@@ -195,7 +228,7 @@
 			{/if}
 			<button class="m-btn m-primary launch" data-nav onclick={launch}>
 				<span>
-					{tab === 'tutorial' ? 'Start training' : 'Go to war'}
+					{tab === 'tutorial' ? 'Start training' : tab === 'command' ? 'Take command' : 'Go to war'}
 				</span>
 				<span class="m-chev" aria-hidden="true"><i></i><i></i><i></i></span>
 				<span class="m-key">Enter</span>

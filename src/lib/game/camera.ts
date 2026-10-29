@@ -21,6 +21,8 @@ const LEAD_SHARE = 0.45;
 /** Camera pitch for the usual side-on shot and for looking down on the gunship's orbit. */
 export const SIDE_PITCH = 5 * DEG;
 export const ORBIT_PITCH = 16 * DEG;
+/** The commander's view looks down on the battle from higher still. */
+export const COMMAND_PITCH = 19 * DEG;
 
 /**
  * Side-on chase camera. It frames the aircraft, the ground beneath it and —

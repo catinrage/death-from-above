@@ -5,6 +5,7 @@ import { homeOnEmitter } from './arm';
 import { WORLD } from './constants';
 import { BOMBS, type BlastSpec } from './defs-bombs';
 import type { Player } from './player';
+import type { Wingman } from './wingman';
 import type { Owner, Trackable, Unit } from './types';
 import { flareEmit, flareHeat } from './flare-fx';
 import { ALLY_BULLET_K } from './allies';
@@ -234,7 +235,7 @@ function bulletHitsPlayerSide(w: World, b: Bullet, x0: number, y0: number): bool
 
 function updateBullets(w: World, dt: number): void {
 	const pilots = w.pilots();
-	const wing = w.wingman;
+	const jets = w.jets();
 	for (let i = w.bullets.length - 1; i >= 0; i--) {
 		const b = w.bullets[i];
 		const x0 = b.x,
@@ -262,12 +263,9 @@ function updateBullets(w: World, dt: number): void {
 					dead = true;
 					break;
 				}
-				if (
-					!dead &&
-					wing &&
-					wing.active &&
-					segmentVsCircle(x0, y0, b.x, b.y, wing.x, wing.y, WING_RADIUS) >= 0
-				) {
+				for (const wing of jets) {
+					if (dead || !wing.active) continue;
+					if (segmentVsCircle(x0, y0, b.x, b.y, wing.x, wing.y, WING_RADIUS) < 0) continue;
 					wing.hit(w, b.damage);
 					w.fx.impact(wing.x, wing.y, 0, 'metal');
 					dead = true;
@@ -302,7 +300,7 @@ function updateBullets(w: World, dt: number): void {
 
 function updateShells(w: World, dt: number): void {
 	const pilots = w.pilots();
-	const wing = w.wingman;
+	const jets = w.jets();
 	for (let i = w.shells.length - 1; i >= 0; i--) {
 		const s = w.shells[i];
 		const x0 = s.x,
@@ -326,7 +324,7 @@ function updateShells(w: World, dt: number): void {
 		}
 		let detonate = false;
 		let air = false;
-		let wingHit = false;
+		let wingHit: Wingman | null = null;
 		if (s.kind === 'flak' && s.age >= s.fuse) {
 			detonate = true;
 			air = true;
@@ -343,11 +341,14 @@ function updateShells(w: World, dt: number): void {
 				}
 			}
 		}
-		if (!detonate && wing?.active && s.owner === 'enemy' && s.kind !== 'artillery') {
-			if (segmentVsCircle(x0, y0, s.x, s.y, wing.x, wing.y, WING_RADIUS) >= 0) {
+		if (!detonate && s.owner === 'enemy' && s.kind !== 'artillery') {
+			for (const wing of jets) {
+				if (!wing.active) continue;
+				if (segmentVsCircle(x0, y0, s.x, s.y, wing.x, wing.y, WING_RADIUS) < 0) continue;
 				detonate = true;
 				air = true;
-				wingHit = true;
+				wingHit = wing;
+				break;
 			}
 		}
 		if (!detonate && s.kind === 'tank') {
@@ -379,7 +380,8 @@ function updateShells(w: World, dt: number): void {
 				const d = Math.hypot(p.x - s.x, p.y - s.y);
 				if (d < s.radius) p.hit(s.damage * (1 - d / s.radius) ** 1.4, w, s.x, s.y, false, 'flak');
 			}
-			if (wing?.active) {
+			for (const wing of jets) {
+				if (!wing.active) continue;
 				const d = Math.hypot(wing.x - s.x, wing.y - s.y);
 				if (d < s.radius) wing.hit(w, s.damage * (1 - d / s.radius) ** 1.4);
 			}
@@ -394,7 +396,7 @@ function updateShells(w: World, dt: number): void {
 			// A shell bursting next to the aircraft: a sharp flak-style pop, not a bomb.
 			w.fx.airburst(s.x, s.y, s.z, 0.8);
 			w.sound.play('flakBurst', s.x, s.y, 0.7);
-			if (wingHit) wing?.hit(w, s.damage);
+			if (wingHit) wingHit.hit(w, s.damage);
 			else if (struck?.alive) struck.hit(s.damage, w, s.x, s.y, false, `shell:${s.kind}`);
 			continue;
 		}
@@ -558,8 +560,8 @@ function detonateMissile(w: World, m: Missile, t: Trackable): void {
 	const p = w.pilots().find((q) => q === t);
 	if (p) {
 		p.hit(m.damage, w, m.x, m.y, false, `missile:${m.kind}`);
-	} else if (w.wingman && t === w.wingman) {
-		w.wingman.hit(w, m.damage);
+	} else if (w.jets().some((j) => j === t)) {
+		(t as Wingman).hit(w, m.damage);
 	} else {
 		for (const a of w.air) if (a === t) a.damage(w, m.damage * 3, m.owner);
 	}

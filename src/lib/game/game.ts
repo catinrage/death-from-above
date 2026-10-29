@@ -8,6 +8,7 @@ import type { EdgeLayer } from '../ui/edge-layer';
 import type { PopupLayer } from '../ui/popups';
 import {
 	ALLY_SLOTS,
+	FOE_SLOTS,
 	type AllyMarker,
 	type PilotTagView,
 	type TargetingLayer,
@@ -18,6 +19,8 @@ import { Focus } from './focus';
 import { KillCam } from './killcam';
 import { Targeting } from './targeting';
 import { Autopilot } from './autopilot';
+import { AIR_LIMIT, ARMY_LIMIT, COMMAND_ORDER, COMMANDS, type CommandId } from './command';
+import { CommandAutopilot } from './command-ai';
 import { bossStatus } from './boss';
 import { WORLD } from './constants';
 import { BOMBS, BOMB_ORDER, ROCKET_SPEED } from './defs-bombs';
@@ -25,6 +28,7 @@ import { environmentAt, presetName } from './environment';
 import { applyWeather, CLEAR, weatherForWave, type WeatherSpec } from './weather';
 import { BIOME_ORDER, gradeEnvironment, type BiomeId } from './biomes';
 import type {
+	CommandHud,
 	GameMode,
 	GameOverStats,
 	GamePhase,
@@ -36,7 +40,7 @@ import type {
 	Player2Hud,
 	WarHud
 } from './hud';
-import { Input } from './input';
+import { Input, type CommandInput } from './input';
 import { pilotTag, Squadron } from './coop';
 import { NO_INPUT, Player, type PilotInput } from './player';
 import { SceneView } from './scene-view';
@@ -45,6 +49,7 @@ import type { AircraftId, Owner } from './types';
 import { planWave, waveBonus, WaveDirector, warTweaks } from './waves';
 import { Tutorial } from './tutorial';
 import { readBest, writeBest, writeTrained } from './records';
+import { COMMAND_PITCH } from './camera';
 import { predictImpact } from './weapons';
 import { trainConsist } from './railway';
 import { simulateWorld } from './simulate';
@@ -142,6 +147,14 @@ export class Game {
 	private readonly terrainView: TerrainView;
 	private waves: WaveDirector;
 	private readonly autopilot = new Autopilot();
+	/** Plays the commander for autoplay (demo and soak runs). */
+	private readonly commandAuto = new CommandAutopilot();
+	/** Command mode: the strike waiting for a spot, and where the cursor meets the battlefield. */
+	private aiming: CommandId | null = null;
+	private aimX = Number.NaN;
+	/** Command mode: where the view is headed along the road, and how far out (0 close, 1 wide). */
+	private viewX = 0;
+	private viewZoom = 0;
 	private readonly p2Autopilot = new Autopilot();
 	/** Bullet time. */
 	readonly focus = new Focus();
@@ -321,6 +334,7 @@ export class Game {
 		const mult = this.multiplier();
 		const pts = score * mult;
 		this.score += pts;
+		this.world.command.reward(score);
 		const near = this.pendingKills.find((k) => Math.abs(k.x - x) < 40);
 		if (near) {
 			near.pts += pts;
@@ -471,11 +485,13 @@ export class Game {
 		this.loadout = loadout;
 		this.upgrades = upgrades;
 		this.mode = start.mode;
+		const command = this.mode === 'command';
+		this.aiming = null;
 		this.tutorial = this.mode === 'tutorial' ? new Tutorial() : null;
 		this.flying = this.mode === 'tutorial' ? TRAINER : aircraft;
 		this.flyingLoadout = this.mode === 'tutorial' ? undefined : loadout;
 		this.flyingUpgrades = this.mode === 'tutorial' ? undefined : upgrades;
-		this.coop = this.input.coop = !!start.coop && this.mode !== 'tutorial';
+		this.coop = this.input.coop = !!start.coop && this.mode === 'war';
 		this.squadron = new Squadron(this.coop ? 2 : 1);
 		this.wavesScored = 0;
 		this.checkpointsScored = 0;
@@ -498,26 +514,35 @@ export class Game {
 		this.killCam.reset();
 		this.targeting.clear();
 		this.p2Targeting.clear();
-		this.spawnPlayer();
+		// The commander has no aircraft of their own: the airfield is their headquarters.
+		if (!command) this.spawnPlayer();
 		// Player two takes the AI wingman's place in co-op.
 		this.wingmanDue = null;
 		if (this.coop) this.spawnPlayer2();
-		else if (this.mode !== 'tutorial') this.wingmanDue = 'plain';
+		else if (this.mode === 'war') this.wingmanDue = 'plain';
 		this.radioWatch.reset();
-		this.audio.radio(['sortie']);
+		if (!command) this.audio.radio(['sortie']);
 		const seed = Math.floor(Math.random() * 1e6);
 		this.waves = new WaveDirector(
 			seed,
-			this.mode === 'war' ? { tweaks: warTweaks, rolling: true, quietStart: true } : {}
+			this.mode !== 'tutorial' ? { tweaks: warTweaks, rolling: true, quietStart: true } : {}
 		);
 		// Training has no war in it: just the lessons' targets.
-		if (this.mode === 'war') w.war.start(w, { hqHp: HQ_HP }, seed);
+		if (this.mode !== 'tutorial') w.war.start(w, { hqHp: HQ_HP, auto: !command }, seed);
+		if (command) {
+			w.command.start();
+			this.aimX = Number.NaN;
+			this.viewX = WORLD.baseMaxX + 420;
+			this.viewZoom = VIEW_ZOOM;
+			this.commandCamera(0, null, true);
+		}
 		this.envPhase = this.envTarget = this.envFor(1);
 		w.weather.set(this.weatherFor(1), true);
 		this.setPhase('playing');
 		if (this.tutorial) this.tutorial.start(w);
 		else {
-			this.cb.message({ id: this.msgId++, text: BRIEF.text, sub: BRIEF.sub, tone: 'info' });
+			const brief = command ? COMMAND_BRIEF : BRIEF;
+			this.cb.message({ id: this.msgId++, text: brief.text, sub: brief.sub, tone: 'info' });
 			this.waves.begin(w, 1);
 		}
 		void this.audio.unlock();
@@ -696,6 +721,9 @@ export class Game {
 			this.skip = this.input.enterPressed();
 			this.aim(raw);
 			this.orders();
+			const commanding = this.mode === 'command' && this.phase === 'playing';
+			const ci = commanding ? this.input.command(this.cssW) : null;
+			if (ci && !this.autoplay) this.commandOrders(ci);
 			Object.assign(this.pilotSub, this.pilotFrame, {
 				bombPressed: false,
 				flare: false,
@@ -719,6 +747,7 @@ export class Game {
 					i === 0 ? this.p2Frame : this.p2Sub
 				);
 			if (this.killCam.active) this.killCam.drive(this.world.camera, raw);
+			if (this.mode === 'command' && this.phase !== 'title') this.commandCamera(raw, ci);
 		}
 		this.draw(raw);
 		this.input.endFrame();
@@ -787,6 +816,115 @@ export class Game {
 		else if (!p.landed) this.pilotFrame.missiles = this.targeting.salvo(w, p, p.missilesFree);
 	}
 
+	// ------------------------------------------------------------ command mode
+
+	/**
+	 * An order from the commander's bar (a click or its hotkey). Troops and
+	 * jets go straight away; a strike waits for the spot to be clicked.
+	 */
+	commandSelect(id: CommandId): void {
+		if (this.mode !== 'command' || this.phase !== 'playing') return;
+		const w = this.world;
+		const x = w.camera.x,
+			y = w.camera.y;
+		if (COMMANDS[id].group === 'strike') {
+			if (this.aiming === id) {
+				this.aiming = null;
+				return;
+			}
+			const why = w.command.refusal(w, id);
+			if (why) return this.refused(why);
+			this.aiming = id;
+			this.audio.play('lockOn', x, y, 0.6);
+			return;
+		}
+		const why = w.command.order(w, id);
+		if (why) return this.refused(why);
+		this.audio.play('select', x, y, 0.7);
+	}
+
+	/** Puts the strike being aimed away. */
+	commandCancel(): void {
+		this.aiming = null;
+	}
+
+	/** Says why an order didn't go through. */
+	private refused(why: string): void {
+		const w = this.world;
+		this.audio.play('empty', w.camera.x, w.camera.y, 0.7);
+		const text = REFUSAL[why];
+		if (text) w.events.message(text[0], text[1], 'warn');
+	}
+
+	/** Hotkeys, the strike cursor and clicks on the battlefield. */
+	private commandOrders(ci: CommandInput): void {
+		const w = this.world;
+		for (const code of ci.keys) {
+			const id = COMMAND_ORDER.find((k) => COMMANDS[k].code === code);
+			if (id) this.commandSelect(id);
+		}
+		if (ci.cancel) this.aiming = null;
+		const hit = ci.x >= 0 ? w.camera.unproject(ci.x, ci.y, this.cssW, this.cssH) : null;
+		this.aimX = hit ? clamp(hit[0], WORLD.arenaMinX, WORLD.arenaMaxX) : Number.NaN;
+		if (!ci.click || !this.aiming || !Number.isFinite(this.aimX)) return;
+		const why = w.command.order(w, this.aiming, this.aimX);
+		if (why) return this.refused(why);
+		this.aiming = null;
+	}
+
+	/**
+	 * The commander's view: high over the battle line and tilted down on it,
+	 * panned along the road and zoomed by the player.
+	 */
+	private commandCamera(raw: number, ci: CommandInput | null, snap = false): void {
+		const w = this.world;
+		const cam = w.camera;
+		if (ci) {
+			this.viewZoom = clamp(this.viewZoom + ci.wheel * 0.08 + ci.zoom * raw * 0.9, 0, 1);
+			const span = lerp(VIEW_NEAR, VIEW_FAR, this.viewZoom);
+			this.viewX += ci.pan * span * (ci.fast ? 2.4 : 1.2) * raw;
+			if (ci.front) this.viewX = w.command.front(w);
+		}
+		this.viewX = clamp(this.viewX, WORLD.arenaMinX + 150, WORLD.hqMaxX + 60);
+		const dist = lerp(VIEW_NEAR, VIEW_FAR, this.viewZoom);
+		cam.x = snap ? this.viewX : damp(cam.x, this.viewX, 7, raw);
+		cam.dist = snap ? dist : damp(cam.dist, dist, 6, raw);
+		cam.pitch = cam.pitchTarget = COMMAND_PITCH;
+		cam.interest = null;
+		cam.second = null;
+		const halfH = Math.tan(cam.fovY / 2) * cam.dist;
+		cam.y = w.ground(cam.x) + halfH * VIEW_LIFT;
+	}
+
+	private commandHud(): CommandHud {
+		const w = this.world;
+		const c = w.command;
+		return {
+			funds: Math.floor(c.funds),
+			income: c.income(w),
+			items: COMMAND_ORDER.map((id) => {
+				const d = COMMANDS[id];
+				return {
+					id,
+					name: d.name,
+					short: d.short,
+					tip: d.tip,
+					group: d.group,
+					cost: d.cost,
+					key: d.key,
+					cooldown: d.cooldown > 0 ? (c.cooldowns[id] ?? 0) / d.cooldown : 0,
+					refusal: c.refusal(w, id)
+				};
+			}),
+			aiming: this.aiming,
+			army: w.allies.alive(),
+			armyMax: ARMY_LIMIT,
+			air: c.airborne(w),
+			airMax: AIR_LIMIT,
+			queued: c.queue.length
+		};
+	}
+
 	/** Turns an order key into a command for the wingman. */
 	private orders(): void {
 		const w = this.world;
@@ -852,6 +990,7 @@ export class Game {
 				if (p.ammo[id] < 1 && id !== 'thunder' && id !== 'nuke') p.ammo[id] = p.capacity(id);
 		}
 		if (this.phase === 'playing') {
+			if (this.autoplay && this.mode === 'command') this.commandAuto.update(w, dt);
 			this.waves.update(w, dt);
 			this.rules(dt);
 		}
@@ -882,14 +1021,17 @@ export class Game {
 			if (p && p.alive && !p.dying) p.hp = Math.max(p.hp, p.def.hp * 0.3);
 		}
 		const sq = this.squadron;
-		if (sq.update(0, !!p?.crashed, dt, training) === 'respawn') {
-			this.spawnPlayer();
-			this.audio.radio(['sortie']);
+		// The commander flies nothing, so only the airfield can be lost.
+		if (this.mode !== 'command') {
+			if (sq.update(0, !!p?.crashed, dt, training) === 'respawn') {
+				this.spawnPlayer();
+				this.audio.radio(['sortie']);
+			}
+			if (this.coop && sq.update(1, !!w.player2?.crashed, dt, training) === 'respawn')
+				this.spawnPlayer2();
+			if (sq.allOut()) return this.gameOver('All aircraft lost');
+			this.launchWingman();
 		}
-		if (this.coop && sq.update(1, !!w.player2?.crashed, dt, training) === 'respawn')
-			this.spawnPlayer2();
-		if (sq.allOut()) return this.gameOver('All aircraft lost');
-		this.launchWingman();
 		if (w.base.hp <= 0) return this.gameOver('The airfield has fallen');
 		if (this.waves.cleared > this.wavesScored) {
 			this.wavesScored = this.waves.cleared;
@@ -922,7 +1064,7 @@ export class Game {
 			this.confirm = this.skip = false;
 			if (this.tutorial.finished) return this.finish();
 		}
-		if (this.mode === 'war') {
+		if (this.mode !== 'tutorial') {
 			if (this.debriefTimer > 0) {
 				this.debriefTimer -= dt;
 				if (this.debriefTimer <= 0) return this.finish();
@@ -946,7 +1088,7 @@ export class Game {
 		const base = {
 			mode: this.mode,
 			outcome,
-			title: this.mode === 'tutorial' ? 'Flight training' : 'The war',
+			title: MODE_TITLE[this.mode],
 			score: this.score,
 			wave: this.waves.wave,
 			kills: this.kills,
@@ -961,9 +1103,10 @@ export class Game {
 			if (outcome === 'complete') writeTrained();
 			return base;
 		}
-		const best = readBest();
+		const command = this.mode === 'command';
+		const best = readBest(command);
 		const newBest = this.score > best;
-		if (newBest) writeBest(this.score);
+		if (newBest) writeBest(this.score, command);
 		const award = battleCredits({ score: this.score, won: outcome === 'complete' });
 		const wallet = grant(loadOrMigrate(), award.total);
 		saveProgression(wallet);
@@ -1014,6 +1157,10 @@ export class Game {
 			env.contrast *= 1 + 0.12 * kb;
 			env.vignette = lerp(env.vignette, Math.max(env.vignette, 0.7), kb);
 			env.tint = [env.tint[0] * (1 + 0.08 * kb), env.tint[1], env.tint[2] * (1 - 0.1 * kb)];
+		}
+		if (this.mode === 'command' && this.phase !== 'title') {
+			// From the commander's height the far end of the road would vanish into the haze.
+			env.fog[0] *= clamp(VIEW_CLEAR / w.camera.dist, 0.25, 1);
 		}
 		w.night = clamp(env.stars * 1.1, 0, 1);
 		w.fx.nightFactor = w.night;
@@ -1085,7 +1232,7 @@ export class Game {
 	private updateBattleAudio(dt: number): void {
 		const w = this.world;
 		const p = w.player;
-		const flying = this.phase === 'playing' && !this.autoplay;
+		const flying = this.phase === 'playing' && !this.autoplay && this.mode !== 'command';
 		if (flying) {
 			const s = radioState(w, p, this.waves.state, this.squadron.lives);
 			this.audio.radio(this.radioWatch.update(s));
@@ -1132,6 +1279,10 @@ export class Game {
 			this.view.sight(w, pts, col);
 			this.view.marker(w, hit.x, hit.y, this.time, col);
 		}
+		if (this.aiming && flying && Number.isFinite(this.aimX)) {
+			const r = COMMANDS[this.aiming].radius ?? 20;
+			this.view.blastZone(w, this.aimX, r, this.time, AIM_COLOR);
+		}
 		if (lo > hi) {
 			if (this.phase !== 'paused') w.camera.interest = null;
 			return;
@@ -1174,8 +1325,23 @@ export class Game {
 			locks,
 			threats: visible ? this.threatMarkers() : [],
 			pilots: visible && this.coop ? this.pilotTags() : [],
-			allies: visible ? this.allyMarkers() : []
+			allies: visible ? this.allyMarkers() : [],
+			foes: visible && this.mode === 'command' ? this.foeMarkers() : []
 		};
+	}
+
+	/** A red tick over each enemy unit in shot (command mode, where they are small). */
+	private foeMarkers(): AllyMarker[] {
+		const w = this.world;
+		const out: AllyMarker[] = [];
+		for (const u of w.units) {
+			if (!u.alive || out.length >= FOE_SLOTS) continue;
+			const s = w.camera.project(u.x, u.y + u.def.half[1] * 2 + 1, u.z, this.cssW, this.cssH);
+			if (!s || s[0] < -20 || s[0] > this.cssW + 20 || s[1] < -20 || s[1] > this.cssH + 20)
+				continue;
+			out.push({ x: s[0], y: s[1] - 2, hurt: false });
+		}
+		return out;
 	}
 
 	/** A chevron over each of our own ground units (and landed paratroopers) in shot. */
@@ -1314,8 +1480,8 @@ export class Game {
 			waveLabel: this.mode === 'tutorial' ? 'TRAINING' : this.waves.label,
 			waveState: this.waves.state,
 			mode: this.mode,
-			mission: this.mode === 'war' ? 'Objectives' : '',
-			objectives: this.mode === 'war' ? objectives(w) : [],
+			mission: this.mode !== 'tutorial' ? 'Objectives' : '',
+			objectives: this.mode !== 'tutorial' ? objectives(w) : [],
 			boss: bossStatus(w),
 			tutorial: this.tutorial?.card() ?? null,
 			enemies: this.waves.remaining(w),
@@ -1369,7 +1535,8 @@ export class Game {
 						down: !w.wingman.active
 					}
 				: null,
-			noFire: zoneAt(this.sightX)?.name ?? ''
+			noFire: zoneAt(this.mode === 'command' ? this.aimX : this.sightX)?.name ?? '',
+			command: this.mode === 'command' ? this.commandHud() : null
 		};
 	}
 }
@@ -1395,6 +1562,37 @@ const WINGMAN_JOIN_ALT = 25;
 /** Score for each checkpoint our troops take, and for levelling the enemy HQ. */
 const CHECKPOINT_BONUS = 300;
 const HQ_BONUS = 3000;
+
+/** Each mode's name on the debrief. */
+const MODE_TITLE: Record<GameMode, string> = {
+	tutorial: 'Flight training',
+	war: 'The war',
+	command: 'Command'
+};
+
+/** The commander's view: how far out it sits, closest and widest, and how high the ground sits in it. */
+const VIEW_NEAR = 170;
+const VIEW_FAR = 820;
+const VIEW_LIFT = 0.42;
+const VIEW_ZOOM = 0.25;
+/** The commander looks at the battle through less haze than a pilot down in it. */
+const VIEW_CLEAR = 200;
+/** Colour of the strike aiming ring. */
+const AIM_COLOR: [number, number, number] = [2.4, 0.9, 0.35];
+
+/** What the player is told when an order can't be given. */
+const REFUSAL: Record<string, [string, string]> = {
+	funds: ['NOT ENOUGH FUNDS', 'Wait for the war chest to fill, or take more checkpoints'],
+	army: ['ARMY AT FULL STRENGTH', 'Wait until some of our units fall or reach the front'],
+	air: ['AIR WING FULL', 'Every squadron is already flying'],
+	target: ['NO TARGET', 'Click a spot on the battlefield']
+};
+
+/** What the commander is told as the battle opens. */
+const COMMAND_BRIEF = {
+	text: 'YOU HAVE COMMAND',
+	sub: 'Spend the war chest on troops, armour, jets and strikes. Get our troops to the enemy HQ at the far end: only they can bring it down. Keep the airfield standing.'
+};
 
 /** What a new pilot is told as the battle opens: the whole game in two lines. */
 const BRIEF = {

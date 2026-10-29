@@ -20,9 +20,9 @@ export interface IconShape {
 
 export const ICON_VIEWBOX = '0 0 48 24';
 
-const body = (d: string, opacity?: number): IconShape => ({ kind: 'body', d, opacity });
-const line = (d: string, opacity?: number): IconShape => ({ kind: 'line', d, opacity });
-const mark = (d: string): IconShape => ({ kind: 'mark', d });
+export const body = (d: string, opacity?: number): IconShape => ({ kind: 'body', d, opacity });
+export const line = (d: string, opacity?: number): IconShape => ({ kind: 'line', d, opacity });
+export const mark = (d: string): IconShape => ({ kind: 'mark', d });
 
 const round = (n: number): number => Math.round(n * 100) / 100;
 

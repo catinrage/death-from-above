@@ -4,6 +4,7 @@ import { explode } from './combat';
 import { WORLD } from './constants';
 import type { BlastSpec } from './defs-bombs';
 import { launchMissile, spawnBullet } from './projectiles';
+import type { Player } from './player';
 import type { Owner, Trackable } from './types';
 import { nearestFriendly } from './wingman';
 import type { World } from './world';
@@ -131,7 +132,7 @@ export class AirUnit implements Trackable {
 						owner: 'enemy',
 						seeker: 'heat'
 					});
-					if (p !== w.wingman) w.events.message('MISSILE LAUNCH', '', 'warn');
+					if (w.pilots().includes(p as Player)) w.events.message('MISSILE LAUNCH', '', 'warn');
 				}
 				if (dist < 110) {
 					this.state = 'extend';

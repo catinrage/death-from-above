@@ -141,7 +141,7 @@ and losing your aircraft doesn't hand you a fresh one.
   - **Railway gun**: coupled between a locomotive and a flak wagon, it runs down the railway, pulls
     up across the river and lobs heavy shells onto the airfield. Tear up the track ahead of it to
     hold it out of range; it fires from wherever it stops once the airfield is in reach.
-- **Two ways to play** — pick one from the Sortie menu:
+- **Three ways to play** — pick one from the Sortie menu:
   - **Training**: fourteen guided lessons, each with its own practice targets, covering take-off, steering,
     guns, bombs, ordnance selection, guided missiles, focus, flares, afterburner and airbrake, and
     rearming. You can't be shot down for good, and Enter skips a lesson. New pilots are pointed here
@@ -151,6 +151,18 @@ and losing your aircraft doesn't hand you a fresh one.
     more aircraft join past wave eleven, and the sky moves from golden hour through sunset, dusk and
     night to dawn, with mist rolling in now and then. You win when our troops level the HQ (3,000
     points); you lose if the airfield falls or every aircraft is shot down. Your best score is kept.
+  - **Command**: the same war with you as its commander instead of a pilot. You fly nothing; a
+    war chest fills every second (faster for each checkpoint held, plus a share of every kill) and
+    pays for everything: rifle squads, anti-tank and mortar teams, jeeps, light and battle tanks,
+    AA carriers and rocket artillery that roll up the road from your furthest safe checkpoint
+    (1–8); F-16 fighters and A-10 strike jets that fly their own sorties over the front (Q, E); and
+    strikes launched from the base onto a spot you click: an artillery barrage, a cruise missile
+    that picks the best target near it, a B-1 carpet-bombing run, a ballistic missile and a
+    tactical nuke (Z X C V N). Strikes take a few seconds to arrive and hurt our own troops too.
+    The view looks down on the battle from high up: pan with A/D, the arrows or the screen edges,
+    zoom with the wheel, and Space jumps to the front. Our units carry blue chevrons and the
+    enemy's red ticks. Troops still have to take the HQ; you lose if the airfield falls. Command
+    keeps its own best score.
 - **Physics** — lift/drag/stall flight model, ballistic and guided ordnance, a rigid-body solver for
   wreckage tumbling across deformable terrain, craters and scorch marks that cool from glowing
   embers to charcoal.

@@ -7,7 +7,7 @@ import type { AirUnit } from './enemy-air';
 import type { Player } from './player';
 import { launchMissile, spawnBullet, type Flare } from './projectiles';
 import { trackUnit } from './targeting';
-import type { Trackable, Unit, UnitKind } from './types';
+import type { AircraftId, Trackable, Unit, UnitKind } from './types';
 import type { World } from './world';
 
 /** What the pilot last told the wingman to do. */
@@ -133,12 +133,32 @@ export class Wingman implements Trackable {
 	private trail = 0;
 	/** One tracking adapter per ground target, so its inbound missiles can be recognised. */
 	private tracked: { unit: Unit; track: Trackable } | null = null;
+	/** Airframe it is drawn as. */
+	readonly aircraft: AircraftId;
+	/** Radio name for its calls; null keeps it off the radio (the commander's air units). */
+	readonly callsign: string | null;
+	/**
+	 * With no leader to fly with: where along the road it hunts and orbits
+	 * (null: over the airfield).
+	 */
+	patrol: number | null = null;
 
-	constructor(x: number, y: number) {
+	constructor(
+		x: number,
+		y: number,
+		opts: { aircraft?: AircraftId; callsign?: string | null } = {}
+	) {
 		this.x = x;
 		this.y = y;
+		this.aircraft = opts.aircraft ?? 'f16';
+		this.callsign = opts.callsign === undefined ? CALLSIGN : opts.callsign;
 		this.vx = Math.cos(this.angle) * this.speed;
 		this.vy = Math.sin(this.angle) * this.speed;
+	}
+
+	/** A radio call, unless this aircraft keeps quiet. */
+	private say(w: World, text: string, sub: string, tone: 'info' | 'warn' | 'good'): void {
+		if (this.callsign) w.events.message(`${this.callsign}${text}`, sub, tone);
 	}
 
 	/** Airborne and fighting (not falling, not waiting for a replacement). */
@@ -153,7 +173,7 @@ export class Wingman implements Trackable {
 	 */
 	command(w: World, order: WingOrder, target: WingTarget | null = null): boolean {
 		if (!this.active) {
-			w.events.message(`${CALLSIGN} IS DOWN`, 'A replacement joins next wave', 'warn');
+			this.say(w, ' IS DOWN', 'A replacement joins next wave', 'warn');
 			return false;
 		}
 		this.commands++;
@@ -164,40 +184,36 @@ export class Wingman implements Trackable {
 		if (order === 'rearm') {
 			this.order = 'rearm';
 			this.rtb = 'inbound';
-			w.events.message(`${CALLSIGN}: RTB`, 'Heading home to repair and rearm', 'info');
+			this.say(w, ': RTB', 'Heading home to repair and rearm', 'info');
 			return true;
 		}
 		if (order === 'attack') {
 			this.order = 'attack';
 			if (!isLiveTarget(target)) {
 				this.scan = 0;
-				w.events.message(`${CALLSIGN}: WEAPONS FREE`, 'Picking his own targets', 'info');
+				this.say(w, ': WEAPONS FREE', 'Picking his own targets', 'info');
 				return true;
 			}
 			this.target = target;
 			this.assigned = true;
 			const name = target.unit ? target.unit.def.name : 'bandit';
-			w.events.message(`${CALLSIGN}: ENGAGING`, `Going after the ${name.toLowerCase()}`, 'info');
+			this.say(w, ': ENGAGING', `Going after the ${name.toLowerCase()}`, 'info');
 			return true;
 		}
 		if (order === 'sams') {
 			const next = this.nextAirDefence(w);
 			if (!next) {
 				this.order = 'attack';
-				w.events.message(`${CALLSIGN}: NO AIR DEFENCES`, 'Weapons free', 'info');
+				this.say(w, ': NO AIR DEFENCES', 'Weapons free', 'info');
 				return true;
 			}
 			this.order = 'sams';
 			this.target = { unit: next, air: null };
-			w.events.message(
-				`${CALLSIGN}: HUNTING SAMS`,
-				`Rolling in on the ${next.def.name.toLowerCase()}`,
-				'info'
-			);
+			this.say(w, ': HUNTING SAMS', `Rolling in on the ${next.def.name.toLowerCase()}`, 'info');
 			return true;
 		}
 		this.order = 'cover';
-		w.events.message(`${CALLSIGN}: ON YOUR WING`, 'Covering you', 'info');
+		this.say(w, ': ON YOUR WING', 'Covering you', 'info');
 		return true;
 	}
 
@@ -241,7 +257,7 @@ export class Wingman implements Trackable {
 		w.sound.boom(0.75, this.x, this.y, true);
 		this.target = null;
 		this.lowPass = false;
-		w.events.message(`${CALLSIGN} IS DOWN`, 'Mayday · a replacement joins next wave', 'warn');
+		this.say(w, ' IS DOWN', 'Mayday · a replacement joins next wave', 'warn');
 	}
 
 	update(w: World, dt: number): void {
@@ -277,17 +293,13 @@ export class Wingman implements Trackable {
 				const next = this.nextAirDefence(w);
 				if (next) {
 					this.target = { unit: next, air: null };
-					w.events.message(
-						`${CALLSIGN}: SITE DOWN`,
-						`Next: the ${next.def.name.toLowerCase()}`,
-						'good'
-					);
+					this.say(w, ': SITE DOWN', `Next: the ${next.def.name.toLowerCase()}`, 'good');
 				} else {
 					this.order = 'attack';
-					w.events.message(`${CALLSIGN}: AIR DEFENCES CLEAR`, 'Weapons free', 'good');
+					this.say(w, ': AIR DEFENCES CLEAR', 'Weapons free', 'good');
 				}
 			} else if (this.order === 'attack' && this.assigned) {
-				w.events.message(`${CALLSIGN}: TARGET DESTROYED`, 'Picking the next one', 'good');
+				this.say(w, ': TARGET DESTROYED', 'Picking the next one', 'good');
 			}
 			this.assigned = false;
 			this.scan = 0;
@@ -321,7 +333,7 @@ export class Wingman implements Trackable {
 	 */
 	autoTarget(w: World): WingTarget | null {
 		const p = w.player;
-		const cx = p && p.alive && !p.landed ? p.x : this.x;
+		const cx = p && p.alive && !p.landed ? p.x : (this.patrol ?? this.x);
 		let best: WingTarget | null = null;
 		let bestScore = Infinity;
 		for (const a of w.air) {
@@ -378,8 +390,8 @@ export class Wingman implements Trackable {
 	private formation(w: World, dt: number): number {
 		const p = w.player;
 		if (!p || !p.alive || p.landed) {
-			// Leader is down or parked: orbit over the airfield.
-			const cx = (WORLD.runwayMinX + WORLD.runwayMaxX) / 2;
+			// Leader is down or parked (or there is none): orbit over the patrol line or the airfield.
+			const cx = this.patrol ?? (WORLD.runwayMinX + WORLD.runwayMaxX) / 2;
 			const cy = w.ground(cx) + 130;
 			this.speed = moveToward(this.speed, 90, 40 * dt);
 			const toward = Math.atan2(cy - this.y, cx - this.x);
@@ -429,7 +441,7 @@ export class Wingman implements Trackable {
 			this.order = 'attack';
 			this.scan = 0;
 			this.setPhase('attack');
-			w.events.message(`${CALLSIGN}: REARMED`, 'Back in the fight', 'good');
+			this.say(w, ': REARMED', 'Back in the fight', 'good');
 			return this.passDir > 0 ? 0.5 : Math.PI - 0.5;
 		}
 		const past = this.passDir < 0 ? this.x < lo : this.x > hi;
@@ -665,11 +677,7 @@ export class Wingman implements Trackable {
 		this.lowPass = false;
 		this.scan = 0;
 		this.setPhase('attack');
-		w.events.message(
-			`${CALLSIGN}: BACK ON STATION`,
-			'A replacement climbs out to join you',
-			'good'
-		);
+		this.say(w, ': BACK ON STATION', 'A replacement climbs out to join you', 'good');
 	}
 }
 
@@ -678,18 +686,31 @@ export class Wingman implements Trackable {
  * co-op, player two) or the wingman, whichever is closer (the player when both are equally placed).
  */
 export function nearestFriendly(w: World, x: number, y: number): Player | Wingman | null {
+	if (w.godMode) return null;
 	// In co-op, the closer of the two human pilots.
-	const p = w.godMode ? null : w.nearestPilot(x, y);
-	const wing = w.wingman;
-	const pOk = !!p;
-	const wOk = !!wing && wing.active && !w.godMode;
-	if (!wOk) return pOk ? p : null;
-	if (!pOk) return wing;
-	const dp = Math.hypot(p!.x - x, p!.y - y);
-	const dw = Math.hypot(wing!.x - x, wing!.y - y);
+	const p = w.nearestPilot(x, y);
+	let wing: Wingman | null = null;
+	let dw = Infinity;
+	for (const j of w.jets()) {
+		if (!j.active) continue;
+		const d = Math.hypot(j.x - x, j.y - y);
+		if (d < dw) {
+			dw = d;
+			wing = j;
+		}
+	}
+	if (!wing) return p;
+	if (!p) return wing;
+	const dp = Math.hypot(p.x - x, p.y - y);
 	return dw < dp * 0.85 ? wing : p;
 }
 
 export function updateWingman(w: World, dt: number): void {
 	w.wingman?.update(w, dt);
+	for (let i = w.escorts.length - 1; i >= 0; i--) {
+		const e = w.escorts[i];
+		e.update(w, dt);
+		// A commander's air unit that went down is gone for good.
+		if (!e.alive) w.escorts.splice(i, 1);
+	}
 }

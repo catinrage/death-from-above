@@ -1,5 +1,5 @@
 import { DEFAULT_STYLE, type InstanceStyle, type Mesh } from '../engine/gl/mesh';
-import { mat4, type Mat4 } from '../engine/math';
+import { clamp, mat4, type Mat4 } from '../engine/math';
 import type { MeshName, Models } from '../models';
 import { PONTOON_SECTIONS, type Span } from './bridge';
 import { WORLD } from './constants';
@@ -11,8 +11,10 @@ import { GEAR_HEIGHT, gearLayout } from './gear';
 import { debrisMatrix } from './debris';
 import { Props, type Prop } from './props';
 import { poseParts, poseScratch, rootMatrix } from './unit-pose';
+import type { Flyby } from './command';
 import type { Player } from './player';
 import type { Unit } from './types';
+import type { Wingman } from './wingman';
 import type { World } from './world';
 
 const IDENTITY = mat4.create();
@@ -90,7 +92,7 @@ export class SceneView {
 		this.debris(w);
 		this.ordnance(w);
 		this.air(w);
-		this.wingman(w, time);
+		this.wingmen(w, time);
 		for (const p of w.pilots()) this.player(w, p, time);
 		this.bullets(w);
 		this.flares(w);
@@ -474,12 +476,28 @@ export class SceneView {
 		}
 	}
 
-	/** The AI wingman flies an F-16, with blue nav strobes to tell it from the enemy. */
-	private wingman(w: World, time: number): void {
-		const a = w.wingman;
-		if (!a || !a.alive) return;
+	/** Friendly AI jets (the wingman's F-16 and the commander's air units), with blue nav strobes. */
+	private wingmen(w: World, time: number): void {
+		for (const a of w.jets()) this.wingman(w, a, time);
+		for (const f of w.command.flybys) this.flyby(f);
+	}
+
+	/** A bomber on a scripted run: straight and level, out of reach. */
+	private flyby(f: Flyby): void {
 		const m = this.m;
-		const def = AIRCRAFT.f16;
+		const def = AIRCRAFT[f.aircraft];
+		const sc = def.scale;
+		mat4.fromTranslation(m, f.x, f.y, f.z);
+		mat4.rotateZ(m, m, f.dir > 0 ? 0 : Math.PI);
+		if (f.dir < 0) mat4.rotateX(m, m, Math.PI);
+		mat4.scale(m, m, sc, sc, sc);
+		this.mesh(def.mesh).push(m, this.style());
+	}
+
+	private wingman(w: World, a: Wingman, time: number): void {
+		if (!a.alive) return;
+		const m = this.m;
+		const def = AIRCRAFT[a.aircraft];
 		const sc = def.scale;
 		mat4.fromTranslation(m, a.x, a.y, a.z);
 		mat4.rotateZ(m, m, a.angle);
@@ -642,6 +660,37 @@ export class SceneView {
 				color[2] * fade
 			);
 		}
+	}
+
+	/**
+	 * The commander's strike aim: a ring of lights lying on the ground around
+	 * the spot, as wide as the strike's blast, with the usual marker in it.
+	 */
+	blastZone(
+		w: World,
+		x: number,
+		radius: number,
+		time: number,
+		color: [number, number, number]
+	): void {
+		const n = Math.round(clamp(radius * 0.5, 16, 56));
+		const size = 0.5 * sightScale(w);
+		for (let i = 0; i < n; i++) {
+			const a = (i / n) * Math.PI * 2 + time * 0.25;
+			const px = x + Math.cos(a) * radius;
+			const pz = Math.sin(a) * Math.min(radius, 40);
+			const bright = i % 4 === 0 ? 1.5 : 0.85;
+			w.fx.immediateGlow(
+				px,
+				w.terrain.heightAtXZ(px, pz) + 0.6,
+				pz,
+				size,
+				color[0] * bright,
+				color[1] * bright,
+				color[2] * bright
+			);
+		}
+		this.marker(w, x, w.ground(x), time, color);
 	}
 
 	/**

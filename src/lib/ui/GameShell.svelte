@@ -11,7 +11,7 @@
 		type HudSnapshot,
 		type ModeStart
 	} from '$lib/game/hud';
-	import { readTrained } from '$lib/game/records';
+	import { readBest, readTrained } from '$lib/game/records';
 	import type { AircraftId } from '$lib/game/types';
 	import { PopupLayer } from './popups';
 	import { TargetingLayer } from './targeting-layer';
@@ -25,6 +25,7 @@
 	} from './settings';
 	import Hud from './Hud.svelte';
 	import Player2Hud from './Player2Hud.svelte';
+	import CommandPanel from './CommandPanel.svelte';
 	import TitleScreen from './TitleScreen.svelte';
 	import Hangar from './Hangar.svelte';
 	import { capacityOf, stockLoadout, weightOf, type Loadout } from '$lib/game/loadout';
@@ -69,6 +70,7 @@
 		return l && weightOf(l) <= capacityOf(id, extraPayload(wallet, id)) ? l : stockLoadout(id);
 	});
 	let best = $state(readBestScore());
+	let bestCommand = $state(readBest(true));
 	let showControls = $state(false);
 	let modeOpen = $state(false);
 	/** What the last sortie flew: Restart and Retry repeat it. */
@@ -133,6 +135,7 @@
 
 	function refreshRecords(): void {
 		best = readBestScore();
+		bestCommand = readBest(true);
 		trained = readTrained();
 		wallet = loadProgression();
 	}
@@ -225,7 +228,12 @@
 	}
 </script>
 
-<div class="shell" class:flying={phase === 'playing'}>
+<div
+	class="shell"
+	class:flying={phase === 'playing' && !hud.command}
+	class:commanding={phase === 'playing' && !!hud.command}
+	class:aiming={phase === 'playing' && !!hud.command?.aiming}
+>
 	<canvas bind:this={canvas} tabindex="-1"></canvas>
 	<div class="popups" bind:this={popupRoot}></div>
 	<div class="targeting" bind:this={targetRoot}></div>
@@ -257,6 +265,13 @@
 	{#if phase === 'playing' || phase === 'paused'}
 		<Hud {hud} {messages} />
 		{#if hud.player2}<Player2Hud wing={hud.player2} />{/if}
+		{#if hud.command}
+			<CommandPanel
+				command={hud.command}
+				noFire={hud.noFire}
+				onOrder={(id) => game?.commandSelect(id)}
+			/>
+		{/if}
 	{/if}
 
 	{#if phase === 'title'}
@@ -302,6 +317,7 @@
 	{#if phase === 'title' && modeOpen}
 		<ModeSelect
 			{best}
+			{bestCommand}
 			{trained}
 			initial={lastStart}
 			onLaunch={launch}
@@ -343,6 +359,15 @@
 	/* The reticle replaces the system cursor while flying. */
 	.flying canvas {
 		cursor: none;
+	}
+
+	/* The commander keeps an ordinary pointer, and a crosshair while aiming a strike. */
+	.commanding canvas {
+		cursor: default;
+	}
+
+	.commanding.aiming canvas {
+		cursor: crosshair;
 	}
 
 	.targeting {
@@ -600,6 +625,21 @@
 	.targeting :global(.tl-ally::after) {
 		inset: 2px 2.5px 3px;
 		background: #6cc0ff;
+	}
+
+	/* Command mode: enemy units get a small red tick, point down. */
+	.targeting :global(.tl-foe) {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 10px;
+		height: 8px;
+		translate: -50% -100%;
+		pointer-events: none;
+		background: #ff5a3c;
+		clip-path: polygon(0 0, 100% 0, 50% 100%);
+		filter: drop-shadow(0 0 1px rgba(20, 0, 0, 0.9));
+		opacity: 0.9;
 	}
 
 	/* Badly hurt: it blinks. */

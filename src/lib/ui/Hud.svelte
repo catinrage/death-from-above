@@ -23,6 +23,8 @@
 	const heatFrac = $derived(Math.min(1, hud.heat / 100));
 	const ORDER_TAG = { cover: 'CVR', attack: 'ATK', sams: 'SAM', rearm: 'RTB' } as const;
 	const GEAR_TAG = { down: 'DOWN', up: 'UP', transit: 'TRANSIT', none: '' } as const;
+	/** Command mode: no aircraft of our own, so none of the cockpit readouts. */
+	const pilot = $derived(!hud.command);
 </script>
 
 <div class="hud" class:critical={hpFrac < 0.3 && hud.hp > 0}>
@@ -60,7 +62,10 @@
 			{#if hud.mode !== 'tutorial'}
 				<span class="en">{hud.enemies} hostile{hud.enemies === 1 ? '' : 's'}</span>
 				<span class="sep"></span>
-				{#if hud.war}
+				{#if hud.command}
+					<span class="col">ARMY {hud.command.army}/{hud.command.armyMax}</span>
+					<span class="sep"></span>
+				{:else if hud.war}
 					<span class="col">ARMY {hud.war.army} · +{hud.war.next}s</span>
 					<span class="sep"></span>
 				{/if}
@@ -115,16 +120,18 @@
 		{/if}
 	</section>
 
-	<section class="lives" aria-label="Reserve aircraft">
-		{#each Array.from({ length: hud.livesMax }, (_, k) => k) as i (i)}
-			<svg viewBox="0 0 24 24" class:lost={i >= hud.lives} aria-hidden="true">
-				<path
-					d="M12 2 L14 9 L22 12 L14 13.5 L13.5 19 L16.5 21 L12 20.5 L7.5 21 L10.5 19 L10 13.5 L2 12 L10 9 Z"
-				/>
-			</svg>
-		{/each}
-		<span class="fps">{hud.fps} fps</span>
-	</section>
+	{#if pilot}
+		<section class="lives" aria-label="Reserve aircraft">
+			{#each Array.from({ length: hud.livesMax }, (_, k) => k) as i (i)}
+				<svg viewBox="0 0 24 24" class:lost={i >= hud.lives} aria-hidden="true">
+					<path
+						d="M12 2 L14 9 L22 12 L14 13.5 L13.5 19 L16.5 21 L12 20.5 L7.5 21 L10.5 19 L10 13.5 L2 12 L10 9 Z"
+					/>
+				</svg>
+			{/each}
+			<span class="fps">{hud.fps} fps</span>
+		</section>
+	{/if}
 
 	{#if hud.tutorial}
 		{@const t = hud.tutorial}
@@ -172,113 +179,117 @@
 		</section>
 	{/if}
 
-	<section class="status">
-		<div class="gauge">
-			<span class="lbl">ARMOR</span>
-			<span class="track"
-				><span class="fill hp" style:transform="scaleX({hpFrac})" class:low={hpFrac < 0.3}
-				></span></span
-			>
-			<span class="val">{Math.ceil(hud.hp)}</span>
-		</div>
-		{#if systemsHit}
-			<div class="systems" title="Land on the runway to repair">
-				{#each SYSTEM_TAGS as s (s.id)}
-					<span class:hit={hud.systems[s.id] > 0} class:bad={hud.systems[s.id] > 0.6}>{s.tag}</span>
-				{/each}
-			</div>
-		{/if}
-		<div class="gauge">
-			<span class="lbl">BOOST</span>
-			<span class="track"
-				><span class="fill boost" style:transform="scaleX({hud.boost})"></span></span
-			>
-			<span class="val">⇧</span>
-		</div>
-		<div class="gauge">
-			<span class="lbl">{hud.overheated ? 'HOT!' : 'GUNS'}</span>
-			<span class="track"
-				><span class="fill heat" class:over={hud.overheated} style:transform="scaleX({heatFrac})"
-				></span></span
-			>
-			<span class="val">J</span>
-		</div>
-		<div class="gauge" class:ready={hud.focus >= 0.15 && !hud.focusActive}>
-			<span class="lbl">FOCUS</span>
-			<span class="track"
-				><span class="fill focus" class:on={hud.focusActive} style:transform="scaleX({hud.focus})"
-				></span></span
-			>
-			<span class="val">R</span>
-		</div>
-		<div class="flares">
-			<span class="lbl">FLARES</span>
-			{#each Array.from({ length: hud.flaresMax }, (_, k) => k) as i (i)}
-				<span class="pip" class:on={i < hud.flares}></span>
-			{/each}
-			<span class="val">F</span>
-		</div>
-		{#if hud.wingman}
-			{@const wing = hud.wingman}
-			<div
-				class="gauge wing"
-				class:down={wing.down}
-				title="Wingman: T attack · G cover · H SAMs · Y rearm"
-			>
-				<span class="lbl">WING</span>
+	{#if pilot}
+		<section class="status">
+			<div class="gauge">
+				<span class="lbl">ARMOR</span>
 				<span class="track"
-					><span class="fill wing" class:low={wing.hp < 0.3} style:transform="scaleX({wing.hp})"
+					><span class="fill hp" style:transform="scaleX({hpFrac})" class:low={hpFrac < 0.3}
 					></span></span
 				>
-				<span class="val">{wing.down ? 'OUT' : ORDER_TAG[wing.order]}</span>
+				<span class="val">{Math.ceil(hud.hp)}</span>
 			</div>
-		{/if}
-		<div class="readout">
-			<span><em>ALT</em>{Math.round(hud.altitude)}<small>m</small></span>
-			<span><em>SPD</em>{Math.round(hud.speed)}<small>km/h</small></span>
-		</div>
-		{#if hud.gear !== 'none'}
-			<div class="gear {hud.gear}" title="Landing gear (B)">
-				<em>GEAR</em>{GEAR_TAG[hud.gear]}
+			{#if systemsHit}
+				<div class="systems" title="Land on the runway to repair">
+					{#each SYSTEM_TAGS as s (s.id)}
+						<span class:hit={hud.systems[s.id] > 0} class:bad={hud.systems[s.id] > 0.6}
+							>{s.tag}</span
+						>
+					{/each}
+				</div>
+			{/if}
+			<div class="gauge">
+				<span class="lbl">BOOST</span>
+				<span class="track"
+					><span class="fill boost" style:transform="scaleX({hud.boost})"></span></span
+				>
+				<span class="val">⇧</span>
 			</div>
-		{/if}
-	</section>
-
-	<section class="bombs">
-		{#key hud.selected}
-			<!-- What the weapon just picked is for, in one line; fades after a few seconds. -->
-			<p class="weapon-tip" style:--c={BOMBS[hud.selected].color}>
-				<b>{BOMBS[hud.selected].short}</b>{BOMBS[hud.selected].tip}
-			</p>
-		{/key}
-		{#each hud.bombs as b (b.id)}
-			<div
-				class="slot"
-				class:sel={b.id === hud.selected}
-				class:empty={b.count === 0}
-				style:--c={b.color}
-			>
-				<span class="key">{b.slot}</span>
-				<WeaponIcon id={b.id} class="ico" />
-				<span class="nm">{b.short}</span>
-				{#if b.heat !== undefined}
-					<span class="ct pod" class:hot={b.hot}
-						>{b.hot ? 'HOT' : `${Math.round(b.heat * 100)}%`}</span
+			<div class="gauge">
+				<span class="lbl">{hud.overheated ? 'HOT!' : 'GUNS'}</span>
+				<span class="track"
+					><span class="fill heat" class:over={hud.overheated} style:transform="scaleX({heatFrac})"
+					></span></span
+				>
+				<span class="val">J</span>
+			</div>
+			<div class="gauge" class:ready={hud.focus >= 0.15 && !hud.focusActive}>
+				<span class="lbl">FOCUS</span>
+				<span class="track"
+					><span class="fill focus" class:on={hud.focusActive} style:transform="scaleX({hud.focus})"
+					></span></span
+				>
+				<span class="val">R</span>
+			</div>
+			<div class="flares">
+				<span class="lbl">FLARES</span>
+				{#each Array.from({ length: hud.flaresMax }, (_, k) => k) as i (i)}
+					<span class="pip" class:on={i < hud.flares}></span>
+				{/each}
+				<span class="val">F</span>
+			</div>
+			{#if hud.wingman}
+				{@const wing = hud.wingman}
+				<div
+					class="gauge wing"
+					class:down={wing.down}
+					title="Wingman: T attack · G cover · H SAMs · Y rearm"
+				>
+					<span class="lbl">WING</span>
+					<span class="track"
+						><span class="fill wing" class:low={wing.hp < 0.3} style:transform="scaleX({wing.hp})"
+						></span></span
 					>
-				{:else}
-					<span class="ct">{b.count}<em>/{b.max}</em></span>
-				{/if}
+					<span class="val">{wing.down ? 'OUT' : ORDER_TAG[wing.order]}</span>
+				</div>
+			{/if}
+			<div class="readout">
+				<span><em>ALT</em>{Math.round(hud.altitude)}<small>m</small></span>
+				<span><em>SPD</em>{Math.round(hud.speed)}<small>km/h</small></span>
 			</div>
-		{/each}
-		{#if hud.missilesMax > 0}
-			<div class="slot missile" class:sel={hud.locks > 0} class:empty={hud.missiles === 0}>
-				<span class="key">E</span>
-				<WeaponIcon id="aam" class="ico" />
-				<span class="nm">{hud.locks > 0 ? `LOCKED ${hud.locks}` : 'MISSILE'}</span>
-				<span class="ct">{hud.missiles}<em>/{hud.missilesMax}</em></span>
-			</div>
-		{/if}
-	</section>
+			{#if hud.gear !== 'none'}
+				<div class="gear {hud.gear}" title="Landing gear (B)">
+					<em>GEAR</em>{GEAR_TAG[hud.gear]}
+				</div>
+			{/if}
+		</section>
+
+		<section class="bombs">
+			{#key hud.selected}
+				<!-- What the weapon just picked is for, in one line; fades after a few seconds. -->
+				<p class="weapon-tip" style:--c={BOMBS[hud.selected].color}>
+					<b>{BOMBS[hud.selected].short}</b>{BOMBS[hud.selected].tip}
+				</p>
+			{/key}
+			{#each hud.bombs as b (b.id)}
+				<div
+					class="slot"
+					class:sel={b.id === hud.selected}
+					class:empty={b.count === 0}
+					style:--c={b.color}
+				>
+					<span class="key">{b.slot}</span>
+					<WeaponIcon id={b.id} class="ico" />
+					<span class="nm">{b.short}</span>
+					{#if b.heat !== undefined}
+						<span class="ct pod" class:hot={b.hot}
+							>{b.hot ? 'HOT' : `${Math.round(b.heat * 100)}%`}</span
+						>
+					{:else}
+						<span class="ct">{b.count}<em>/{b.max}</em></span>
+					{/if}
+				</div>
+			{/each}
+			{#if hud.missilesMax > 0}
+				<div class="slot missile" class:sel={hud.locks > 0} class:empty={hud.missiles === 0}>
+					<span class="key">E</span>
+					<WeaponIcon id="aam" class="ico" />
+					<span class="nm">{hud.locks > 0 ? `LOCKED ${hud.locks}` : 'MISSILE'}</span>
+					<span class="ct">{hud.missiles}<em>/{hud.missilesMax}</em></span>
+				</div>
+			{/if}
+		</section>
+	{/if}
 
 	{#if hud.focusActive}
 		<div class="focus-tag" transition:fade={{ duration: 150 }}>
@@ -288,56 +299,58 @@
 		</div>
 	{/if}
 
-	<section class="warnings" aria-live="assertive">
-		{#if hud.missileDist > 0}
-			{@const close = hud.missileDist < hud.flareWindow}
-			<div class="threat" class:close>
-				<span class="arrow" style:transform="rotate({hud.missileDir}rad)">➤</span>
-				<span class="label">{close ? 'FLARES NOW' : 'MISSILE'}</span>
-				<span class="range">{Math.round(hud.missileDist)}<small>m</small></span>
-				<span class="meter"
-					><span style:transform="scaleX({Math.max(0, 1 - hud.missileDist / 1500)})"></span><i
-						style:left="{(1 - hud.flareWindow / 1500) * 100}%"
-					></i></span
-				>
-			</div>
-		{:else if hud.lock > 0}
-			<div class="warn lock">
-				<span
-					><span class="arrow" style:transform="rotate({hud.lockDir}rad)">➤</span> RADAR LOCK</span
-				>
-				<span class="lockbar"><span style:transform="scaleX({hud.lock})"></span></span>
-			</div>
-		{/if}
-		{#if hud.pullUp}<div class="warn">PULL UP</div>{/if}
-		{#if hud.stall}<div class="warn">STALL</div>{/if}
-		{#if hud.runwayEnd > 0}
-			<div class="warn">
-				RUNWAY END <small>{Math.round(hud.runwayEnd)} m · V brakes · W rotate</small>
-			</div>
-		{/if}
-		{#if hud.gearDown}<div class="warn soft">GEAR DOWN <small>B raises the gear</small></div>{/if}
-		{#if hud.boundary > 0}
-			<div class="warn">
-				RETURN TO COMBAT AREA <small>{Math.max(0, BOUNDS_GRACE - hud.boundary).toFixed(1)}</small>
-			</div>
-		{/if}
-		{#if hud.ceiling}<div class="warn soft">ALTITUDE CEILING</div>{/if}
-		{#if hud.noFire}<div class="warn soft nofire">
-				NO-FIRE ZONE <small>{hud.noFire}</small>
-			</div>{/if}
-		{#if hud.braking}<div class="brake">AIRBRAKE</div>{/if}
-		{#if hud.takeoff && !hud.runwayEnd}<div class="takeoff">
-				Release brakes: D or Shift · pull up with W · B raises the gear
-			</div>{/if}
-		{#if hud.bayJammed}<div class="warn soft">BOMB BAY JAMMED</div>{/if}
-		{#if hud.rearming}<div class="good">
-				{hud.landed ? 'LANDED · ' : ''}REARMING &amp; REPAIRING
-			</div>
-			{#if systemsHit && !hud.landed}<div class="warn soft">LAND TO REPAIR SYSTEMS</div>{/if}
-			{#if hud.canSwap}<div class="takeoff">Esc · change aircraft</div>{/if}
-		{/if}
-	</section>
+	{#if pilot}
+		<section class="warnings" aria-live="assertive">
+			{#if hud.missileDist > 0}
+				{@const close = hud.missileDist < hud.flareWindow}
+				<div class="threat" class:close>
+					<span class="arrow" style:transform="rotate({hud.missileDir}rad)">➤</span>
+					<span class="label">{close ? 'FLARES NOW' : 'MISSILE'}</span>
+					<span class="range">{Math.round(hud.missileDist)}<small>m</small></span>
+					<span class="meter"
+						><span style:transform="scaleX({Math.max(0, 1 - hud.missileDist / 1500)})"></span><i
+							style:left="{(1 - hud.flareWindow / 1500) * 100}%"
+						></i></span
+					>
+				</div>
+			{:else if hud.lock > 0}
+				<div class="warn lock">
+					<span
+						><span class="arrow" style:transform="rotate({hud.lockDir}rad)">➤</span> RADAR LOCK</span
+					>
+					<span class="lockbar"><span style:transform="scaleX({hud.lock})"></span></span>
+				</div>
+			{/if}
+			{#if hud.pullUp}<div class="warn">PULL UP</div>{/if}
+			{#if hud.stall}<div class="warn">STALL</div>{/if}
+			{#if hud.runwayEnd > 0}
+				<div class="warn">
+					RUNWAY END <small>{Math.round(hud.runwayEnd)} m · V brakes · W rotate</small>
+				</div>
+			{/if}
+			{#if hud.gearDown}<div class="warn soft">GEAR DOWN <small>B raises the gear</small></div>{/if}
+			{#if hud.boundary > 0}
+				<div class="warn">
+					RETURN TO COMBAT AREA <small>{Math.max(0, BOUNDS_GRACE - hud.boundary).toFixed(1)}</small>
+				</div>
+			{/if}
+			{#if hud.ceiling}<div class="warn soft">ALTITUDE CEILING</div>{/if}
+			{#if hud.noFire}<div class="warn soft nofire">
+					NO-FIRE ZONE <small>{hud.noFire}</small>
+				</div>{/if}
+			{#if hud.braking}<div class="brake">AIRBRAKE</div>{/if}
+			{#if hud.takeoff && !hud.runwayEnd}<div class="takeoff">
+					Release brakes: D or Shift · pull up with W · B raises the gear
+				</div>{/if}
+			{#if hud.bayJammed}<div class="warn soft">BOMB BAY JAMMED</div>{/if}
+			{#if hud.rearming}<div class="good">
+					{hud.landed ? 'LANDED · ' : ''}REARMING &amp; REPAIRING
+				</div>
+				{#if systemsHit && !hud.landed}<div class="warn soft">LAND TO REPAIR SYSTEMS</div>{/if}
+				{#if hud.canSwap}<div class="takeoff">Esc · change aircraft</div>{/if}
+			{/if}
+		</section>
+	{/if}
 
 	<section class="banners">
 		{#each messages as m (m.id)}
