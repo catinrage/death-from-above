@@ -170,6 +170,12 @@ const NEW_ICONS = {
 		mark('M30 10.8H36L34.6 11.6H30Z')
 	],
 	f4: [...jet(1, 0.6), body('M6 13.2L4 18H8L11 13.2Z')],
+	// Canted twin fins read as a second, offset fin behind the first.
+	f22: [...jet(0.5), body('M8 9.6L6 4.6H9.5L13 9.6Z')],
+	f35: [...jet(0, 0.7), body('M8 9L6.5 5H9.5L12.5 9Z')],
+	su24: [...jet(-1.5, 1), body('M16 9.6L13 7.4H22L24 9.6Z')],
+	// The Flanker's sting pokes out behind its engines.
+	su27: [...jet(0.5, 0.4), body('M0 11.6H3V12.6H0Z'), body('M8 9.6L6 4H9L12 9.6Z')],
 	kestrel: [...jet(-1), body('M30 14H40L38 16.5H32Z')],
 	a10: [
 		body('M3 11H40L46.5 12.2L40 13.6H3Z'),
@@ -218,6 +224,13 @@ const NEW_ICONS = {
 const ICONS: Record<CommandId, readonly IconShape[]> = {
 	...NEW_ICONS,
 	rifles: [...soldier(10), ...soldier(21), ...soldier(32)],
+	mgTeam: [
+		...soldier(12),
+		...soldier(30),
+		body('M14 9.2H27V10.8H14Z'),
+		body('M32 9.2H45V10.8H32Z'),
+		line('M24 11L26 15M42 11L44 15', 0.7)
+	],
 	antiTank: [
 		...soldier(14).slice(0, 3),
 		body('M7 7.2H29V9.6H7Z'),
@@ -245,6 +258,20 @@ const ICONS: Record<CommandId, readonly IconShape[]> = {
 		body('M16 9.5H30L32 15H14Z'),
 		body('M30 11.2H45V12.8H30Z'),
 		mark('M10 17.3H38V18.2H10Z')
+	],
+	ifv: [
+		body('M4 13H40L44 16.5L40.5 21H7.5L4 17Z'),
+		body('M16 8H28L30 13H14Z'),
+		body('M28 9.6H42V11H28Z'),
+		body('M15 6H22V8H15Z'),
+		mark('M9 17.5H38V18.4H9Z')
+	],
+	tankDestroyer: [
+		body('M4 16H42L38.5 21H7.5Z'),
+		body('M14 12.5H28L30 16H12Z'),
+		body('M28 13.4H47V14.8H28Z'),
+		body('M39 12.9H42V15.3H39Z'),
+		mark('M9 18.2H37V19H9Z')
 	],
 	tank: [
 		body('M2.5 14.5H45.5L40.5 21.5H7.5Z'),

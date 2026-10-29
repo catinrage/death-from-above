@@ -86,6 +86,8 @@ export function poseParts(u: Unit, root: Mat4, out: Mat4[] = poseScratch, ragdol
 const MUZZLE: Partial<Record<UnitKind, number>> = {
 	tank: 5.4,
 	lightTank: 3.7,
+	ifv: 2.8,
+	tankDestroyer: 5.4,
 	rocketTruck: 4,
 	flak: 6.2,
 	sam: 5.2,

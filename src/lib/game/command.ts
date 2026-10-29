@@ -36,9 +36,12 @@ export type GroundOrder =
 	| 'snipers'
 	| 'medics'
 	| 'mortars'
+	| 'mgTeam'
 	| 'jeep'
 	| 'apc'
 	| 'lightTank'
+	| 'ifv'
+	| 'tankDestroyer'
 	| 'tank'
 	| 'column'
 	| 'behemoth'
@@ -176,6 +179,14 @@ const INFANTRY: Partial<Record<GroundOrder, Spec>> = {
 		cost: 180,
 		cooldown: 0,
 		units: ['mortar', 'mortar']
+	},
+	mgTeam: {
+		name: 'Machine-gun team',
+		short: 'MG team',
+		tip: 'Two machine gunners: they pin down and mow through enemy infantry.',
+		cost: 160,
+		cooldown: 0,
+		units: ['mgTeam', 'mgTeam']
 	}
 };
 
@@ -203,6 +214,22 @@ const VEHICLES: Partial<Record<GroundOrder, Spec>> = {
 		cost: 170,
 		cooldown: 0,
 		units: ['lightTank']
+	},
+	ifv: {
+		name: 'Fighting vehicle with riflemen',
+		short: 'IFV',
+		tip: 'Tracked, well armoured, a quick-firing cannon, and four riflemen with it.',
+		cost: 360,
+		cooldown: 0,
+		units: ['ifv', ...r(4)]
+	},
+	tankDestroyer: {
+		name: 'Tank destroyer',
+		short: 'Destroyer',
+		tip: 'A long gun on a light, fast hull: kills tanks, but can’t take much back.',
+		cost: 280,
+		cooldown: 0,
+		units: ['tankDestroyer']
 	},
 	tank: {
 		name: 'Battle tank',
@@ -291,6 +318,16 @@ const AIR: Partial<Record<AircraftId, Pick<Spec, 'tip' | 'cost' | 'cooldown' | '
 		cooldown: 8
 	},
 	wraith: { tip: 'Stealth fighter: fast, hard to lock, guided bombs.', cost: 520, cooldown: 8 },
+	f22: {
+		tip: 'Stealth air-superiority fighter: owns the sky, light bombs.',
+		cost: 560,
+		cooldown: 8
+	},
+	su27: {
+		tip: 'Agile heavy fighter: hunts aircraft with a long missile reach.',
+		cost: 470,
+		cooldown: 8
+	},
 	f4: {
 		tip: 'Heavy fighter-bomber: dogfights and drops bombs on the way.',
 		cost: 440,
@@ -304,6 +341,7 @@ const AIR: Partial<Record<AircraftId, Pick<Spec, 'tip' | 'cost' | 'cooldown' | '
 		order: 'sams'
 	},
 	su25: { tip: 'Armoured attack jet with bombs and rocket pods.', cost: 430, cooldown: 8 },
+	f35: { tip: 'Stealth striker: slips past SAMs to drop guided bombs.', cost: 540, cooldown: 8 },
 	grizzly: { tip: 'Tough ground-attack jet with a heavy cannon.', cost: 450, cooldown: 8 },
 	stuka: { tip: 'Dive bomber: cheap, slow and deadly on a column.', cost: 300, cooldown: 8 },
 	a1: { tip: 'Propeller attack plane with rockets and napalm.', cost: 320, cooldown: 8 }
@@ -328,6 +366,11 @@ const HEAVY: Partial<Record<AircraftId, Pick<Spec, 'tip' | 'cost' | 'cooldown'>>
 		tip: 'Heavy bomber: level runs over the enemy, home to rearm.',
 		cost: 600,
 		cooldown: 16
+	},
+	su24: {
+		tip: 'Swing-wing strike jet: fast low runs with a heavy bomb load.',
+		cost: 520,
+		cooldown: 12
 	},
 	b1: { tip: 'Strategic bomber with the longest bomb load of all.', cost: 720, cooldown: 20 },
 	tu95: { tip: 'Big turboprop bomber: slow, tough, carpets a wide strip.', cost: 640, cooldown: 20 }

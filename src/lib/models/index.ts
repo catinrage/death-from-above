@@ -5,6 +5,7 @@ import { WORLD } from '../game/constants';
 import { P } from './palette';
 import * as air from './aircraft';
 import * as veh from './vehicles';
+import * as veh2 from './vehicles-modern';
 import * as inf from './infantry';
 import * as st from './structures';
 import * as nat from './nature';
@@ -16,6 +17,7 @@ import * as sp from './ordnance-special';
 import * as extra from './aircraft-extra';
 import * as boss from './bosses';
 import * as drone from './drones';
+import * as modern from './aircraft-modern';
 
 /** City blocks, shared by the building and its lit-window mesh so the panes line up. */
 const BLOCKS = {
@@ -42,6 +44,10 @@ const BUILDERS = {
 	stuka: [extra.stuka, true],
 	a1: [extra.a1, true],
 	tu95: [extra.tu95, true],
+	f22: [modern.f22, true],
+	f35: [modern.f35, true],
+	su24: [modern.su24, true],
+	su27: [modern.su27, true],
 	fpvDrone: [drone.fpvDrone, true],
 	deltaDrone: [drone.deltaDrone, true],
 	propeller: [() => air.propeller(2.1), true],
@@ -60,6 +66,12 @@ const BUILDERS = {
 	lightTankHull: [veh.lightTankHull, true],
 	lightTankTurret: [veh.lightTankTurret, true],
 	lightTankBarrel: [veh.lightTankBarrel, true],
+	ifvHull: [veh2.ifvHull, true],
+	ifvTurret: [veh2.ifvTurret, true],
+	ifvGun: [veh2.ifvGun, true],
+	tankDestroyerHull: [veh2.tankDestroyerHull, true],
+	tankDestroyerTurret: [veh2.tankDestroyerTurret, true],
+	tankDestroyerBarrel: [veh2.tankDestroyerBarrel, true],
 	rocketTruckBody: [veh.rocketTruckBody, true],
 	rocketPod: [veh.rocketPod, true],
 	spaagHull: [veh.spaagHull, true],
@@ -98,6 +110,7 @@ const BUILDERS = {
 	soldierBodyAT: [() => inf.soldierBody('rpg'), true],
 	soldierBodyMortar: [() => inf.soldierBody('mortar'), true],
 	soldierBodyMedic: [() => inf.soldierBody('medic'), true],
+	soldierBodyMG: [() => inf.soldierBody('mg'), true],
 	soldierLeg: [inf.soldierLeg, true],
 	soldierArm: [inf.soldierArm, true],
 	civBody0: [() => inf.civilianBody(P.shirtBlue, P.hair), true],

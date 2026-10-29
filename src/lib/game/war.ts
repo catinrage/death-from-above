@@ -62,6 +62,8 @@ export interface WarSetup {
 	opening?: readonly AllyKind[];
 	/** False: no reinforcements of its own (the commander sends every unit). */
 	auto?: boolean;
+	/** Command mode: we have an HQ of our own for their troops to take. */
+	ourHq?: boolean;
 }
 
 /** Where the checkpoints stand: one at each side of the river crossing and one in each half of the road. */
@@ -102,6 +104,8 @@ export function planGroup(wave: number, rng: Rng, scale = 1): AllyKind[] {
 		['lightTank', 1.6],
 		['tank', wave >= 2 ? 2 + wave * 0.15 : 0.6],
 		['apc', wave >= 2 ? 2 : 0.6],
+		['ifv', wave >= 3 ? 1.2 : 0],
+		['tankDestroyer', wave >= 2 ? 1 : 0],
 		['spaag', wave >= 4 ? 1 : 0],
 		['rocketTruck', wave >= 5 ? 0.6 : 0]
 	];
@@ -121,7 +125,8 @@ function soldier(wave: number, rng: Rng): AllyKind {
 			['medic', 1],
 			['sniper', wave >= 2 ? 0.8 : 0.3],
 			['mortar', wave >= 2 ? 1 : 0.3],
-			['manpads', wave >= 3 ? 1.2 : 0]
+			['manpads', wave >= 3 ? 1.2 : 0],
+			['mgTeam', wave >= 2 ? 1 : 0.4]
 		],
 		rng,
 		'atTrooper'
@@ -154,18 +159,37 @@ const LAYOUT: Omit<HqStructure, 'fire'>[] = [
 	{ mesh: 'tankTrap', x: 3562, z: -5, yaw: 0.7, ruin: false }
 ];
 
-/** The enemy headquarters: the objective of the war. Bombs and missiles don't touch it. */
+/** Their HQ mirrored about the bridge: the same compound, facing the other way. */
+const mirrorX = (x: number): number =>
+	(WORLD.baseMinX + WORLD.baseMaxX + WORLD.enemyBaseMinX + WORLD.enemyBaseMaxX) / 2 - x;
+const OUR_LAYOUT: Omit<HqStructure, 'fire'>[] = LAYOUT.map((s) => ({
+	...s,
+	x: mirrorX(s.x),
+	yaw: s.yaw + Math.PI
+}));
+
+/**
+ * A side's headquarters: the enemy's is the objective of the war, and in
+ * command mode we have one too. Bombs and missiles don't touch it: only
+ * troops at the wire can bring it down.
+ */
 export class EnemyHQ {
-	readonly x0 = WORLD.hqMinX;
-	readonly x1 = WORLD.hqMaxX;
 	maxHp = HQ_HP;
 	hp = HQ_HP;
 	/** Seconds since it last took fire. */
 	underAttack = 0;
 	/** Seconds since it fell (negative while standing). */
 	fallen = -1;
-	readonly structures: HqStructure[] = LAYOUT.map((s) => ({ ...s, fire: null }));
+	readonly structures: HqStructure[];
 	private fireStage = 0;
+
+	constructor(
+		readonly x0: number = WORLD.hqMinX,
+		readonly x1: number = WORLD.hqMaxX,
+		layout: readonly Omit<HqStructure, 'fire'>[] = LAYOUT
+	) {
+		this.structures = layout.map((s) => ({ ...s, fire: null }));
+	}
 
 	get destroyed(): boolean {
 		return this.hp <= 0;
@@ -239,6 +263,10 @@ export class War {
 	/** Off in training, the title demo and tests that don't start one. */
 	active = false;
 	readonly hq = new EnemyHQ();
+	/** Ours, in command mode only (see `ourHqUp`). */
+	readonly ourHq = new EnemyHQ(WORLD.ourHqMinX, WORLD.ourHqMaxX, OUR_LAYOUT);
+	/** We have an HQ for their troops to take (command mode). */
+	ourHqUp = false;
 	/** Their airfield behind the HQ, where their jets and strikes come from. */
 	readonly airfield = new EnemyAirfield();
 	checkpoints: Checkpoint[] = [];
@@ -265,6 +293,8 @@ export class War {
 		this.taken = this.lost = this.groups = 0;
 		this.hinted = false;
 		this.hq.reset(setup.hqHp ?? HQ_HP);
+		this.ourHq.reset(setup.hqHp ?? HQ_HP);
+		this.ourHqUp = !!setup.ourHq;
 		this.airfield.reset();
 		const r = w.river;
 		const layout = checkpointLayout(r ? r.x0 : null, r?.bridgeHalf);
@@ -287,6 +317,8 @@ export class War {
 		this.active = false;
 		this.checkpoints = [];
 		this.hq.reset(this.hq.maxHp);
+		this.ourHq.reset(this.ourHq.maxHp);
+		this.ourHqUp = false;
 		this.airfield.reset();
 	}
 
@@ -372,6 +404,7 @@ export class War {
 		if (!this.active) return;
 		this.capture(w, dt);
 		this.hq.update(w, dt);
+		if (this.ourHqUp) this.ourHq.update(w, dt);
 		this.airfield.update(w, dt);
 		if (this.hq.destroyed && this.hqsDestroyed === 0) this.hqFell(w);
 		this.reinforce(w, dt);

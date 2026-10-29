@@ -81,7 +81,7 @@
 		'You stay on the ground and give the orders. You fly nothing.',
 		'Your war chest fills every second, faster for each checkpoint you hold and every kill.',
 		'Spend it on troops, armour, jets and strikes. The enemy commander does the same.',
-		'It goes on until a base falls: their HQ, which only troops can destroy, or our airfield.'
+		'Each side has an HQ that only troops can destroy. It goes on until one of them falls.'
 	];
 
 	/** Set once the menu has launched or closed: its keys stay deaf while it fades out. */

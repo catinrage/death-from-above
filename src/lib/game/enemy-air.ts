@@ -3,17 +3,21 @@ import { fx as rnd } from '../engine/rng';
 import { explode } from './combat';
 import { WORLD } from './constants';
 import { AIRCRAFT } from './defs-aircraft';
-import type { BlastSpec } from './defs-bombs';
+import { BOMBS, type BlastSpec } from './defs-bombs';
 import { FlareDrill, launchMissile, spawnBullet } from './projectiles';
+import { FlatTurn } from './flat-turn';
 import { spread } from './spacing';
+import { bomberAltitude, TACTICS } from './wing-profile';
+import { dropBomb, predictImpact } from './weapons';
 import { levelOff, pullUpRoom, safeTurn } from './terrain-floor';
 import type { Player } from './player';
 import type { AircraftId, Owner, Trackable, Unit, UnitKind } from './types';
 import { nearestFriendly, type AirAlly } from './wingman';
 import type { World } from './world';
 
-/** How fast their jets turn, rad/s. */
+/** How fast their jets turn, rad/s, and the share of it a heavy bomber manages. */
 const TURN = 1.7;
+const HEAVY_TURN = 0.75;
 
 export type AirKind = 'fighter' | 'heli' | 'striker';
 
@@ -28,6 +32,10 @@ export type AirRole = 'attack' | 'sams';
 const INTERCEPT_RANGE = 900;
 /** Lowest an attack run may take a jet, and the height it waits at between runs. */
 const RUN_FLOOR = 38;
+/** Heavy bombers: how far past the target they fly before turning back, the stick they lay across it, and the gap between bombs. */
+const BOMB_OVERRUN = 260;
+const BOMB_STICK = 20;
+const BOMB_GAP = 0.09;
 const LOITER_ALT = 150;
 /** Seconds a jet runs out and climbs after a pass before it comes round again. */
 const EXTEND_TIME = 3;
@@ -37,6 +45,8 @@ const PREY_WEIGHT: Partial<Record<UnitKind, number>> = {
 	manpads: 0.45,
 	rocketTruck: 0.7,
 	tank: 0.75,
+	tankDestroyer: 0.75,
+	ifv: 0.8,
 	lightTank: 0.8
 };
 
@@ -60,6 +70,9 @@ export class AirUnit implements Trackable {
 	x: number;
 	y: number;
 	z = 0;
+	/** Turn away from the road, only during a heavy bomber's flat turn. */
+	yaw = 0;
+	private readonly flat = new FlatTurn();
 	vx = 0;
 	vy = 0;
 	angle: number;
@@ -89,6 +102,9 @@ export class AirUnit implements Trackable {
 	private trail = 0;
 	private spinRate = 0;
 	private rocketCd = 3;
+	/** Heavy bombers: seconds to the next bomb, and which way the run goes. */
+	private bombCd = 0;
+	private runDir: 1 | -1 = -1;
 	/** Pops flares at our missiles chasing it, when it sees them in time. */
 	private readonly drill = new FlareDrill();
 	/** Fly-speed factor for the airframe against the stock one for its kind. */
@@ -168,36 +184,38 @@ export class AirUnit implements Trackable {
 		if (this.y > WORLD.ceiling - 40) target = Math.cos(this.angle) >= 0 ? -0.4 : Math.PI + 0.4;
 		if (this.x < WORLD.arenaMinX + 80) target = 0.3;
 		if (this.x > WORLD.arenaMaxX + 80) target = Math.PI - 0.3;
-		const low = agl < (2 * speed) / TURN + floor;
-		const turn = safeTurn(this.angle, target, low);
-		this.angle = wrapAngle(this.angle + clamp(turn, -TURN * dt, TURN * dt));
-		this.vx = Math.cos(this.angle) * speed;
-		this.vy = Math.sin(this.angle) * speed;
-		this.x += this.vx * dt;
-		this.y += this.vy * dt;
-		// Never through the ground: skim it and level off.
-		const skim = w.surface.clearance(this.x) + 2;
-		if (this.y < skim) {
-			this.y = skim;
-			this.angle = levelOff(this.angle);
+		// Heavy bombers turn round flat and level; everything else turns in the battle plane.
+		const heavy = !!this.airframe && TACTICS[this.airframe] === 'bomber';
+		if (heavy && (this.flat.active || this.flat.wants(this.angle, target, agl))) {
+			if (!this.flat.active) this.flat.start(this);
+			this.flat.step(this, speed, TURN * HEAVY_TURN, dt);
+		} else {
+			const low = agl < (2 * speed) / TURN + floor;
+			const turn = safeTurn(this.angle, target, low);
+			this.angle = wrapAngle(this.angle + clamp(turn, -TURN * dt, TURN * dt));
 			this.vx = Math.cos(this.angle) * speed;
 			this.vy = Math.sin(this.angle) * speed;
+			this.x += this.vx * dt;
+			this.y += this.vy * dt;
+			this.z = moveToward(this.z, 0, 20 * dt);
+			// Never through the ground: skim it and level off.
+			const skim = w.surface.clearance(this.x) + 2;
+			if (this.y < skim) {
+				this.y = skim;
+				this.angle = levelOff(this.angle);
+				this.vx = Math.cos(this.angle) * speed;
+				this.vy = Math.sin(this.angle) * speed;
+			}
+			const c = Math.cos(this.angle);
+			this.roll = moveToward(this.roll, c > 0.15 ? 0 : c < -0.15 ? Math.PI : this.roll, dt * 3.5);
 		}
-		const c = Math.cos(this.angle);
-		this.roll = moveToward(this.roll, c > 0.15 ? 0 : c < -0.15 ? Math.PI : this.roll, dt * 3.5);
 		this.trail += dt;
 		if (this.trail > 0.03) {
 			this.trail = 0;
-			w.fx.exhaust(
-				this.x - c * 6,
-				this.y - Math.sin(this.angle) * 6,
-				0,
-				c,
-				Math.sin(this.angle),
-				0.4,
-				this.vx,
-				this.vy
-			);
+			// Out of the tail, whichever way it points (flat turns included).
+			const c = this.vx / Math.max(1, Math.hypot(this.vx, this.vy));
+			const sn = this.vy / Math.max(1, Math.hypot(this.vx, this.vy));
+			w.fx.exhaust(this.x - c * 6, this.y - sn * 6, this.z, c, sn, 0.4, this.vx, this.vy);
 			if (this.hp < this.maxHp * 0.5) w.fx.trail(this.x, this.y, 0, 1, 0.08, 0.7, 2, 0.2);
 		}
 	}
@@ -260,9 +278,15 @@ export class AirUnit implements Trackable {
 		if (!u) {
 			// Nothing to hit: hold over the front, turning back at each end of the beat.
 			const head = this.x < this.patrol - 250 ? 1 : this.x > this.patrol + 250 ? -1 : dir;
-			const pitch = level(w.surface.clearance(this.x) + LOITER_ALT);
+			// Heavy bombers hold at their bombing height, everything else lower down.
+			const hold =
+				this.airframe && TACTICS[this.airframe] === 'bomber'
+					? bomberAltitude(this.airframe)
+					: LOITER_ALT;
+			const pitch = level(Math.min(w.surface.clearance(this.x) + hold, WORLD.ceiling - 60));
 			return head > 0 ? pitch : Math.PI - pitch;
 		}
+		if (this.airframe && TACTICS[this.airframe] === 'bomber') return this.bombRun(w, dt, u);
 		const dx = u.x - this.x;
 		const dy = u.y + u.def.half[1] - this.y;
 		if (this.state === 'extend') {
@@ -291,6 +315,32 @@ export class AirUnit implements Trackable {
 			this.stateTime = 0;
 		}
 		return aim;
+	}
+
+	/**
+	 * A heavy bomber never dives: it runs level across the target at height,
+	 * laying bombs while they would land on it, then flies on and turns back.
+	 */
+	private bombRun(w: World, dt: number, u: Unit): number {
+		const alt = Math.min(
+			Math.max(w.ground(u.x), w.surface.clearance(this.x)) + bomberAltitude(this.airframe!),
+			WORLD.ceiling - 60
+		);
+		const pitch = clamp((alt - this.y) * 0.012, -0.3, 0.3);
+		const dx = u.x - this.x;
+		if (dx * this.runDir < -BOMB_OVERRUN) this.runDir = this.runDir > 0 ? -1 : 1;
+		this.bombCd -= dt;
+		if (this.bombCd <= 0) {
+			const hit = predictImpact(w, this.x, this.y - 2, this.vx, this.vy, BOMBS.gp.drag, null);
+			// Where the target will be when the bombs come down, with a stick straddling it.
+			const aimX = u.x + u.speed * u.dir * hit.t;
+			const along = (hit.x - aimX) * Math.sign(this.vx || 1);
+			if (along > -BOMB_STICK && along < BOMB_STICK) {
+				this.bombCd = BOMB_GAP;
+				dropBomb(w, BOMBS.gp, this.x, this.y - 2, 0, this.vx, this.vy, this.angle).owner = 'enemy';
+			}
+		}
+		return this.runDir > 0 ? pitch : Math.PI - pitch;
 	}
 
 	/** A pair of rockets at a ground unit, led by their time of flight. */

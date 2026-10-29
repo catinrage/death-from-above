@@ -12,6 +12,14 @@ import type { AircraftId, BombId } from './types';
  */
 export type WingTactic = 'fighter' | 'attack' | 'bomber' | 'gunship' | 'helo' | 'drone';
 
+/**
+ * Height a bomber flies its level runs at: the bigger the airframe, the
+ * higher, kept clear of the ceiling. Everything else runs in at 150 m.
+ */
+export function bomberAltitude(id: AircraftId): number {
+	return clamp(170 + (AIRCRAFT[id].radius - 6) * 20, 170, 270);
+}
+
 /** What an AI aircraft carries and how it flies, drawn from its airframe. */
 export interface WingProfile {
 	hp: number;
@@ -66,7 +74,11 @@ export const TACTICS: Record<AircraftId, WingTactic> = {
 	mq9: 'drone',
 	stuka: 'attack',
 	a1: 'attack',
-	tu95: 'bomber'
+	tu95: 'bomber',
+	f22: 'fighter',
+	f35: 'attack',
+	su24: 'attack',
+	su27: 'fighter'
 };
 
 export function wingProfile(id: AircraftId): WingProfile {

@@ -7,11 +7,12 @@ import type { AirUnit } from './enemy-air';
 import type { Player } from './player';
 import { FlareDrill, launchMissile, spawnBullet } from './projectiles';
 import { trackUnit } from './targeting';
+import { FlatTurn } from './flat-turn';
 import { spread } from './spacing';
 import { levelOff, pullUpRoom, safeTurn } from './terrain-floor';
 import type { AircraftId, BombId, Trackable, Unit, UnitKind } from './types';
 import { dropBomb, predictImpact } from './weapons';
-import { rackCount, type WingProfile } from './wing-profile';
+import { bomberAltitude, rackCount, type WingProfile } from './wing-profile';
 import type { World } from './world';
 
 /** What the pilot last told the wingman to do. */
@@ -63,8 +64,12 @@ const RTB_LINEUP = 130;
 /** Height and speed of the slow rearm pass over the runway. */
 const PASS_ALT = 12;
 const PASS_SPEED = 62;
-/** Bombers run in this high over the target. */
-const BOMB_ALT = 170;
+/** A target must score this much better than the current one before the jet switches to it. */
+const SWITCH_MARGIN = 0.6;
+/** Infantry is what takes the checkpoints: weighed like any vehicle when picking a target. */
+const INFANTRY_DANGER = 1;
+/** How much the jet's own distance to a target counts, next to its distance from the front. */
+const NEAR_WEIGHT = 0.3;
 /** How far past the target a bomber flies before it comes round again. */
 const BOMB_OVERRUN = 260;
 /** With nothing to do, aircraft fly a level racetrack this far either side of their station. */
@@ -178,6 +183,8 @@ export class Wingman implements AirAlly {
 	readonly profile: WingProfile;
 	/** Heading in the ground plane for aircraft that circle (gunship, drone); 0 flies along the road. */
 	yaw = 0;
+	/** Bombers swing round flat and level instead of looping over. */
+	private readonly flat = new FlatTurn();
 	/** Propeller and rotor angle. */
 	spin = 0;
 	/** Orders carried out so far (lets the tutorial notice a repeated order). */
@@ -478,8 +485,38 @@ export class Wingman implements AirAlly {
 			this.setPhase('attack');
 			return;
 		}
-		if (this.target) return;
-		this.target = this.autoTarget(w);
+		const pick = this.autoTarget(w);
+		if (!this.target) {
+			this.target = pick;
+			return;
+		}
+		// Keep the current target unless something much more pressing has turned up (new
+		// troops crossing at the front while it chases a gun far behind their lines).
+		const now = this.target.unit;
+		if (!now || !pick?.unit || pick.unit === now) return;
+		const cx = this.huntCentre(w);
+		if (this.targetScore(pick.unit, cx) < this.targetScore(now, cx) * SWITCH_MARGIN) {
+			this.target = pick;
+			this.setPhase('attack');
+		}
+	}
+
+	/** Where the jet hunts around: its leader, or the front it was sent to. */
+	private huntCentre(w: World): number {
+		const p = w.player;
+		return p && p.alive && !p.landed ? p.x : (this.patrol ?? this.x);
+	}
+
+	/**
+	 * How pressing a ground target is (lower first): close to the front and to
+	 * the jet, weighted so air defences and siege units come first.
+	 */
+	private targetScore(u: Unit, cx: number): number {
+		const danger =
+			AIR_DEFENCE[u.def.kind] ??
+			(u.def.boss || u.def.siege > 0 ? 0.8 : u.def.category === 'infantry' ? INFANTRY_DANGER : 1);
+		const dist = Math.abs(u.x - cx) + NEAR_WEIGHT * Math.abs(u.x - this.x);
+		return (dist * danger) / (1 + u.def.score / 500);
 	}
 
 	/**
@@ -487,8 +524,7 @@ export class Wingman implements AirAlly {
 	 * leader, weighted so air defences, aircraft and siege units come first.
 	 */
 	autoTarget(w: World): WingTarget | null {
-		const p = w.player;
-		const cx = p && p.alive && !p.landed ? p.x : (this.patrol ?? this.x);
+		const cx = this.huntCentre(w);
 		let best: WingTarget | null = null;
 		let bestScore = Infinity;
 		// Bombers, gunships, drones and helicopters leave enemy aircraft to the fighters.
@@ -496,7 +532,8 @@ export class Wingman implements AirAlly {
 		const airWeight = tactic === 'fighter' ? 0.5 : tactic === 'attack' ? 2.5 : Infinity;
 		for (const a of w.air) {
 			if (!a.alive || a.dying || Math.abs(a.x - cx) > HUNT_RADIUS) continue;
-			const score = Math.hypot(a.x - this.x, a.y - this.y) * airWeight;
+			const score =
+				(Math.abs(a.x - cx) + NEAR_WEIGHT * Math.hypot(a.x - this.x, a.y - this.y)) * airWeight;
 			if (score < bestScore) {
 				bestScore = score;
 				best = { unit: null, air: a };
@@ -505,10 +542,7 @@ export class Wingman implements AirAlly {
 		for (const u of w.units) {
 			if (!u.alive || !inBattlePlane(u) || Math.abs(u.x - cx) > HUNT_RADIUS) continue;
 			if (u.x < WORLD.arenaMinX || u.x > WORLD.arenaMaxX) continue;
-			const danger =
-				AIR_DEFENCE[u.def.kind] ??
-				(u.def.boss || u.def.siege > 0 ? 0.8 : u.def.category === 'infantry' ? 1.6 : 1);
-			const score = (Math.abs(u.x - this.x) * danger) / (1 + u.def.score / 500);
+			const score = this.targetScore(u, cx);
 			if (score < bestScore) {
 				bestScore = score;
 				best = { unit: u, air: null };
@@ -551,7 +585,10 @@ export class Wingman implements AirAlly {
 		if (!p || !p.alive || p.landed) {
 			// Leader is down or parked (or there is none): orbit over the patrol line or the airfield.
 			const cx = this.patrol ?? (WORLD.runwayMinX + WORLD.runwayMaxX) / 2;
-			const cy = w.ground(cx) + (this.tactic === 'bomber' ? BOMB_ALT : 130);
+			const cy = Math.min(
+				w.ground(cx) + (this.tactic === 'bomber' ? bomberAltitude(this.aircraft) : 130),
+				WORLD.ceiling - 60
+			);
 			this.speed = moveToward(this.speed, Math.min(90, this.profile.cruise), 40 * dt);
 			// Back and forth across the station at its height, turning round up and over.
 			if ((this.x - cx) * this.runDir > RACETRACK) this.runDir = -this.runDir;
@@ -688,7 +725,10 @@ export class Wingman implements AirAlly {
 	private bombRun(w: World, dt: number, u: Unit | null): number {
 		this.speed = moveToward(this.speed, this.profile.cruise, 40 * dt);
 		if (!u) return this.formation(w, dt);
-		const alt = Math.max(w.ground(u.x), w.surface.clearance(this.x)) + BOMB_ALT;
+		const alt = Math.min(
+			Math.max(w.ground(u.x), w.surface.clearance(this.x)) + bomberAltitude(this.aircraft),
+			WORLD.ceiling - 60
+		);
 		const dx = u.x - this.x;
 		if (dx * this.runDir < -BOMB_OVERRUN) this.runDir = -this.runDir;
 		this.tryBomb(w, u);
@@ -937,6 +977,14 @@ export class Wingman implements AirAlly {
 		if (this.y > WORLD.ceiling - 40) target = right ? -0.35 : Math.PI + 0.35;
 		if (this.x < WORLD.arenaMinX + 60) target = 0.3;
 		if (this.x > WORLD.arenaMaxX + 60) target = Math.PI - 0.3;
+		if (
+			this.tactic === 'bomber' &&
+			(this.flat.active || this.flat.wants(this.angle, target, agl))
+		) {
+			if (!this.flat.active) this.flat.start(this);
+			this.flat.step(this, this.speed, rate, dt);
+			return;
+		}
 		this.z = moveToward(this.z, 0, 20 * dt);
 		const low = agl < (2 * this.speed) / rate + 45;
 		this.angle = wrapAngle(

@@ -21,6 +21,9 @@ export const WORLD = {
 	/** The enemy HQ compound occupies [hqMinX, hqMaxX]; their columns form up behind it. */
 	hqMinX: 3570,
 	hqMaxX: 3760,
+	/** Our HQ in command mode: theirs mirrored about the bridge, in front of our airfield. */
+	ourHqMinX: 560,
+	ourHqMaxX: 750,
 	enemySpawnX: 3780,
 	/** The enemy airfield behind their HQ: ours mirrored, its runway pointing back at us. */
 	enemyBaseMinX: 3825,

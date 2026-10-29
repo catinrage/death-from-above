@@ -69,6 +69,9 @@ export class CommandAutopilot {
 			'jeep',
 			'apc',
 			'lightTank',
+			'ifv',
+			'tankDestroyer',
+			'mgTeam',
 			'tank',
 			'tank',
 			'aa',
@@ -95,7 +98,17 @@ export class CommandAutopilot {
 }
 
 /** The aircraft it sends up, and the funds it waits for before it does. */
-const AIRCRAFT_PICKS: readonly CommandId[] = ['f16', 'a10', 'su25', 'apache', 'ac130', 'b1', 'mq9'];
+const AIRCRAFT_PICKS: readonly CommandId[] = [
+	'f16',
+	'su27',
+	'a10',
+	'su25',
+	'su24',
+	'apache',
+	'ac130',
+	'b1',
+	'mq9'
+];
 const AIR_FUNDS = 750;
 /** Chance per decision of sending paratroopers when it can afford them. */
 const PARA_CHANCE = 0.04;

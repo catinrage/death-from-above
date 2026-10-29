@@ -25,6 +25,7 @@ import type { Player } from './player';
 import type { Unit } from './types';
 import type { Drone } from './drones';
 import type { Wingman } from './wingman';
+import type { EnemyHQ } from './war';
 import type { World } from './world';
 
 const IDENTITY = mat4.create();
@@ -239,6 +240,24 @@ export class SceneView {
 				for (const z of [-12.5, 12.5]) w.fx.immediateGlow(x, 2.4, z, 0.7, 2.5, 1.0, 0.8);
 			}
 		}
+		this.hqCompound(w, hq);
+		if (war.ourHqUp) this.hqCompound(w, war.ourHq);
+		for (const c of war.checkpoints) {
+			const y = w.terrain.heightAtXZ(c.x, CHECKPOINT_Z);
+			mat4.fromTranslation(m, c.x, y, CHECKPOINT_Z);
+			this.models.checkpointMast.push(m, this.style());
+			// The flag climbs the mast as a side takes the point, in that side's colour.
+			mat4.fromTranslation(m, c.x + 0.1, y + 1.2 + Math.abs(c.hold) * 10.6, CHECKPOINT_Z);
+			mat4.rotateY(m, m, Math.sin(time * 2.1 + c.x) * 0.18);
+			const tint = c.hold > 0.01 ? FLAG_OURS : c.hold < -0.01 ? FLAG_THEIRS : FLAG_NEUTRAL;
+			this.models.checkpointFlag.push(m, this.tinted(this.style(), tint));
+		}
+	}
+
+	/** An HQ compound, charred as it is worn down, rubble once it falls. */
+	private hqCompound(w: World, hq: EnemyHQ): void {
+		const m = this.m;
+		const damage = 1 - hq.hp / hq.maxHp;
 		for (const s of hq.structures) {
 			mat4.fromTranslation(m, s.x, w.terrain.heightAtXZ(s.x, s.z), s.z);
 			mat4.rotateY(m, m, s.yaw);
@@ -249,16 +268,6 @@ export class SceneView {
 			}
 			const char = s.fire ? 0.55 : damage * 0.3;
 			this.mesh(s.mesh).push(m, this.style(char, 0, 0, 1, 1, s.fire ? 0.5 : 0));
-		}
-		for (const c of war.checkpoints) {
-			const y = w.terrain.heightAtXZ(c.x, CHECKPOINT_Z);
-			mat4.fromTranslation(m, c.x, y, CHECKPOINT_Z);
-			this.models.checkpointMast.push(m, this.style());
-			// The flag climbs the mast as a side takes the point, in that side's colour.
-			mat4.fromTranslation(m, c.x + 0.1, y + 1.2 + Math.abs(c.hold) * 10.6, CHECKPOINT_Z);
-			mat4.rotateY(m, m, Math.sin(time * 2.1 + c.x) * 0.18);
-			const tint = c.hold > 0.01 ? FLAG_OURS : c.hold < -0.01 ? FLAG_THEIRS : FLAG_NEUTRAL;
-			this.models.checkpointFlag.push(m, this.tinted(this.style(), tint));
 		}
 	}
 
@@ -533,6 +542,7 @@ export class SceneView {
 			mat4.fromTranslation(m, a.x, a.y, a.z);
 			const st = this.style(a.dying ? 0.6 : 0, a.flash * 0.7, 0, 1, 1, a.dying ? 1 : 0);
 			if (a.kind !== 'heli') {
+				if (a.yaw !== 0) mat4.rotateY(m, m, a.yaw);
 				mat4.rotateZ(m, m, a.angle);
 				mat4.rotateX(m, m, a.roll);
 				if (a.airframe || a.kind === 'striker') {

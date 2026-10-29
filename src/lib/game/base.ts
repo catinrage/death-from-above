@@ -94,8 +94,12 @@ export class AirBase {
 
 	update(w: World, dt: number): void {
 		this.underAttack = Math.max(0, this.underAttack - dt);
+		// Their troops at the siege line wear down our HQ in command mode, else the airfield.
+		const hq = w.war.ourHqUp && !w.war.ourHq.destroyed ? w.war.ourHq : null;
 		for (const u of w.units) {
-			if (u.alive && u.state === 'siege') this.damage(w, u.def.siege * dt);
+			if (!u.alive || u.state !== 'siege') continue;
+			if (hq) hq.damage(w, u.def.siege * dt);
+			else this.damage(w, u.def.siege * dt);
 		}
 		for (const g of this.guns) aimGun(w, g, dt, 'player');
 	}

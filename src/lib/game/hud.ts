@@ -179,6 +179,8 @@ export interface HudSnapshot {
 	enemies: number;
 	/** The front line, or null outside a war (training). */
 	war: WarHud | null;
+	/** What we must keep standing: the airfield, or our HQ in command mode. */
+	home: 'airfield' | 'hq';
 	baseHp: number;
 	baseMax: number;
 	baseUnderAttack: boolean;
@@ -299,6 +301,7 @@ export function emptyHud(): HudSnapshot {
 		tutorial: null,
 		enemies: 0,
 		war: null,
+		home: 'airfield',
 		baseHp: 1,
 		baseMax: 1,
 		baseUnderAttack: false,

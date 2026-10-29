@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as extra from '../models/aircraft-extra';
+import * as modern from '../models/aircraft-modern';
 import { WORLD } from './constants';
 import { AIRCRAFT, AIRCRAFT_ORDER } from './defs-aircraft';
 import { AirUnit } from './enemy-air';
@@ -70,6 +71,16 @@ describe('new aircraft', () => {
 	it('builds a model for each of the six', () => {
 		for (const id of ['ac130', 'apache', 'mq9', 'stuka', 'a1', 'tu95'] as const) {
 			const mesh = extra[id]();
+			expect(mesh.length).toBeGreaterThan(1000);
+			expect(mesh.every(Number.isFinite)).toBe(true);
+			expect(AIRCRAFT_ORDER).toContain(id);
+			expect(AIRCRAFT[id].mesh).toBe(id);
+		}
+	});
+
+	it('builds a model for each of the modern jets', () => {
+		for (const id of ['f22', 'f35', 'su24', 'su27'] as const) {
+			const mesh = modern[id]();
 			expect(mesh.length).toBeGreaterThan(1000);
 			expect(mesh.every(Number.isFinite)).toBe(true);
 			expect(AIRCRAFT_ORDER).toContain(id);

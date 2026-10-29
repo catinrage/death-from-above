@@ -43,7 +43,11 @@ export type AircraftId =
 	| 'mq9'
 	| 'stuka'
 	| 'a1'
-	| 'tu95';
+	| 'tu95'
+	| 'f22'
+	| 'f35'
+	| 'su24'
+	| 'su27';
 
 export type UnitKind =
 	| 'rifleman'
@@ -52,11 +56,14 @@ export type UnitKind =
 	| 'atTrooper'
 	| 'mortar'
 	| 'medic'
+	| 'mgTeam'
 	| 'jeep'
 	| 'truck'
 	| 'engineer'
 	| 'tank'
 	| 'lightTank'
+	| 'ifv'
+	| 'tankDestroyer'
 	| 'rocketTruck'
 	| 'apc'
 	| 'spaag'

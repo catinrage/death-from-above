@@ -401,6 +401,18 @@ function updateShells(w: World, dt: number): void {
 			if (!air) w.fx.impact(s.x, g, s.z, 'ground', true);
 			continue;
 		}
+		if (
+			s.kind === 'artillery' &&
+			w.war.ourHqUp &&
+			s.owner === 'enemy' &&
+			s.x < WORLD.ourHqMaxX + 20
+		) {
+			// Our HQ is hardened like theirs: the shells only show; the siege itself wears it down.
+			const g = w.ground(s.x);
+			w.fx.explosion(s.x, g, s.z, 0.55, true);
+			w.sound.boom(0.6, s.x, g);
+			continue;
+		}
 		if (s.kind === 'artillery' && s.x < w.base.maxX + 20) {
 			w.base.shellHit(w, s.x, s.damage);
 			continue;

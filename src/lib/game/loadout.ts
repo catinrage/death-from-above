@@ -243,7 +243,38 @@ export const ALLOWED: Record<AircraftId, readonly BombId[]> = {
 		'cruise',
 		'thunder',
 		'nuke'
-	]
+	],
+	f22: ['gp', 'penetrator', 'guided', 'glide', 'hunter', 'arm', 'cryo', 'emp'],
+	f35: [
+		'gp',
+		'penetrator',
+		'guided',
+		'glide',
+		'hunter',
+		'arm',
+		'cryo',
+		'tesla',
+		'emp',
+		'cruise',
+		'nuke'
+	],
+	su24: [
+		'gp',
+		'rockets',
+		'gunpod',
+		'stick',
+		'frag',
+		'cluster',
+		'napalm',
+		'skip',
+		'mines',
+		'penetrator',
+		'guided',
+		'hunter',
+		'arm',
+		'chemical'
+	],
+	su27: ['gp', 'rockets', 'gunpod', 'frag', 'cluster', 'napalm', 'penetrator']
 };
 
 export function weightOf(l: Loadout): number {

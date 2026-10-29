@@ -114,13 +114,15 @@ export function updateUnits(w: World, dt: number): void {
 	for (let i = w.units.length - 1; i >= 0; i--) if (w.units[i].remove) w.units.splice(i, 1);
 }
 
-function siegeLine(u: Unit): number {
-	if (u.def.kind === 'artillery') return WORLD.baseAttackX + 480;
-	if (u.def.kind === 'rocketTruck') return WORLD.baseAttackX + 420;
-	if (u.def.kind === 'mortar') return WORLD.baseAttackX + 260;
-	if (u.def.kind === 'tank') return WORLD.baseAttackX + 70;
-	if (u.def.kind === 'superTank') return WORLD.baseAttackX + 150;
-	return WORLD.baseAttackX + u.def.half[0] * 2;
+/** Where an enemy unit stops to bombard our side: off our HQ in command mode, else off the airfield. */
+function siegeLine(w: World, u: Unit): number {
+	const at = w.war.ourHqUp ? WORLD.ourHqMaxX : WORLD.baseAttackX;
+	if (u.def.kind === 'artillery') return at + 480;
+	if (u.def.kind === 'rocketTruck') return at + 420;
+	if (u.def.kind === 'mortar') return at + 260;
+	if (u.def.kind === 'tank') return at + 70;
+	if (u.def.kind === 'superTank') return at + 150;
+	return at + u.def.half[0] * 2;
 }
 
 function move(w: World, u: Unit, dt: number): void {
@@ -139,7 +141,7 @@ function move(w: World, u: Unit, dt: number): void {
 		u.state = 'advance';
 		u.dir = -1;
 	}
-	if (u.state === 'advance' && u.x < siegeLine(u)) {
+	if (u.state === 'advance' && u.x < siegeLine(w, u)) {
 		u.state = 'siege';
 		u.stateTime = 0;
 	}
@@ -367,6 +369,7 @@ function fire(
 	}
 	if (kind === 'cannon' || kind === 'rpg') {
 		const rpg = kind === 'rpg';
+		const hunter = u.def.kind === 'tankDestroyer';
 		w.shells.push({
 			kind: 'tank',
 			x: m[0],
@@ -381,8 +384,9 @@ function fire(
 			owner: 'enemy',
 			trail: 0,
 			aimX,
-			punch: rpg ? RPG_PUNCH : u.def.kind === 'lightTank' ? LIGHT_PUNCH : undefined,
-			pierce: rpg ? RPG_PIERCE : undefined
+			// The tank destroyer's long gun goes through armour like a rocket does.
+			punch: rpg || hunter ? RPG_PUNCH : u.def.kind === 'lightTank' ? LIGHT_PUNCH : undefined,
+			pierce: rpg || hunter ? RPG_PIERCE : undefined
 		});
 		w.fx.muzzleFlash(m[0], m[1], m[2], Math.cos(a), Math.sin(a), rpg ? 1.6 : 3, [12, 6, 2]);
 		w.fx.gunSmoke(m[0], m[1], m[2], rpg ? 2 : 3.5);
@@ -508,9 +512,12 @@ function missileSite(
 	if (p && target === p) w.events.message('MISSILE LAUNCH', '', 'warn');
 }
 
-/** Units parked at the siege line bombard the airbase. */
+/** Units parked at the siege line bombard our HQ (command mode) or the airbase. */
 function siege(w: World, u: Unit, dt: number): void {
-	const tx = rnd.range(WORLD.baseMinX + 60, WORLD.baseMaxX - 20);
+	const hq = w.war.ourHqUp ? w.war.ourHq : null;
+	const tx = hq
+		? rnd.range(hq.x0 + 10, hq.x1 - 10)
+		: rnd.range(WORLD.baseMinX + 60, WORLD.baseMaxX - 20);
 	const kind = u.def.weapon;
 	const lob = kind ? LOB[kind] : undefined;
 	if (lob) {

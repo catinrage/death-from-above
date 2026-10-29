@@ -133,6 +133,25 @@ export const UNITS: Record<UnitKind, UnitDef> = {
 		boom: 0,
 		siege: 0
 	},
+	mgTeam: {
+		kind: 'mgTeam',
+		name: 'Machine Gunner',
+		hp: 16,
+		armor: 0,
+		speed: 2.7,
+		half: [0.35, 0.9, 0.35],
+		score: 22,
+		cost: 5,
+		minWave: 2,
+		isStatic: false,
+		category: 'infantry',
+		weapon: 'mg',
+		range: 320,
+		parts: soldierParts('soldierBodyMG'),
+		death: 'ragdoll',
+		boom: 0,
+		siege: 1.8
+	},
 	jeep: {
 		kind: 'jeep',
 		name: 'Gun Jeep',
@@ -243,6 +262,52 @@ export const UNITS: Record<UnitKind, UnitDef> = {
 		],
 		death: 'turretPop',
 		boom: 0.9,
+		siege: 5
+	},
+	ifv: {
+		kind: 'ifv',
+		name: 'Fighting Vehicle',
+		hp: 220,
+		armor: 0.7,
+		speed: 9,
+		half: [3.3, 1.3, 1.6],
+		score: 95,
+		cost: 21,
+		minWave: 4,
+		isStatic: false,
+		category: 'armor',
+		weapon: 'autocannon',
+		range: 440,
+		parts: [
+			{ mesh: 'ifvHull', at: [0, 0, 0] },
+			{ mesh: 'ifvTurret', at: [0.2, 2.0, 0], drive: 'yaw', detach: true },
+			{ mesh: 'ifvGun', parent: 1, at: [0.9, 0.4, 0], drive: 'pitch', detach: true }
+		],
+		death: 'turretPop',
+		boom: 1,
+		siege: 4.5
+	},
+	tankDestroyer: {
+		kind: 'tankDestroyer',
+		name: 'Tank Destroyer',
+		hp: 150,
+		armor: 0.55,
+		speed: 11,
+		half: [3.2, 1.0, 1.6],
+		score: 90,
+		cost: 19,
+		minWave: 3,
+		isStatic: false,
+		category: 'armor',
+		weapon: 'cannon',
+		range: 480,
+		parts: [
+			{ mesh: 'tankDestroyerHull', at: [0, 0, 0] },
+			{ mesh: 'tankDestroyerTurret', at: [-0.1, 1.3, 0], drive: 'yaw', detach: true },
+			{ mesh: 'tankDestroyerBarrel', parent: 1, at: [1.3, 0.3, 0], drive: 'pitch', detach: true }
+		],
+		death: 'turretPop',
+		boom: 1,
 		siege: 5
 	},
 	rocketTruck: {

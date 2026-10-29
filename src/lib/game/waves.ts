@@ -90,6 +90,8 @@ function leadFor(wave: number, rng: Rng, bias: WaveTweaks['lead'] = {}): UnitKin
 		['tank', wave >= 2 ? 3 + wave * 0.3 : 0],
 		['lightTank', wave >= 2 ? 2.2 : 0],
 		['apc', wave >= 3 ? 2.5 : 0],
+		['ifv', wave >= 4 ? 1.6 : 0],
+		['tankDestroyer', wave >= 3 ? 1.4 : 0],
 		['spaag', wave >= 2 ? 1.8 : 0],
 		['sam', wave >= 4 ? 1.2 : 0],
 		['artillery', wave >= 4 ? 1.3 : 0],
@@ -113,7 +115,8 @@ function soldierFor(wave: number, rng: Rng): UnitKind {
 			['atTrooper', wave >= 2 ? 1.2 : 0],
 			['sniper', wave >= 2 ? 0.8 : 0],
 			['mortar', wave >= 3 ? 0.9 : 0],
-			['medic', wave >= 2 ? 0.6 : 0]
+			['medic', wave >= 2 ? 0.6 : 0],
+			['mgTeam', wave >= 2 ? 1 : 0]
 		],
 		rng,
 		'rifleman'

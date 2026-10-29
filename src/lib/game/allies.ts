@@ -21,10 +21,13 @@ export type AllyKind =
 	| 'atTrooper'
 	| 'mortar'
 	| 'medic'
+	| 'mgTeam'
 	| 'jeep'
 	| 'truck'
 	| 'tank'
 	| 'lightTank'
+	| 'ifv'
+	| 'tankDestroyer'
 	| 'apc'
 	| 'spaag'
 	| 'rocketTruck'
@@ -38,10 +41,13 @@ export const ALLY_KINDS: readonly AllyKind[] = [
 	'atTrooper',
 	'mortar',
 	'medic',
+	'mgTeam',
 	'jeep',
 	'truck',
 	'tank',
 	'lightTank',
+	'ifv',
+	'tankDestroyer',
 	'apc',
 	'spaag',
 	'rocketTruck',
@@ -118,6 +124,18 @@ const GUNS: Partial<Record<AllyKind, AllyGun>> = {
 		shell: true
 	},
 	apc: { range: 380, interval: 2.4, burst: 6, gap: 0.09, damage: 7, pierce: 0.35, speed: 800 },
+	ifv: { range: 420, interval: 2.2, burst: 6, gap: 0.09, damage: 9, pierce: 0.45, speed: 900 },
+	tankDestroyer: {
+		range: 460,
+		interval: 3.8,
+		burst: 1,
+		gap: 0,
+		damage: 80,
+		pierce: 0.85,
+		speed: 520,
+		shell: true,
+		antiArmor: true
+	},
 	jeep: { range: 340, interval: 2, burst: 6, gap: 0.1, damage: 4, pierce: 0.1, speed: 600 },
 	lightTank: {
 		range: 380,
@@ -130,6 +148,7 @@ const GUNS: Partial<Record<AllyKind, AllyGun>> = {
 		shell: true
 	},
 	rifleman: { range: 280, interval: 1.8, burst: 3, gap: 0.16, damage: 2.6, pierce: 0, speed: 520 },
+	mgTeam: { range: 320, interval: 2.4, burst: 9, gap: 0.08, damage: 2.4, pierce: 0.05, speed: 700 },
 	sniper: { range: 440, interval: 4, burst: 1, gap: 0, damage: 16, pierce: 0.1, speed: 900 },
 	atTrooper: {
 		range: 300,
@@ -214,7 +233,8 @@ const HP: Partial<Record<AllyKind, number>> = {
 	sniper: 16,
 	atTrooper: 20,
 	mortar: 20,
-	medic: 18
+	medic: 18,
+	mgTeam: 24
 };
 
 const DEFS = {} as Record<AllyKind, UnitDef>;

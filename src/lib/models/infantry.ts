@@ -2,7 +2,7 @@ import { MeshBuilder, type Material } from '../engine/mesh-builder';
 import { P } from './palette';
 
 /** What a soldier carries, which sets his role at a glance. */
-export type SoldierKit = 'rifle' | 'launcher' | 'sniper' | 'rpg' | 'mortar' | 'medic';
+export type SoldierKit = 'rifle' | 'launcher' | 'sniper' | 'rpg' | 'mortar' | 'medic' | 'mg';
 
 /** Torso, head and kit. Origin at the feet; hips at y = 0.95. */
 export function soldierBody(kit: SoldierKit): Float32Array {
@@ -52,6 +52,15 @@ export function soldierBody(kit: SoldierKit): Float32Array {
 			b.box(0.05, 0.22, 0.07, P.red, -0.38, 1.3, 0);
 			b.box(0.05, 0.07, 0.22, P.red, -0.38, 1.3, 0);
 			b.box(0.12, 0.08, 0.14, P.shirtCream, 0.02, 1.42, 0.3);
+			break;
+		case 'mg':
+			// A belt-fed machine gun at the hip, its bipod folded, an ammo can on the back.
+			b.push().translate(0.25, 1.2, 0.27).rotateZ(0.08);
+			b.box(1.3, 0.12, 0.1, P.gunMetal);
+			b.box(0.3, 0.2, 0.14, P.gunMetal, -0.15, -0.05, 0);
+			b.box(0.08, 0.28, 0.06, P.armyDark, 0.45, -0.18, 0);
+			b.pop();
+			b.box(0.28, 0.3, 0.3, P.armyDark, -0.3, 1.18, -0.2);
 			break;
 		default:
 			b.push().translate(0.2, 1.25, 0.26).rotateZ(0.55).box(0.95, 0.07, 0.06, P.rifle).pop();

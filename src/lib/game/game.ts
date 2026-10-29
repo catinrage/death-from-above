@@ -563,7 +563,8 @@ export class Game {
 			this.mode !== 'tutorial' ? { tweaks: warTweaks, rolling: true, quietStart: true } : {}
 		);
 		// Training has no war in it: just the lessons' targets.
-		if (this.mode !== 'tutorial') w.war.start(w, { hqHp: HQ_HP, auto: !command }, seed);
+		if (this.mode !== 'tutorial')
+			w.war.start(w, { hqHp: HQ_HP, auto: !command, ourHq: command }, seed);
 		if (command) {
 			// The enemy commander buys their whole army, as we buy ours: no waves.
 			this.difficulty = (start.mode === 'command' && start.difficulty) || DEFAULT_DIFFICULTY;
@@ -1125,7 +1126,10 @@ export class Game {
 			if (sq.allOut()) return this.gameOver('All aircraft lost');
 			this.launchWingman();
 		}
-		if (w.base.hp <= 0) return this.gameOver('The airfield has fallen');
+		// In command mode each side has an HQ, and that is what falls; otherwise the airfield.
+		if (w.war.ourHqUp) {
+			if (w.war.ourHq.destroyed) return this.gameOver('Our HQ has fallen');
+		} else if (w.base.hp <= 0) return this.gameOver('The airfield has fallen');
 		if (this.waves.cleared > this.wavesScored) {
 			this.wavesScored = this.waves.cleared;
 			const bonus = waveBonus(this.waves.difficulty(), w.base.hp / w.base.maxHp);
@@ -1461,6 +1465,10 @@ export class Game {
 			out.push({ x: s[0], y: s[1], label, enemy });
 		};
 		add(307.5, -34, 24, 'OUR AIRFIELD', false);
+		if (w.war.ourHqUp) {
+			const ours = w.war.ourHq;
+			add((ours.x0 + ours.x1) / 2, -26, 26, ours.destroyed ? 'OUR HQ · DOWN' : 'OUR HQ', false);
+		}
 		if (w.war.active) {
 			add((hq.x0 + hq.x1) / 2, -26, 26, hq.destroyed ? 'ENEMY HQ · DOWN' : 'ENEMY HQ', true);
 			add(WORLD.enemyBaseMaxX + WORLD.baseMinX - 307.5, -27, 24, 'ENEMY AIRFIELD', true);
@@ -1687,9 +1695,10 @@ export class Game {
 			tutorial: this.tutorial?.card() ?? null,
 			enemies: this.waves.remaining(w),
 			war: warStatus(w),
-			baseHp: w.base.hp,
-			baseMax: w.base.maxHp,
-			baseUnderAttack: w.base.underAttack > 0,
+			home: w.war.ourHqUp ? 'hq' : 'airfield',
+			baseHp: w.war.ourHqUp ? w.war.ourHq.hp : w.base.hp,
+			baseMax: w.war.ourHqUp ? w.war.ourHq.maxHp : w.base.maxHp,
+			baseUnderAttack: (w.war.ourHqUp ? w.war.ourHq.underAttack : w.base.underAttack) > 0,
 			altitude: p ? Math.max(0, p.y - g) : 0,
 			speed: p ? p.speed * 3.6 : 0,
 			lives: this.squadron.lives,
@@ -1798,7 +1807,7 @@ const REFUSAL: Record<string, [string, string]> = {
 /** What the commander is told as the battle opens. */
 const COMMAND_BRIEF = {
 	text: 'YOU HAVE COMMAND',
-	sub: 'Spend the war chest on troops, armour, jets and strikes. Get our troops to the enemy HQ at the far end: only they can bring it down. Keep the airfield standing.'
+	sub: 'Spend the war chest on troops, armour, jets and strikes. Get our troops to the enemy HQ at the far end: only they can bring it down. Keep their troops off our HQ.'
 };
 
 /** What a new pilot is told as the battle opens: the whole game in two lines. */

@@ -19,7 +19,7 @@ export function wheel(radius = 0.5, width = 0.36): Float32Array {
 	return b.build();
 }
 
-function trackRun(
+export function trackRun(
 	b: MeshBuilder,
 	profile: readonly P2[],
 	wheelXs: number[],

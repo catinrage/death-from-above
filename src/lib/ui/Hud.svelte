@@ -20,6 +20,8 @@
 	] as const;
 	const systemsHit = $derived(SYSTEM_TAGS.some((s) => hud.systems[s.id] > 0));
 	const baseFrac = $derived(Math.max(0, hud.baseHp / hud.baseMax));
+	/** What we are defending: our HQ in command mode, the airfield otherwise. */
+	const homeName = $derived(hud.home === 'hq' ? 'OUR HQ' : 'AIRFIELD');
 	const heatFrac = $derived(Math.min(1, hud.heat / 100));
 	const ORDER_TAG = { cover: 'CVR', attack: 'ATK', sams: 'SAM', rearm: 'RTB' } as const;
 	const GEAR_TAG = { down: 'DOWN', up: 'UP', transit: 'TRANSIT', none: '' } as const;
@@ -79,7 +81,13 @@
 			</span>
 		</div>
 		<div class="base" class:alert={hud.baseUnderAttack}>
-			<span class="lbl">{hud.baseUnderAttack ? 'AIRFIELD UNDER FIRE' : 'AIRFIELD'}</span>
+			<span class="lbl"
+				>{homeName}{hud.baseUnderAttack
+					? hud.home === 'hq'
+						? ' UNDER SIEGE'
+						: ' UNDER FIRE'
+					: ''}</span
+			>
 			<span class="track">
 				<span class="fill" style:transform="scaleX({baseFrac})" class:low={baseFrac < 0.35}></span>
 			</span>
@@ -88,7 +96,9 @@
 		{#if hud.war}
 			{@const war = hud.war}
 			<div class="front" aria-label="Front line">
-				<span class="end ours" title="Our airfield">AIRFIELD</span>
+				<span class="end ours" title={hud.home === 'hq' ? 'Our HQ' : 'Our airfield'}
+					>{homeName}</span
+				>
 				<span class="road">
 					{#each war.points as c (c.name)}
 						<i
