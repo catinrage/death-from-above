@@ -7,7 +7,7 @@ import { launchMissile, spawnBullet } from './projectiles';
 import type { Player } from './player';
 import type { Owner, Unit, WeaponKind } from './types';
 import { muzzlePoint } from './unit-pose';
-import { nearestFriendly, type Wingman } from './wingman';
+import { nearestFriendly, type AirAlly } from './wingman';
 import { CLOSE, CREEP, tend } from './allies';
 import { MARCH } from './war';
 import type { World } from './world';
@@ -459,7 +459,7 @@ function missileSite(
 	u: Unit,
 	dt: number,
 	spec: EnemyWeapon,
-	target: Player | Wingman,
+	target: Player | AirAlly,
 	ox: number,
 	oy: number
 ): void {

@@ -15,6 +15,7 @@ import * as real from './aircraft-real';
 import * as sp from './ordnance-special';
 import * as extra from './aircraft-extra';
 import * as boss from './bosses';
+import * as drone from './drones';
 
 /** City blocks, shared by the building and its lit-window mesh so the panes line up. */
 const BLOCKS = {
@@ -41,6 +42,8 @@ const BUILDERS = {
 	stuka: [extra.stuka, true],
 	a1: [extra.a1, true],
 	tu95: [extra.tu95, true],
+	fpvDrone: [drone.fpvDrone, true],
+	deltaDrone: [drone.deltaDrone, true],
 	propeller: [() => air.propeller(2.1), true],
 	enemyFighter: [air.enemyFighter, true],
 	heliBody: [air.helicopterBody, true],

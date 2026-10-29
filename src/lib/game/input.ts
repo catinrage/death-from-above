@@ -34,6 +34,8 @@ const STICK_SPEED = 1100;
 
 /** CSS px from the left or right screen edge where a resting mouse scrolls the commander's map. */
 const EDGE_SCROLL = 18;
+/** CSS px the mouse has to move with a button down before it counts as a drag, not a click. */
+const DRAG_START = 5;
 
 /** One frame of the commander's controls. */
 export interface CommandInput {
@@ -45,10 +47,15 @@ export interface CommandInput {
 	wheel: number;
 	/** Shift held: pan faster. */
 	fast: boolean;
-	/** Left click on the battlefield this frame. */
+	/** Left click on the battlefield this frame (released without dragging). */
 	click: boolean;
 	/** Right click or Backspace: put the strike away. */
 	cancel: boolean;
+	/** CSS px the map was dragged this frame (any mouse button), and whether a drag is under way. */
+	dragX: number;
+	dragging: boolean;
+	/** -1 or 1: Q / E (or Tab) flipped the order bar to the previous or next page. */
+	tab: number;
 	/** Space: jump the view to the front line. */
 	front: boolean;
 	/** Mouse position in CSS px (-1 before it has moved). */
@@ -146,6 +153,13 @@ export class Input {
 	private readonly pad2 = new Pad();
 	private mouseX = -1;
 	private mouseY = -1;
+	/** Mouse buttons let go this frame without a drag (command mode clicks). */
+	private readonly clicked = new Set<string>();
+	/** Where the button went down, whether it has turned into a drag, and the drag not yet read. */
+	private dragFromX = 0;
+	private dragFromY = 0;
+	private dragging = false;
+	private dragDX = 0;
 	private pointerTime = -Infinity;
 	private stickX = -1;
 	private stickY = -1;
@@ -173,9 +187,17 @@ export class Input {
 		if (!this.down.has(code)) this.pressed.add(code);
 		this.down.add(code);
 		if (e.button === 1) e.preventDefault();
+		this.dragFromX = e.clientX;
+		this.dragFromY = e.clientY;
+		this.dragging = false;
 		this.onPointer(e);
 	};
 	private readonly onPointer = (e: MouseEvent): void => {
+		if (this.buttonDown() && this.mouseX >= 0) {
+			if (Math.hypot(e.clientX - this.dragFromX, e.clientY - this.dragFromY) > DRAG_START)
+				this.dragging = true;
+			if (this.dragging) this.dragDX += e.clientX - this.mouseX;
+		}
 		this.mouseX = e.clientX;
 		this.mouseY = e.clientY;
 		// Only mouse use in flight takes over aiming, not clicking through menus.
@@ -184,11 +206,19 @@ export class Input {
 		this.stickX = -1;
 	};
 	private readonly onMouseUp = (e: MouseEvent): void => {
-		this.down.delete(`Mouse${e.button}`);
+		const code = `Mouse${e.button}`;
+		if (this.down.has(code) && !this.dragging) this.clicked.add(code);
+		this.down.delete(code);
+		if (!this.buttonDown()) this.dragging = false;
 	};
 	private readonly onBlur = (): void => {
 		this.down.clear();
+		this.dragging = false;
 	};
+
+	private buttonDown(): boolean {
+		return this.down.has('Mouse0') || this.down.has('Mouse1') || this.down.has('Mouse2');
+	}
 	private readonly onContext = (e: Event): void => e.preventDefault();
 	/** Scroll accumulated toward the next weapon switch, and switches waiting to be read. */
 	private wheelAcc = 0;
@@ -326,9 +356,10 @@ export class Input {
 	}
 
 	/**
-	 * The commander's controls: panning (A/D, arrows, the screen edges or the
-	 * left stick), zoom (wheel, W/S, the right stick), a left click on the
-	 * battlefield, and right click to cancel aiming.
+	 * The commander's controls: panning (dragging with any mouse button, A/D,
+	 * arrows, the screen edges or the left stick), zoom (wheel, W/S, the right
+	 * stick), a left click on the battlefield, right click to cancel aiming, and
+	 * Q / E / Tab to page through the order bar.
 	 */
 	command(cssW: number): CommandInput {
 		let pan = 0,
@@ -341,7 +372,7 @@ export class Input {
 		if (Math.abs(ax) > 0.25) pan = ax;
 		if (Math.abs(ry) > 0.25) zoom = ry;
 		// Resting the mouse on the left or right edge scrolls the map.
-		if (pan === 0 && this.mouseX >= 0 && this.mouseY >= 0) {
+		if (pan === 0 && !this.dragging && this.mouseX >= 0 && this.mouseY >= 0) {
 			if (this.mouseX < EDGE_SCROLL) pan = -1;
 			else if (this.mouseX > cssW - EDGE_SCROLL) pan = 1;
 		}
@@ -349,13 +380,21 @@ export class Input {
 		this.wheelSteps = 0;
 		const keys: string[] = [];
 		for (const code of this.pressed) keys.push(code);
+		const dragX = this.dragDX;
+		this.dragDX = 0;
+		let tab = 0;
+		if (this.pressed.has('KeyQ') || this.pad.pressed(PAD.lb)) tab = -1;
+		if (this.pressed.has('KeyE') || this.pressed.has('Tab') || this.pad.pressed(PAD.rb)) tab = 1;
 		return {
 			pan,
 			zoom,
 			wheel,
 			fast: this.any(BOOST),
-			click: this.pressed.has('Mouse0'),
-			cancel: this.pressed.has('Mouse2') || this.pressed.has('Backspace'),
+			click: this.clicked.has('Mouse0'),
+			cancel: this.clicked.has('Mouse2') || this.pressed.has('Backspace'),
+			dragX,
+			dragging: this.dragging,
+			tab,
 			front: this.pressed.has('Space') || this.pad.pressed(PAD.y),
 			x: this.mouseX,
 			y: this.mouseY,
@@ -411,5 +450,6 @@ export class Input {
 
 	endFrame(): void {
 		this.pressed.clear();
+		this.clicked.clear();
 	}
 }

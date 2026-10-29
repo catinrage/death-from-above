@@ -18,6 +18,10 @@ export interface TargetingView {
 	foes: AllyMarker[];
 	/** Command mode: name boards over both airfields and the enemy HQ. */
 	places: PlaceTag[];
+	/** A marker over each aircraft in shot: ours in blue, theirs in red (command mode). */
+	planes: PlaneMarker[];
+	/** Command mode: time to impact by the strike being aimed, and over each one on its way. */
+	strikes: StrikeLabel[];
 }
 
 export interface PlaceTag {
@@ -26,6 +30,24 @@ export interface PlaceTag {
 	label: string;
 	/** Theirs (red) or ours (blue). */
 	enemy: boolean;
+}
+
+export interface PlaneMarker {
+	x: number;
+	y: number;
+	foe: boolean;
+	/** A drone: drawn smaller. */
+	small: boolean;
+	hurt: boolean;
+}
+
+export interface StrikeLabel {
+	/** Where the strike lands, in CSS px. */
+	x: number;
+	y: number;
+	text: string;
+	/** The strike being aimed (as opposed to one already on its way). */
+	aim: boolean;
 }
 
 export interface AllyMarker {
@@ -68,6 +90,9 @@ const PILOT_SLOTS = 2;
 export const ALLY_SLOTS = 40;
 export const FOE_SLOTS = 60;
 const PLACE_SLOTS = 3;
+/** Every aircraft, ours and theirs, and a swarm or two of drones. */
+export const PLANE_SLOTS = 48;
+export const STRIKE_SLOTS = 12;
 
 /** DOM overlay for the aiming reticle, the target under it and painted locks. */
 export class TargetingLayer {
@@ -80,12 +105,16 @@ export class TargetingLayer {
 	private readonly allies: HTMLDivElement[] = [];
 	private readonly foes: HTMLDivElement[] = [];
 	private readonly places: HTMLDivElement[] = [];
+	private readonly planes: HTMLDivElement[] = [];
+	private readonly strikes: HTMLDivElement[] = [];
 
 	constructor(private readonly root: HTMLElement) {
 		// First, so the reticle and lock boxes draw over them.
 		for (let i = 0; i < ALLY_SLOTS; i++) this.allies.push(this.el('tl-ally', ''));
 		for (let i = 0; i < FOE_SLOTS; i++) this.foes.push(this.el('tl-foe', ''));
 		for (let i = 0; i < PLACE_SLOTS; i++) this.places.push(this.el('tl-place', ''));
+		for (let i = 0; i < PLANE_SLOTS; i++) this.planes.push(this.el('tl-plane', ''));
+		for (let i = 0; i < STRIKE_SLOTS; i++) this.strikes.push(this.el('tl-strike', ''));
 		this.reticle = this.el(
 			'tl-reticle',
 			'<i class="ring"></i><i class="ticks"></i><i class="dot"></i>'
@@ -197,6 +226,28 @@ export class TargetingLayer {
 			this.place(el, t.x, t.y);
 			el.classList.toggle('enemy', t.enemy);
 			if (el.textContent !== t.label) el.textContent = t.label;
+		}
+		for (let i = 0; i < PLANE_SLOTS; i++) {
+			const el = this.planes[i];
+			const p = v.planes[i];
+			if (!p) {
+				el.style.display = 'none';
+				continue;
+			}
+			this.place(el, p.x, p.y);
+			const cls = `tl-plane${p.foe ? ' foe' : ''}${p.small ? ' small' : ''}${p.hurt ? ' hurt' : ''}`;
+			if (el.className !== cls) el.className = cls;
+		}
+		for (let i = 0; i < STRIKE_SLOTS; i++) {
+			const el = this.strikes[i];
+			const t = v.strikes[i];
+			if (!t) {
+				el.style.display = 'none';
+				continue;
+			}
+			this.place(el, t.x, t.y);
+			el.classList.toggle('aim', t.aim);
+			if (el.textContent !== t.text) el.textContent = t.text;
 		}
 	}
 }

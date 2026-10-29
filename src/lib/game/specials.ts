@@ -41,10 +41,10 @@ export interface Strike {
 	life?: number;
 }
 
-const CRUISE_SPEED = 150;
+export const CRUISE_SPEED = 150;
 const CRUISE_ALT = 14;
 const BALLISTIC_DELAY = 2.6;
-const BALLISTIC_SPEED = 430;
+export const BALLISTIC_SPEED = 430;
 
 /** A fixed spot on the battle line. */
 export function groundPoint(w: World, x: number): Trackable {

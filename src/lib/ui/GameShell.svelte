@@ -270,6 +270,7 @@
 				command={hud.command}
 				noFire={hud.noFire}
 				onOrder={(id) => game?.commandSelect(id)}
+				onTab={(tab) => game?.commandTabSelect(tab)}
 			/>
 		{/if}
 	{/if}
@@ -663,6 +664,82 @@
 	.targeting :global(.tl-place.enemy) {
 		color: #1f0602;
 		background: #ff6a4a;
+	}
+
+	/* Aircraft: a hollow diamond over each, blue for ours and red for theirs. */
+	.targeting :global(.tl-plane) {
+		--c: #6cc0ff;
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 15px;
+		height: 15px;
+		translate: -50% -100%;
+		clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+		/* The dark rim, so it reads against sky, snow and smoke alike. */
+		background: rgba(0, 8, 20, 0.85);
+		pointer-events: none;
+		opacity: 0.95;
+	}
+
+	.targeting :global(.tl-plane::before),
+	.targeting :global(.tl-plane::after) {
+		content: '';
+		position: absolute;
+		clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+	}
+
+	.targeting :global(.tl-plane::before) {
+		inset: 1.5px;
+		background: var(--c);
+	}
+
+	.targeting :global(.tl-plane::after) {
+		inset: 5px;
+		background: rgba(0, 8, 20, 0.85);
+	}
+
+	.targeting :global(.tl-plane.foe) {
+		--c: #ff5a3c;
+	}
+
+	/* Drones: a small solid diamond of the same colour. */
+	.targeting :global(.tl-plane.small) {
+		width: 8px;
+		height: 8px;
+		opacity: 0.85;
+	}
+
+	.targeting :global(.tl-plane.small::after) {
+		display: none;
+	}
+
+	.targeting :global(.tl-plane.hurt) {
+		animation: tl-threat 0.4s ease-in-out infinite alternate;
+	}
+
+	/* Command mode: time to impact by the strike ring, and over each strike on its way. */
+	.targeting :global(.tl-strike) {
+		position: absolute;
+		left: 0;
+		top: 0;
+		translate: -50% 10px;
+		padding: 1px 6px;
+		font-family: var(--display);
+		font-size: 12px;
+		letter-spacing: 0.08em;
+		white-space: nowrap;
+		color: #ffb27a;
+		background: rgba(20, 8, 4, 0.6);
+		text-shadow: 0 1px 2px #000;
+		pointer-events: none;
+	}
+
+	.targeting :global(.tl-strike.aim) {
+		color: #ffe0b0;
+		font-size: 13px;
+		background: rgba(40, 14, 4, 0.75);
+		border-bottom: 1px solid #ff9a6a;
 	}
 
 	/* Badly hurt: it blinks. */
