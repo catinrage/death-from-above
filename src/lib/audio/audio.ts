@@ -1,6 +1,7 @@
 import type { SfxId, SoundSink } from '../game/world';
 import { outdoorImpulse } from './blast';
 import { BoomBank, softClipCurve, synthBoom, type BoomContext } from './boom';
+import { EngineChorus, type EngineView, type EngineVoiceSource } from './engines';
 import { ALERTS, ALERT_ORDER, Announcer, type Alert, type AlertState } from './cockpit';
 import { RADIO, RADIO_CUES, RECORDED, RadioDesk, type RadioCue, type Transmission } from './radio';
 
@@ -71,6 +72,8 @@ export class AudioEngine implements SoundSink {
 	private boomGraph: BoomContext | null = null;
 	/** Pitch multiplier for world sounds (below 1 in slow motion). */
 	private pitchWarp = 1;
+	/** Engines of the AI aircraft in view. */
+	private engines: EngineChorus | null = null;
 	private booms = 0;
 	/** Booms requested in the current audio tick (one blast can kill a crowd at once). */
 	private tickBooms = 0;
@@ -179,6 +182,7 @@ export class AudioEngine implements SoundSink {
 			bank: new BoomBank(ctx)
 		};
 		this.boomGraph.bank.warm();
+		this.engines = new EngineChorus(ctx, this.bus, this.send, this.white, this.brown);
 		this.startEngine();
 		this.startAmbience();
 		this.loadVoices();
@@ -426,6 +430,12 @@ export class AudioEngine implements SoundSink {
 		this.booms++;
 		this.tickBooms++;
 		setTimeout(() => (this.booms = Math.max(0, this.booms - 1)), life * 1000);
+	}
+
+	/** Called every frame with the AI aircraft flying and what the camera shows; pass none to fade them out. */
+	aircraft(sources: readonly EngineVoiceSource[], view: EngineView): void {
+		if (!this.engines || this.ctx?.state !== 'running') return;
+		this.engines.update(sources, view, this.pitchWarp);
 	}
 
 	/** Slows the soundscape with the world: deeper pitch and a muffling low-pass. */
@@ -1092,6 +1102,7 @@ export class AudioEngine implements SoundSink {
 		const ctx = this.ctx;
 		this.ctx = null;
 		this.engineNodes = null;
+		this.engines = null;
 		if (ctx) void ctx.close();
 	}
 }
