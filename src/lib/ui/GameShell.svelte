@@ -572,6 +572,41 @@
 		color: #04170e;
 	}
 
+	/* Our own ground units: a small blue chevron pointing down at each one. */
+	.targeting :global(.tl-ally) {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 16px;
+		height: 12px;
+		translate: -50% -100%;
+		opacity: 0.95;
+		pointer-events: none;
+	}
+
+	.targeting :global(.tl-ally::before),
+	.targeting :global(.tl-ally::after) {
+		content: '';
+		position: absolute;
+		inset: 0;
+		clip-path: polygon(0 0, 50% 45%, 100% 0, 100% 38%, 50% 100%, 0 38%);
+	}
+
+	/* A dark rim so it reads against sky, snow and smoke alike. */
+	.targeting :global(.tl-ally::before) {
+		background: rgba(0, 8, 20, 0.85);
+	}
+
+	.targeting :global(.tl-ally::after) {
+		inset: 2px 2.5px 3px;
+		background: #6cc0ff;
+	}
+
+	/* Badly hurt: it blinks. */
+	.targeting :global(.tl-ally.hurt) {
+		animation: tl-threat 0.4s ease-in-out infinite alternate;
+	}
+
 	.targeting :global(.tl-pilot.off) {
 		translate: -50% -50%;
 		clip-path: none;

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { explode } from './combat';
+import { BOMBS } from './defs-bombs';
+import { spawnBullet, updateProjectiles } from './projectiles';
 import { simulateWorld } from './simulate';
+import { applyFireDamage } from './weapons';
 import { testWorld } from './test-world';
 import type { World } from './world';
 
@@ -86,5 +90,79 @@ describe('friendly column', () => {
 		w.allies.list[0].hp = 0;
 		run(w, 0.1);
 		expect(credited).toEqual(['enemy']);
+	});
+});
+
+describe('friendly fire', () => {
+	const round = (w: World, x: number, y: number, aircraft: boolean) =>
+		spawnBullet(w, {
+			x,
+			y,
+			z: 0,
+			vx: 700,
+			vy: 0,
+			life: 1,
+			damage: 20,
+			pierce: 0.2,
+			owner: 'player',
+			tracer: true,
+			color: [1, 1, 1],
+			size: 0.2,
+			explosive: 0,
+			aircraft
+		});
+
+	it("the player's guns hit our own troops", () => {
+		const w = testWorld();
+		w.allies.deploy(w, ['truck']);
+		const truck = w.allies.list[0];
+		truck.x = 1500;
+		truck.y = w.ground(1500);
+		round(w, 1450, truck.y + 1.2, true);
+		for (let i = 0; i < 10; i++) updateProjectiles(w, 1 / 60);
+		expect(truck.hp).toBeLessThan(truck.def.hp);
+		expect(w.bullets.length).toBe(0);
+	});
+
+	it('our own ground guns still shoot past their column', () => {
+		const w = testWorld();
+		w.allies.deploy(w, ['truck']);
+		const truck = w.allies.list[0];
+		truck.x = 1500;
+		truck.y = w.ground(1500);
+		round(w, 1450, truck.y + 1.2, false);
+		for (let i = 0; i < 10; i++) updateProjectiles(w, 1 / 60);
+		expect(truck.hp).toBe(truck.def.hp);
+	});
+
+	it('a bomb on our own squad is called out as friendly fire', () => {
+		const w = testWorld();
+		const said: string[] = [];
+		const message = w.events.message.bind(w.events);
+		w.events.message = (text, sub, tone) => {
+			said.push(text);
+			message(text, sub, tone);
+		};
+		w.allies.deploy(w, ['rifleman', 'rifleman', 'rifleman']);
+		for (const u of w.allies.list) {
+			u.x = 1500;
+			u.y = w.ground(1500);
+		}
+		explode(w, 1500, w.ground(1500), 0, BOMBS.gp.blast, 'player');
+		simulateWorld(w, DT, null);
+		expect(w.allies.friendlyKills).toBe(3);
+		// One warning for the whole squad.
+		expect(said.filter((s) => s === 'FRIENDLY FIRE')).toHaveLength(1);
+	});
+
+	it('napalm burns our own troops', () => {
+		const w = testWorld();
+		w.allies.deploy(w, ['rifleman']);
+		const u = w.allies.list[0];
+		u.x = 1500;
+		u.y = w.ground(1500);
+		w.fires.add(1500, u.y, 0, 2, 10, { radius: 6, dps: 34, ours: true });
+		applyFireDamage(w, 0.5);
+		expect(u.hp).toBeLessThan(u.def.hp);
 	});
 });

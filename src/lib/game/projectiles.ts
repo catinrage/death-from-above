@@ -30,6 +30,8 @@ export interface Bullet {
 	 * only meet the ground near their target.
 	 */
 	aimX?: number;
+	/** Fired from the player's aircraft: friendly fire, so it strikes our own troops too. */
+	aircraft?: boolean;
 }
 
 /** How far short of its aim point a ground-to-ground round can strike the ground. */
@@ -189,10 +191,26 @@ function bulletHitsPlayerSide(w: World, b: Bullet, x0: number, y0: number): bool
 			return true;
 		}
 	}
-	if (best > 1) return w.civilians.bulletHit(w, x0, y0, b.x, b.y, b.damage);
+	// Friendly fire: our own column is in the way of the player's guns too.
+	const ally = b.aircraft ? w.allies.firstHit(x0, y0, b.x, b.y, 0.25) : null;
+	if (ally && ally.t < best) {
+		best = ally.t;
+		unit = null;
+		airHit = null;
+	}
+	if (best > 1) {
+		if (b.aircraft && w.troops.bulletHit(x0, y0, b.x, b.y, b.damage)) {
+			w.fx.impact(b.x, b.y, b.z, 'soft');
+			return true;
+		}
+		return w.civilians.bulletHit(w, x0, y0, b.x, b.y, b.damage);
+	}
 	const hx = x0 + (b.x - x0) * best,
 		hy = y0 + (b.y - y0) * best;
-	if (unit) {
+	if (ally && !unit && !airHit) {
+		w.allies.hit(ally.unit, b.damage, b.pierce, true);
+		w.fx.impact(hx, hy, ally.unit.z, ally.unit.def.category === 'infantry' ? 'soft' : 'metal');
+	} else if (unit) {
 		const soft = unit.def.category === 'infantry';
 		damageUnit(w, unit, b.damage, b.pierce, 'player', x0, 'bullet');
 		w.fx.impact(hx, hy, unit.z, soft ? 'soft' : 'metal', b.explosive > 0);
@@ -209,6 +227,7 @@ function bulletHitsPlayerSide(w: World, b: Bullet, x0: number, y0: number): bool
 			}
 		}
 		w.civilians.blast(w, hx, hy, unit?.z ?? 0, b.explosive, b.damage * 0.4, 'player');
+		if (b.aircraft) w.allies.blast(hx, hy, b.explosive, b.damage * 0.4, b.pierce, true);
 	}
 	return true;
 }
@@ -385,7 +404,9 @@ function updateShells(w: World, dt: number): void {
 		// Enemy shells don't hurt their own side, but they do hurt the friendly column.
 		if (s.owner === 'enemy') w.allies.blast(s.x, by, spec.radius, spec.damage, spec.pierce);
 		explode(w, s.x, by, s.z, { ...spec, damage: s.owner === 'enemy' ? 0 : spec.damage }, s.owner, {
-			playerScale: 0
+			playerScale: 0,
+			// Our tanks and mortars, not the player.
+			fromAircraft: false
 		});
 	}
 }
@@ -398,6 +419,9 @@ function ffarHit(w: World, s: Shell, x0: number, y0: number): boolean {
 		const t = segmentVsUnit(u, x0, y0, s.x, s.y, 0.4);
 		if (t >= 0 && t < best) best = t;
 	}
+	// They burst on our own troops just the same.
+	const ally = w.allies.firstHit(x0, y0, s.x, s.y, 0.4);
+	if (ally && ally.t < best) best = ally.t;
 	for (const a of w.air) {
 		if (!a.alive) continue;
 		const t = segmentVsCircle(x0, y0, s.x, s.y, a.x, a.y, a.radius);

@@ -137,6 +137,11 @@ export interface ExplodeOptions {
 	playerScale?: number;
 	/** Extra camera shake. */
 	shake?: number;
+	/**
+	 * The player's own ordnance, so troops of ours caught in it count as
+	 * friendly fire. Defaults to any player-side blast; our ground guns pass false.
+	 */
+	fromAircraft?: boolean;
 }
 
 /** Applies a blast: damage, impulses, craters, scenery destruction and effects. */
@@ -220,7 +225,7 @@ export function explode(
 	w.railBridge?.blast(w, x, y, z, r, b.damage, b.pierce, by);
 	w.railway?.blast(w, x, y, r, b.damage, b.pierce, by);
 	w.troops.blast(x, y, r, b.damage * 0.6);
-	w.allies.blast(x, y, r, b.damage, b.pierce);
+	w.allies.blast(x, y, r, b.damage, b.pierce, o.fromAircraft ?? by === 'player');
 	w.debris.impulse(x, y, z, r * 1.5, 16 * Math.sqrt(b.size));
 	if (wet) {
 		// The river swallows the blast: a towering column of water, no crater.

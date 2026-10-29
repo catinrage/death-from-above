@@ -485,7 +485,8 @@ function napalm(w: World, b: Bomb, y: number): void {
 		const fy = w.ground(fx);
 		w.fires.add(fx, fy, 0, 2.4 - k * 0.15, rnd.range(7, 10), {
 			radius: length / segments + 1.5,
-			dps: 34
+			dps: 34,
+			ours: b.owner === 'player'
 		});
 		w.terrain.burn(fx, 0, length / segments + 3, 1, 1);
 	}
@@ -506,5 +507,6 @@ export function applyFireDamage(w: World, dt: number): void {
 			if (u.def.category === 'infantry') u.panic = 2;
 			if (u.hp <= 0) killUnit(w, u, f.x, 'fire', 'player');
 		}
+		if (f.ours) w.allies.soak(f.x, f.radius, f.dps * dt, f.dps * dt, 0.4);
 	}
 }

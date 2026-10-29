@@ -55,6 +55,7 @@ export class GasClouds {
 				if (u.def.category === 'infantry') u.panic = Math.max(u.panic, 1.5);
 				if (u.hp <= 0) killUnit(w, u, c.x, 'fire', 'player');
 			}
+			w.allies.soak(c.x, c.radius, DPS_INFANTRY * k * dt, DPS_VEHICLE * k * dt, 1);
 			for (const t of w.troops.list) {
 				if (t.alive && Math.abs(t.x - c.x) < c.radius) t.hp -= DPS_INFANTRY * 0.5 * k * dt;
 			}
