@@ -1,7 +1,17 @@
 <script lang="ts">
 	import { fade, fly } from 'svelte/transition';
 	import { AIRCRAFT } from '$lib/game/defs-aircraft';
+	import { BIOME_ORDER, BIOMES, type BiomeId } from '$lib/game/biomes';
+	import {
+		CHALLENGES,
+		DIFFICULTIES,
+		challengeDef,
+		difficultyDef,
+		type Challenge,
+		type Difficulty
+	} from '$lib/game/command-setup';
 	import type { GameMode, ModeStart } from '$lib/game/hud';
+	import { BOARD_SIZE, clockTime, readTimes } from '$lib/game/records';
 	import { blip, menu, powerOn } from './menu-fx';
 
 	interface Props {
@@ -11,11 +21,37 @@
 		trained: boolean;
 		/** Mode to open on. */
 		initial: ModeStart | null;
+		/** The map, and the command setup, chosen last time. */
+		biome: BiomeId;
+		difficulty: Difficulty;
+		challenge: Challenge;
 		onLaunch: (start: ModeStart) => void;
 		onClose: () => void;
 	}
 
-	let { best, bestCommand, trained, initial, onLaunch, onClose }: Props = $props();
+	let {
+		best,
+		bestCommand,
+		trained,
+		initial,
+		biome: savedBiome,
+		difficulty: savedDifficulty,
+		challenge: savedChallenge,
+		onLaunch,
+		onClose
+	}: Props = $props();
+
+	// svelte-ignore state_referenced_locally
+	let biome = $state<BiomeId>(savedBiome);
+	// svelte-ignore state_referenced_locally
+	let difficulty = $state<Difficulty>(savedDifficulty);
+	// svelte-ignore state_referenced_locally
+	let challenge = $state<Challenge>(savedChallenge);
+	const level = $derived(difficultyDef(difficulty));
+	const rule = $derived(challengeDef(challenge));
+	/** The fastest wins on the chosen setup, padded with empty rows. */
+	const times = $derived(readTimes(difficulty, challenge));
+	const board = $derived(Array.from({ length: BOARD_SIZE }, (_, i) => times[i] ?? null));
 
 	// The menu opens on the last mode flown, or training for a new pilot.
 	// svelte-ignore state_referenced_locally
@@ -42,11 +78,10 @@
 
 	/** The commander's game in five lines. */
 	const COMMAND_RULES = [
-		'The same war, but you stay on the ground and give the orders. You fly nothing.',
+		'You stay on the ground and give the orders. You fly nothing.',
 		'Your war chest fills every second, faster for each checkpoint you hold and every kill.',
-		'Spend it on squads and armour that roll up the road, or on jets that fly their own sorties.',
-		'Pick a strike, then click the battlefield: barrages, cruise and ballistic missiles, a bomber, a nuke.',
-		'Only troops can destroy the HQ. You lose if the airfield falls.'
+		'Spend it on troops, armour, jets and strikes. The enemy commander does the same.',
+		'It goes on until a base falls: their HQ, which only troops can destroy, or our airfield.'
 	];
 
 	/** Set once the menu has launched or closed: its keys stay deaf while it fades out. */
@@ -56,9 +91,9 @@
 		done = true;
 		onLaunch(
 			tab === 'war'
-				? { mode: 'war', coop }
+				? { mode: 'war', coop, biome }
 				: tab === 'command'
-					? { mode: 'command' }
+					? { mode: 'command', biome, difficulty, challenge }
 					: { mode: 'tutorial' }
 		);
 	}
@@ -132,6 +167,7 @@
 					<small>
 						{#if m.id === 'tutorial' && !trained}Recommended first
 						{:else if m.id === 'tutorial'}Completed ✓
+						{:else if m.id === 'command' && times.length > 0}Record {clockTime(times[0])} · {level.name}
 						{:else if m.id === 'command' && bestCommand > 0}Best {bestCommand.toLocaleString()}
 						{:else if m.id === 'war' && best > 0}Best {best.toLocaleString()}
 						{:else}{m.sub}{/if}
@@ -164,18 +200,64 @@
 							</ul>
 						</div>
 					{:else if tab === 'command'}
-						<div class="detail">
-							<p class="m-label">Command</p>
-							<h3>Lead the army</h3>
-							<ul class="rules">
-								{#each COMMAND_RULES as r, i (i)}
-									<li class="m-rise" style:--i={i} style:--d="150ms">{r}</li>
-								{/each}
-							</ul>
-							<p class="hint">
-								1–8 buy ground units, Q and E launch jets, Z X C V N pick a strike. A/D or the
-								screen edges pan the map, the wheel zooms and Space jumps to the front.
-							</p>
+						<div class="detail command">
+							<div>
+								<p class="m-label">Command</p>
+								<h3>Lead the army</h3>
+								<ul class="rules">
+									{#each COMMAND_RULES as r, i (i)}
+										<li class="m-rise" style:--i={i} style:--d="150ms">{r}</li>
+									{/each}
+								</ul>
+								<p class="m-label setup-label">Difficulty</p>
+								<div class="chips" role="radiogroup" aria-label="Difficulty">
+									{#each DIFFICULTIES as d, i (d.id)}
+										<button
+											role="radio"
+											aria-checked={difficulty === d.id}
+											class="m-tile chip"
+											class:on={difficulty === d.id}
+											data-nav
+											onclick={() => (difficulty = d.id)}
+										>
+											<span class="pips" aria-hidden="true"
+												>{#each DIFFICULTIES as _, j (j)}<i class:lit={j <= i}></i>{/each}</span
+											>
+											<strong>{d.name}</strong>
+										</button>
+									{/each}
+								</div>
+								<p class="blurb">{level.blurb}</p>
+								<p class="m-label setup-label">Challenge</p>
+								<div class="chips" role="radiogroup" aria-label="Challenge">
+									{#each CHALLENGES as c (c.id)}
+										<button
+											role="radio"
+											aria-checked={challenge === c.id}
+											class="m-tile chip"
+											class:on={challenge === c.id}
+											data-nav
+											onclick={() => (challenge = c.id)}
+										>
+											<strong>{c.name}</strong>
+										</button>
+									{/each}
+								</div>
+								<p class="blurb">{rule.blurb}</p>
+							</div>
+							<aside class="board" aria-label="Fastest wins">
+								<p class="m-label">Fastest wins</p>
+								<p class="setup">{level.name} · {rule.name}</p>
+								<ol>
+									{#each board as t, i (i)}
+										<li class:record={i === 0 && t !== null} class:empty={t === null}>
+											<span class="rank">{i + 1}</span>
+											<b>{t === null ? '—' : clockTime(t)}</b>
+										</li>
+									{/each}
+								</ol>
+								{#if times.length === 0}<p class="hint">No wins yet on this setup.</p>{/if}
+							</aside>
 						</div>
 					{:else}
 						<div class="detail">
@@ -197,6 +279,21 @@
 		</div>
 
 		<footer>
+			{#if tab !== 'tutorial'}
+				<div class="maps" role="radiogroup" aria-label="Map">
+					<span class="m-label">Map</span>
+					{#each BIOME_ORDER as id (id)}
+						<button
+							role="radio"
+							aria-checked={biome === id}
+							class="m-tile chip"
+							class:on={biome === id}
+							data-nav
+							onclick={() => (biome = id)}><strong>{BIOMES[id].name}</strong></button
+						>
+					{/each}
+				</div>
+			{/if}
 			{#if tab === 'war'}
 				<div class="players" role="radiogroup" aria-label="Players">
 					<button
@@ -421,13 +518,152 @@
 		color: var(--ink-faint);
 	}
 
+	/* ---- Command setup ---- */
+
+	.command {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) 220px;
+		gap: 26px;
+	}
+
+	.setup-label {
+		margin: 16px 0 6px;
+	}
+
+	.chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+
+	.chip {
+		gap: 4px;
+		padding: 7px 12px;
+	}
+
+	.chip strong {
+		font-family: var(--display);
+		font-size: 14px;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		transition: color 0.2s;
+	}
+
+	.chip.on {
+		box-shadow: inset 0 0 0 1px rgba(255, 186, 100, 0.35);
+	}
+
+	.chip.on strong {
+		color: var(--amber);
+	}
+
+	.pips {
+		display: flex;
+		gap: 3px;
+	}
+
+	.pips i {
+		width: 8px;
+		height: 3px;
+		background: rgba(255, 255, 255, 0.12);
+	}
+
+	.pips i.lit {
+		background: var(--ink-dim);
+	}
+
+	.chip.on .pips i.lit {
+		background: var(--amber);
+		box-shadow: 0 0 6px var(--amber-glow);
+	}
+
+	.blurb {
+		margin: 8px 0 0;
+		min-height: 1.4em;
+		font-size: 14px;
+		color: var(--ink-dim);
+	}
+
+	.board {
+		align-self: start;
+		padding: 14px 16px;
+		background: rgba(255, 255, 255, 0.035);
+		box-shadow: inset 2px 0 0 var(--amber);
+	}
+
+	.board .setup {
+		margin: 4px 0 10px;
+		font-family: var(--display);
+		font-size: 13px;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--ink);
+	}
+
+	.board ol {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		display: grid;
+		gap: 4px;
+	}
+
+	.board li {
+		display: flex;
+		align-items: baseline;
+		gap: 12px;
+		padding: 4px 0;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+	}
+
+	.board .rank {
+		width: 1.2em;
+		font-family: var(--display);
+		font-size: 13px;
+		color: var(--ink-faint);
+	}
+
+	.board b {
+		font-family: var(--display);
+		font-size: 20px;
+		font-variant-numeric: tabular-nums;
+		letter-spacing: 0.04em;
+	}
+
+	.board li.record b {
+		color: var(--amber);
+		text-shadow: 0 0 12px var(--amber-glow);
+	}
+
+	.board li.empty b {
+		color: var(--ink-faint);
+	}
+
+	.board .hint {
+		margin-top: 10px;
+		font-size: 12px;
+	}
+
+	.maps {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px;
+		margin-right: auto;
+	}
+
+	.maps .m-label {
+		margin-right: 4px;
+	}
+
 	/* ---- Footer ---- */
 
 	footer {
 		display: flex;
+		flex-wrap: wrap;
 		justify-content: flex-end;
 		align-items: center;
-		gap: 16px;
+		gap: 12px 16px;
 		padding: 14px 26px 22px;
 		border-top: 1px solid rgba(255, 255, 255, 0.05);
 	}
@@ -436,7 +672,6 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		margin-right: auto;
 	}
 
 	.players button {
@@ -483,6 +718,10 @@
 		}
 
 		.facts {
+			grid-template-columns: 1fr;
+		}
+
+		.command {
 			grid-template-columns: 1fr;
 		}
 

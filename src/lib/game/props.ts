@@ -219,7 +219,7 @@ export class Props {
 	}
 
 	private villages(rng: Rng): void {
-		for (const vx of [800, 1500, 2200, 3350, 4820, -500]) {
+		for (const vx of [800, 1500, 2650, 3350, 4820, -500]) {
 			const zone = NO_FIRE_ZONES.find((z) => z.x === vx);
 			const n = zone ? rng.int(5, 7) : rng.int(3, 6);
 			for (let i = 0; i < n; i++) {

@@ -16,7 +16,7 @@ export interface NoFireZone {
  */
 export const NO_FIRE_ZONES: readonly NoFireZone[] = [
 	{ kind: 'hospital', name: 'Field hospital', x: 1500, half: 72, population: 8 },
-	{ kind: 'village', name: 'Village', x: 2200, half: 72, population: 10 }
+	{ kind: 'village', name: 'Village', x: 2650, half: 72, population: 10 }
 ];
 
 /** Score lost for each civilian the player kills. */

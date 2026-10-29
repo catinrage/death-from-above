@@ -147,6 +147,17 @@
 	}
 
 	function launch(start: ModeStart): void {
+		// The map, and the command setup, are remembered for next time.
+		if (start.mode !== 'tutorial') {
+			start = { ...start, biome: start.biome ?? settings.biome };
+			const remember: Partial<Settings> = { biome: start.biome };
+			if (start.mode === 'command') {
+				if (start.difficulty) remember.difficulty = start.difficulty;
+				if (start.challenge) remember.challenge = start.challenge;
+			}
+			settings = { ...settings, ...remember };
+			saveSettings(settings);
+		}
 		lastStart = start;
 		over = null;
 		messages = [];
@@ -321,6 +332,9 @@
 			{bestCommand}
 			{trained}
 			initial={lastStart}
+			biome={settings.biome}
+			difficulty={settings.difficulty}
+			challenge={settings.challenge}
 			onLaunch={launch}
 			onClose={() => (modeOpen = false)}
 		/>

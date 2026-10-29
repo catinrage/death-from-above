@@ -44,7 +44,7 @@ import { WORLD } from './constants';
 import { BOMBS, BOMB_ORDER, ROCKET_SPEED } from './defs-bombs';
 import { environmentAt, presetName } from './environment';
 import { applyWeather, CLEAR, weatherForWave, type WeatherSpec } from './weather';
-import { BIOME_ORDER, gradeEnvironment, type BiomeId } from './biomes';
+import { gradeEnvironment, type BiomeId } from './biomes';
 import type {
 	CommandHud,
 	GameMode,
@@ -66,7 +66,15 @@ import { TerrainView } from './terrain-view';
 import type { AircraftId, Owner } from './types';
 import { planWave, waveBonus, WaveDirector, warTweaks } from './waves';
 import { Tutorial } from './tutorial';
-import { readBest, writeBest, writeTrained } from './records';
+import { readBest, readTimes, writeBest, writeTime, writeTrained } from './records';
+import {
+	challengeDef,
+	DEFAULT_CHALLENGE,
+	DEFAULT_DIFFICULTY,
+	difficultyDef,
+	type Challenge,
+	type Difficulty
+} from './command-setup';
 import { COMMAND_PITCH } from './camera';
 import { predictImpact } from './weapons';
 import { trainConsist } from './railway';
@@ -178,6 +186,9 @@ export class Game {
 	private viewZoom = 0;
 	/** Command mode: the page of the order bar that is open. */
 	private commandTab: CommandTab = 'infantry';
+	/** Command mode: how hard the enemy commander plays, and the challenge taken on. */
+	private difficulty: Difficulty = DEFAULT_DIFFICULTY;
+	private challenge: Challenge = DEFAULT_CHALLENGE;
 	private readonly p2Autopilot = new Autopilot();
 	/** Bullet time. */
 	readonly focus = new Focus();
@@ -555,8 +566,13 @@ export class Game {
 		if (this.mode !== 'tutorial') w.war.start(w, { hqHp: HQ_HP, auto: !command }, seed);
 		if (command) {
 			// The enemy commander buys their whole army, as we buy ours: no waves.
-			w.command.start();
-			w.enemyCommand.start();
+			this.difficulty = (start.mode === 'command' && start.difficulty) || DEFAULT_DIFFICULTY;
+			this.challenge = (start.mode === 'command' && start.challenge) || DEFAULT_CHALLENGE;
+			const level = difficultyDef(this.difficulty);
+			const rules = challengeDef(this.challenge);
+			w.command.start(undefined, { income: rules.income, allows: rules.allows });
+			w.enemyCommand.start(level.enemyFunds, { income: level.enemyIncome });
+			this.enemyCommander.pace = level.pace;
 			w.wave = 1;
 			this.aimX = Number.NaN;
 			this.viewX = WORLD.baseMaxX + 420;
@@ -576,10 +592,10 @@ export class Game {
 		void this.audio.unlock();
 	}
 
-	/** Map a sortie is flown on: training stays in the valley, each battle picks one. */
+	/** Map a sortie is flown on: the valley, unless the player picked another. */
 	private biomeFor(start: ModeStart): BiomeId {
 		if (start.mode === 'tutorial') return 'temperate';
-		return start.biome ?? rnd.pick(BIOME_ORDER);
+		return start.biome ?? 'temperate';
 	}
 
 	/** Regrows the battlefield for a biome and pushes the new ground to the GPU. */
@@ -1181,6 +1197,7 @@ export class Game {
 			return base;
 		}
 		const command = this.mode === 'command';
+		const record = command ? this.commandRecord(outcome) : undefined;
 		const best = readBest(command);
 		const newBest = this.score > best;
 		if (newBest) writeBest(this.score, command);
@@ -1191,8 +1208,20 @@ export class Game {
 			...base,
 			best: Math.max(best, this.score),
 			newBest,
-			credits: { ...award, balance: wallet.credits }
+			credits: { ...award, balance: wallet.credits },
+			command: record
 		};
+	}
+
+	/** A command win goes on the board for its difficulty and challenge. */
+	private commandRecord(outcome: 'failed' | 'complete'): GameOverStats['command'] {
+		const difficulty = difficultyDef(this.difficulty).name;
+		const challenge = challengeDef(this.challenge).name;
+		const board =
+			outcome === 'complete'
+				? writeTime(this.difficulty, this.challenge, this.playTime)
+				: { times: readTimes(this.difficulty, this.challenge), rank: null };
+		return { difficulty, challenge, ...board };
 	}
 
 	private finish(): void {
@@ -1651,8 +1680,9 @@ export class Game {
 						: this.waves.label,
 			waveState: this.waves.state,
 			mode: this.mode,
-			mission: this.mode !== 'tutorial' ? 'Objectives' : '',
-			objectives: this.mode !== 'tutorial' ? objectives(w) : [],
+			// Command runs until one side's base falls: no checklist.
+			mission: this.mode === 'war' ? 'Objectives' : '',
+			objectives: this.mode === 'war' ? objectives(w) : [],
 			boss: bossStatus(w),
 			tutorial: this.tutorial?.card() ?? null,
 			enemies: this.waves.remaining(w),
@@ -1761,7 +1791,8 @@ const REFUSAL: Record<string, [string, string]> = {
 	army: ['ARMY AT FULL STRENGTH', 'Wait until some of our units fall or reach the front'],
 	air: ['AIR WING FULL', 'Every squadron is already flying'],
 	drones: ['TOO MANY DRONES UP', 'Wait for some of the drones in the air to strike'],
-	target: ['NO TARGET', 'Click a spot on the battlefield']
+	target: ['NO TARGET', 'Click a spot on the battlefield'],
+	locked: ['NOT IN THIS CHALLENGE', 'The challenge you chose rules that order out']
 };
 
 /** What the commander is told as the battle opens. */

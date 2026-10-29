@@ -338,8 +338,8 @@ const STRIKES: Record<StrikeOrder, Spec & { code: string; key: string }> = {
 		name: 'Artillery barrage',
 		short: 'Barrage',
 		tip: 'Ten heavy shells scattered around the spot you click.',
-		cost: 150,
-		cooldown: 10,
+		cost: 300,
+		cooldown: 25,
 		code: 'KeyZ',
 		key: 'Z',
 		radius: 30
@@ -447,9 +447,9 @@ export const ENEMY_INCOME = 1.6;
 /** Share of a kill's score paid into the war chest. */
 export const BOUNTY = 0.35;
 /** Most of our units on the road at once (queued ones count). */
-export const ARMY_LIMIT = 40;
+export const ARMY_LIMIT = 80;
 /** Most of our aircraft in the air at once. */
-export const AIR_LIMIT = 6;
+export const AIR_LIMIT = 12;
 /** Most kamikaze drones in the air at once. */
 export const DRONE_LIMIT = 24;
 /** Seconds between groups leaving the rally point, so they don't pile up. */
@@ -464,7 +464,16 @@ const ENEMY_INTEL: Partial<Record<CommandId, string>> = {
 };
 
 /** Why an order can't be given right now. */
-export type Refusal = 'funds' | 'cooldown' | 'army' | 'air' | 'drones' | 'target' | 'inactive';
+export type Refusal =
+	'funds' | 'cooldown' | 'army' | 'air' | 'drones' | 'target' | 'inactive' | 'locked';
+
+/** How a side's commander is set up for a game (difficulty and challenge). */
+export interface CommandRules {
+	/** The war chest fills this many times the usual rate. */
+	income?: number;
+	/** Orders this side may give (all of them when left out). */
+	allows?: (def: CommandDef) => boolean;
+}
 
 const BARRAGE_ROUNDS = 10;
 const BARRAGE_SCATTER = 14;
@@ -589,9 +598,14 @@ export class Command {
 	/** Those of them on their way home to the airfield. */
 	private readonly homeward = new Set<Wingman>();
 	private patrolClock = 0;
+	/** How many times the usual rate this side's chest fills. */
+	private edge = 1;
+	private allows: ((def: CommandDef) => boolean) | null = null;
 
 	/** `side`: whose army this commander runs. The enemy's mirrors ours from the far end. */
-	constructor(readonly side: Side = 'player') {}
+	constructor(readonly side: Side = 'player') {
+		this.edge = side === 'player' ? 1 : ENEMY_INCOME;
+	}
 
 	private get ours(): boolean {
 		return this.side === 'player';
@@ -602,9 +616,11 @@ export class Command {
 		return this.ours ? 1 : -1;
 	}
 
-	start(funds = START_FUNDS): void {
+	start(funds = START_FUNDS, rules: CommandRules = {}): void {
 		this.active = true;
 		this.funds = funds;
+		this.edge = rules.income ?? (this.ours ? 1 : ENEMY_INCOME);
+		this.allows = rules.allows ?? null;
 		this.earned = this.spent = this.orders = 0;
 		for (const id of COMMAND_ORDER) delete this.cooldowns[id];
 		this.queue.length = 0;
@@ -630,8 +646,7 @@ export class Command {
 
 	/** Funds per second right now. */
 	income(w: World): number {
-		const edge = this.ours ? 1 : ENEMY_INCOME;
-		return (BASE_INCOME + CHECKPOINT_INCOME * w.war.held(this.side)) * edge;
+		return (BASE_INCOME + CHECKPOINT_INCOME * w.war.held(this.side)) * this.edge;
 	}
 
 	/** A kill by this side pays a share of its score into the war chest. */
@@ -670,6 +685,7 @@ export class Command {
 	refusal(w: World, id: CommandId): Refusal | null {
 		if (!this.active) return 'inactive';
 		const def = COMMANDS[id];
+		if (this.allows && !this.allows(def)) return 'locked';
 		if ((this.cooldowns[id] ?? 0) > 0) return 'cooldown';
 		if (this.funds < def.cost) return 'funds';
 		if (def.units && this.armySize(w) + def.units.length > ARMY_LIMIT) return 'army';

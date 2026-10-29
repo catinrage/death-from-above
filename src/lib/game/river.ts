@@ -15,7 +15,7 @@ export interface RiverSpec {
 }
 
 export const RIVER: RiverSpec = {
-	x: 2850,
+	x: 2160,
 	halfWidth: 22,
 	depth: 4.5,
 	bridgeHalf: 60,

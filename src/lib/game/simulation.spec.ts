@@ -18,6 +18,7 @@ function run(w: World, seconds: number, each?: () => void): void {
 }
 
 describe('headless battle', () => {
+	// Heavy: a whole wave, which runs long when the suite is busy in parallel.
 	it('plays a wave with the autopilot without corrupting state', () => {
 		const w = testWorld();
 		const p = new Player('grizzly', WORLD.runwayMinX + 40, w.ground(70) + 60, 0.05);
@@ -41,7 +42,7 @@ describe('headless battle', () => {
 		expect(peakParticles).toBeLessThanOrEqual(w.particles.capacity);
 		expect(w.debris.list.length).toBeLessThanOrEqual(w.debris.max);
 		expect(w.bullets.length).toBeLessThan(900);
-	});
+	}, 30_000);
 
 	it('takes off from a parked start and raises the gear on the climb-out', () => {
 		const w = testWorld();

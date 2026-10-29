@@ -102,7 +102,7 @@ describe('armoured train', () => {
 
 	it('comes off the rails when the track is bombed right under its nose', () => {
 		const { w, r, line } = setup();
-		const t = rolling(w, 2200);
+		const t = rolling(w, 1510);
 		const stopping = (TRAIN_SPEED * TRAIN_SPEED) / (2 * BRAKE);
 		const x = nose(t) - stopping * 0.4;
 		explode(w, x - 6, line.railY(x - 6), 0, BOMBS.gp.blast, 'player');
@@ -128,10 +128,10 @@ describe('armoured train', () => {
 
 	it('only tears up track for heavy blasts close to the rails', () => {
 		const { w, r, line } = setup();
-		explode(w, 2000, line.railY(2000), 0, { ...BOMBS.gp.blast, damage: 20 }, 'player');
-		explode(w, 2100, line.railY(2100) + 20, 0, BOMBS.gp.blast, 'player');
+		explode(w, 1310, line.railY(1310), 0, { ...BOMBS.gp.blast, damage: 20 }, 'player');
+		explode(w, 1410, line.railY(1410) + 20, 0, BOMBS.gp.blast, 'player');
 		expect(r.cuts).toEqual([]);
-		explode(w, 2200, line.railY(2200), 0, BOMBS.gp.blast, 'player');
+		explode(w, 1510, line.railY(1510), 0, BOMBS.gp.blast, 'player');
 		expect(r.cuts.length).toBe(1);
 	});
 });

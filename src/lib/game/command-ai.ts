@@ -18,8 +18,8 @@ export class CommandAutopilot {
 
 	constructor(
 		readonly side: Side = 'player',
-		/** Seconds between decisions. */
-		private readonly pace = 0.5
+		/** Seconds between decisions (set per game by the difficulty). */
+		public pace = 0.5
 	) {}
 
 	update(w: World, dt: number): void {

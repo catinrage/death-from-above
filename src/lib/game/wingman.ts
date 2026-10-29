@@ -7,6 +7,7 @@ import type { AirUnit } from './enemy-air';
 import type { Player } from './player';
 import { FlareDrill, launchMissile, spawnBullet } from './projectiles';
 import { trackUnit } from './targeting';
+import { spread } from './spacing';
 import { levelOff, pullUpRoom, safeTurn } from './terrain-floor';
 import type { AircraftId, BombId, Trackable, Unit, UnitKind } from './types';
 import { dropBomb, predictImpact } from './weapons';
@@ -778,6 +779,10 @@ export class Wingman implements AirAlly {
 			gx = u ? u.x - HELO_STANDOFF : (this.patrol ?? this.x) - 120;
 			gy = w.surface.clearance(this.x) + HELO_ALT;
 		}
+		// Keep clear of the other helicopters, which head for the same spot.
+		const [sx, sy] = spread<Wingman>(this, this.otherHelos(w), (e) => w.escorts.indexOf(e));
+		gx += sx * 4;
+		gy += sy * 2;
 		const wantVx = clamp((gx - this.x) * 0.5, -cruise, cruise);
 		const wantVy = clamp((gy - this.y) * 0.8, -15, 15);
 		this.vx = moveToward(this.vx, wantVx, 18 * dt);
@@ -905,6 +910,11 @@ export class Wingman implements AirAlly {
 	private setPhase(phase: 'attack' | 'extend'): void {
 		this.phase = phase;
 		this.phaseTime = 0;
+	}
+
+	/** Our other helicopters in the air. */
+	private *otherHelos(w: World): Generator<Wingman> {
+		for (const e of w.escorts) if (e !== this && e.active && e.tactic === 'helo') yield e;
 	}
 
 	/** Stable tracking adapter for the current ground target. */

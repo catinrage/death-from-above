@@ -2,6 +2,15 @@ import { AIRCRAFT_ORDER } from '../game/defs-aircraft';
 import { sanitize, type Loadout } from '../game/loadout';
 import { extraPayload, loadProgression } from '../game/progression';
 import type { AircraftId } from '../game/types';
+import { isBiome, type BiomeId } from '../game/biomes';
+import {
+	CHALLENGES,
+	DEFAULT_CHALLENGE,
+	DEFAULT_DIFFICULTY,
+	DIFFICULTIES,
+	type Challenge,
+	type Difficulty
+} from '../game/command-setup';
 
 export type QualityLevel = 'low' | 'medium' | 'high';
 
@@ -13,6 +22,11 @@ export interface Settings {
 	aircraft: AircraftId;
 	/** Hangar loadouts the pilot customised, per aircraft. */
 	loadouts: Partial<Record<AircraftId, Loadout>>;
+	/** Map the war and command games are fought on. */
+	biome: BiomeId;
+	/** Command mode: last difficulty and challenge chosen. */
+	difficulty: Difficulty;
+	challenge: Challenge;
 }
 
 const KEY = 'dfa.settings';
@@ -21,7 +35,10 @@ const DEFAULTS: Settings = {
 	lens: true,
 	volume: 0.75,
 	aircraft: 'kestrel',
-	loadouts: {}
+	loadouts: {},
+	biome: 'temperate',
+	difficulty: DEFAULT_DIFFICULTY,
+	challenge: DEFAULT_CHALLENGE
 };
 const QUALITIES: QualityLevel[] = ['low', 'medium', 'high'];
 const AIRCRAFT: readonly AircraftId[] = AIRCRAFT_ORDER;
@@ -42,7 +59,14 @@ export function loadSettings(): Settings {
 			aircraft: AIRCRAFT.includes(r.aircraft as AircraftId)
 				? (r.aircraft as AircraftId)
 				: DEFAULTS.aircraft,
-			loadouts: readLoadouts(r.loadouts)
+			loadouts: readLoadouts(r.loadouts),
+			biome: isBiome(r.biome) ? r.biome : DEFAULTS.biome,
+			difficulty: DIFFICULTIES.some((d) => d.id === r.difficulty)
+				? (r.difficulty as Difficulty)
+				: DEFAULTS.difficulty,
+			challenge: CHALLENGES.some((c) => c.id === r.challenge)
+				? (r.challenge as Challenge)
+				: DEFAULTS.challenge
 		};
 	} catch {
 		return { ...DEFAULTS };

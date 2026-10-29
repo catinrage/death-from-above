@@ -5,6 +5,7 @@ import type { CreditAward } from './progression';
 import type { TutorialCard } from './tutorial';
 import type { AircraftId, BombId } from './types';
 import type { BiomeId } from './biomes';
+import type { Challenge, Difficulty } from './command-setup';
 import type { WingOrder } from './wingman';
 
 /** How a sortie is played: flight training, the war itself, or the war run from the ground. */
@@ -15,7 +16,7 @@ export type ModeStart = (
 	/** The war, on a given map (a random one when left out). */
 	| { mode: 'war'; biome?: BiomeId }
 	/** The same war with the player as its commander instead of a pilot. */
-	| { mode: 'command'; biome?: BiomeId }
+	| { mode: 'command'; biome?: BiomeId; difficulty?: Difficulty; challenge?: Challenge }
 ) & {
 	/** Local two-player co-op: a second aircraft flown from a gamepad (not in training). */
 	coop?: boolean;
@@ -263,6 +264,14 @@ export interface GameOverStats {
 	best: number;
 	newBest: boolean;
 	reason: string;
+	/** Command mode: the setup fought, and its fastest wins (seconds, fastest first). */
+	command?: {
+		difficulty: string;
+		challenge: string;
+		times: number[];
+		/** Where this win placed on the board (0 is the record), or null if it didn't. */
+		rank: number | null;
+	};
 }
 
 export function emptyHud(): HudSnapshot {

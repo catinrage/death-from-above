@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import type { GameOverStats, ModeStart } from '$lib/game/hud';
+	import { BOARD_SIZE, clockTime } from '$lib/game/records';
 	import Letters from './Letters.svelte';
 	import { countUp, menu, powerOn } from './menu-fx';
 
@@ -42,11 +43,17 @@
 	/** Readout tiles under the score. */
 	const tiles = $derived(
 		[
-			{
-				label: stats.mode === 'tutorial' ? 'Lessons' : 'Wave reached',
-				value: stats.mode === 'tutorial' ? '12/12' : String(stats.wave),
-				bad: false
-			},
+			stats.command
+				? {
+						label: 'Setup',
+						value: `${stats.command.difficulty} · ${stats.command.challenge}`,
+						bad: false
+					}
+				: {
+						label: stats.mode === 'tutorial' ? 'Lessons' : 'Wave reached',
+						value: stats.mode === 'tutorial' ? '12/12' : String(stats.wave),
+						bad: false
+					},
 			{ label: 'Kills', value: String(stats.kills), bad: false },
 			stats.civilians > 0
 				? { label: 'Civilian casualties', value: String(stats.civilians), bad: true }
@@ -117,6 +124,28 @@
 				</div>
 			{/if}
 		</div>
+		{#if stats.command}
+			{@const c = stats.command}
+			<div class="board m-rise" style:--d="700ms">
+				<p class="m-label">
+					Fastest wins · {c.difficulty} · {c.challenge}
+				</p>
+				{#if won}
+					<p class="placed" class:record={c.rank === 0}>
+						{#if c.rank === 0}New record: {clockTime(stats.time)}
+						{:else if c.rank !== null}Won in {clockTime(stats.time)}, number {c.rank + 1} on the board
+						{:else}Won in {clockTime(stats.time)}, too slow for the board{/if}
+					</p>
+				{/if}
+				<ol>
+					{#each Array.from({ length: BOARD_SIZE }, (_, i) => c.times[i] ?? null) as t, i (i)}
+						<li class:mine={won && i === c.rank} class:empty={t === null}>
+							<span>{i + 1}</span><b>{t === null ? '—' : clockTime(t)}</b>
+						</li>
+					{/each}
+				</ol>
+			</div>
+		{/if}
 		<dl>
 			{#each tiles as t, i (t.label)}
 				<div class="m-rise" style:--i={i} style:--d="800ms">
@@ -161,6 +190,65 @@
 			radial-gradient(ellipse at 50% 40%, rgba(50, 34, 6, 0.4), rgba(4, 5, 9, 0.86) 75%),
 			var(--m-scan);
 		--tone: var(--good);
+	}
+
+	.board {
+		display: grid;
+		justify-items: center;
+		gap: 6px;
+	}
+
+	.placed {
+		margin: 0;
+		font-family: var(--display);
+		font-size: 16px;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--ink);
+	}
+
+	.placed.record {
+		color: var(--amber);
+		text-shadow: 0 0 12px var(--amber-glow);
+	}
+
+	.board ol {
+		display: flex;
+		gap: 6px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.board li {
+		display: grid;
+		justify-items: center;
+		min-width: 64px;
+		padding: 6px 8px;
+		background: rgba(255, 255, 255, 0.035);
+	}
+
+	.board li span {
+		font-size: 11px;
+		color: var(--ink-faint);
+	}
+
+	.board li b {
+		font-family: var(--display);
+		font-size: 18px;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.board li.mine {
+		box-shadow: inset 0 0 0 1px var(--amber);
+	}
+
+	.board li.mine b {
+		color: var(--amber);
+	}
+
+	.board li.empty b {
+		color: var(--ink-faint);
 	}
 
 	.panel {

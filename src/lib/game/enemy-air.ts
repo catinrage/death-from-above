@@ -5,6 +5,7 @@ import { WORLD } from './constants';
 import { AIRCRAFT } from './defs-aircraft';
 import type { BlastSpec } from './defs-bombs';
 import { FlareDrill, launchMissile, spawnBullet } from './projectiles';
+import { spread } from './spacing';
 import { levelOff, pullUpRoom, safeTurn } from './terrain-floor';
 import type { Player } from './player';
 import type { AircraftId, Owner, Trackable, Unit, UnitKind } from './types';
@@ -346,6 +347,11 @@ export class AirUnit implements Trackable {
 		w.sound.play('mg', mx, my, 0.4, 1.3);
 	}
 
+	/** Their other helicopters in the air. */
+	private *otherHelos(w: World): Generator<AirUnit> {
+		for (const a of w.air) if (a !== this && a.alive && !a.dying && a.kind === 'heli') yield a;
+	}
+
 	private hover(w: World, dt: number): void {
 		const p = nearestFriendly(w, this.x, this.y);
 		this.gunCd -= dt;
@@ -358,8 +364,11 @@ export class AirUnit implements Trackable {
 		const onStation = this.x < station;
 		let wantVx = onStation ? 0 : -24;
 		if (near < 420) wantVx *= 0.3;
+		// Keep clear of the other gunships, which hold the same station.
+		const [sx, sy] = spread<AirUnit>(this, this.otherHelos(w), (a) => a.id);
+		wantVx += sx * 0.8;
 		this.vx = damp(this.vx, wantVx, 0.8, dt);
-		const wantY = ground + 46 + Math.sin(w.time * 0.7 + this.id) * 8;
+		const wantY = ground + 46 + Math.sin(w.time * 0.7 + this.id) * 8 + sy;
 		this.vy = damp(this.vy, (wantY - this.y) * 0.8, 1.5, dt);
 		this.x += this.vx * dt;
 		this.y += this.vy * dt;

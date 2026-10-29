@@ -3,6 +3,7 @@
 	import type { CommandId, CommandTab } from '$lib/game/command';
 	import type { CommandHud, CommandItemHud } from '$lib/game/hud';
 	import CommandIcon from './CommandIcon.svelte';
+	import RollingNumber from './RollingNumber.svelte';
 
 	interface Props {
 		command: CommandHud;
@@ -19,7 +20,8 @@
 		cooldown: 'Reloading',
 		army: 'Army at full strength',
 		air: 'Air wing full',
-		drones: 'Too many drones in the air'
+		drones: 'Too many drones in the air',
+		locked: 'Not in this challenge'
 	};
 
 	/** The order under the mouse, for the tip line. */
@@ -51,19 +53,34 @@
 	<div class="chest">
 		<div class="funds">
 			<span class="lbl">War chest</span>
-			<strong>{command.funds.toLocaleString()}</strong>
-			<span class="inc">+{Math.round(command.income)}/s</span>
+			<strong><RollingNumber value={command.funds} width={5} /></strong>
+			<span class="inc"
+				><RollingNumber value={command.income} prefix="+" suffix="/s" width={5} /></span
+			>
 		</div>
+		<!-- Every number keeps a fixed width, so the line never shifts as they change. -->
 		<div class="counts">
-			<span title="Our units on the road">ARMY {command.army}/{command.armyMax}</span>
-			<span title="Our aircraft in the air">AIR {command.air}/{command.airMax}</span>
-			{#if command.drones > 0}<span title="Our drones in the air">DRONES {command.drones}</span
-				>{/if}
-			{#if command.queued > 0}<span class="queue">{command.queued} forming up</span>{/if}
+			<span title="Our units on the road"
+				>ARMY <RollingNumber value={command.army} width={2} align="end" />/{command.armyMax}</span
+			>
+			<span title="Our aircraft in the air"
+				>AIR <RollingNumber value={command.air} width={2} align="end" />/{command.airMax}</span
+			>
+			<span title="Our drones in the air"
+				>DRONES <RollingNumber
+					value={command.drones}
+					width={2}
+					align="end"
+				/>/{command.dronesMax}</span
+			>
 			<span class="foe" title="The enemy commander: same chest, same orders">
-				ENEMY {command.enemy.funds.toLocaleString()} · ARMY {command.enemy.army} · AIR {command
-					.enemy.air}
+				ENEMY <RollingNumber value={command.enemy.funds} width={5} /> · ARMY
+				<RollingNumber value={command.enemy.army} width={2} /> · AIR
+				<RollingNumber value={command.enemy.air} width={2} />
 			</span>
+			<span class="queue" class:idle={command.queued === 0}
+				><RollingNumber value={command.queued} width={2} /> forming up</span
+			>
 		</div>
 		<p class="tip">
 			{#if aimed}
@@ -105,6 +122,7 @@
 							class="order"
 							class:aiming={command.aiming === it.id}
 							class:off={it.refusal !== null}
+							class:locked={it.refusal === 'locked'}
 							class:cooling={it.cooldown > 0}
 							style:--cd={it.cooldown}
 							tabindex="-1"
@@ -190,6 +208,12 @@
 
 	.queue {
 		color: #9fd8ff;
+		transition: opacity 0.3s;
+	}
+
+	/* Holds its place when nobody is forming up, so nothing beside it moves. */
+	.queue.idle {
+		opacity: 0;
 	}
 
 	.foe {
@@ -350,6 +374,12 @@
 
 	.order.off {
 		opacity: 0.5;
+	}
+
+	/* Ruled out by the challenge: greyed right down, not just short of funds. */
+	.order.locked {
+		opacity: 0.22;
+		filter: grayscale(1);
 	}
 
 	.key {
