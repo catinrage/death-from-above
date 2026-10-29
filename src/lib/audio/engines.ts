@@ -6,7 +6,7 @@ export interface EngineVoiceSource {
 	vx: number;
 	vy: number;
 	engine: 'jet' | 'prop' | 'rotor';
-	/** 1 a fighter, 2 a heavy bomber. */
+	/** 1 a fighter, 2 a heavy bomber, below 1 a drone. */
 	size: number;
 }
 
@@ -21,7 +21,7 @@ export interface EngineView {
 export interface EngineMix {
 	gain: number;
 	pan: number;
-	/** Pitch and speed of the engine loop: Doppler, and heavies run deeper. */
+	/** Pitch and speed of the engine loop: Doppler; heavies run deeper, drones higher. */
 	rate: number;
 	/** Low-pass cutoff: engines at the edge of the frame sound further off. */
 	cutoff: number;
@@ -49,11 +49,10 @@ export function engineMix(s: EngineVoiceSource, v: EngineView): EngineMix {
 	const zoom = clamp(200 / v.halfW, 0.45, 1);
 	const dist = Math.hypot(dx, dy);
 	const closing = dist > 1 ? -(dx * s.vx + dy * s.vy) / dist : 0;
-	const heavy = s.size > 1;
 	return {
-		gain: LEVEL * inFrame * zoom * (heavy ? 1.4 : 1),
+		gain: LEVEL * inFrame * zoom * Math.sqrt(s.size),
 		pan: clamp(dx / v.halfW, -1, 1) * 0.8,
-		rate: clamp(1 + closing / 900, 0.85, 1.15) * (heavy ? 0.8 : 1),
+		rate: clamp(1 + closing / 900, 0.85, 1.15) * Math.pow(s.size, -0.32),
 		cutoff: 900 + 5500 * zoom * clamp(1.2 - u, 0, 1)
 	};
 }

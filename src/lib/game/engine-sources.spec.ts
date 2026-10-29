@@ -1,17 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { engineSources } from './engine-sources';
+import { Drone } from './drones';
 import { AirUnit } from './enemy-air';
 import { testWorld } from './test-world';
 import { Wingman } from './wingman';
 
 describe('engine sources', () => {
-	it('hears our jets, enemy aircraft and both sides’ bombers, but not the wrecks', () => {
+	it('hears our jets, enemy aircraft, drones and bombers, but not the wrecks', () => {
 		const w = testWorld();
 		w.escorts.push(new Wingman(100, 200, { aircraft: 'f16', callsign: null }));
 		w.air.push(new AirUnit(w.newId(), 'heli', 400, 150));
 		const downed = new AirUnit(w.newId(), 'fighter', 500, 250);
 		downed.dying = true;
 		w.air.push(downed);
+		w.drones.push(new Drone('fpv', 300, 60, 0, 300, 'enemy'));
 		w.command.flybys.push({
 			aircraft: 'b1',
 			x: 0,
@@ -28,9 +30,11 @@ describe('engine sources', () => {
 		expect(heard.map((s) => [s.engine, s.size])).toEqual([
 			['jet', 1],
 			['rotor', 1],
+			['rotor', 0.5],
 			['jet', 2]
 		]);
-		expect(heard[2].vx).toBe(150);
+		expect(heard[3].vx).toBe(150);
 		w.command.flybys.length = 0;
+		w.drones.length = 0;
 	});
 });

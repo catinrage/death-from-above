@@ -10,18 +10,22 @@ export interface EngineSource {
 	vx: number;
 	vy: number;
 	engine: 'jet' | 'prop' | 'rotor';
-	/** 1 a fighter, 2 a heavy bomber. */
+	/** 1 a fighter, 2 a heavy bomber, below 1 a drone. */
 	size: number;
 }
 
+/** A drone's motor: FPV quadcopters whine like rotors, delta wings buzz like a moped. */
+const DRONE_ENGINE = { fpv: ['rotor', 0.5], delta: ['prop', 0.7] } as const;
+
 /**
- * Every AI aircraft still flying: our jets, enemy fighters, strikers and
- * helicopters, and both commanders' bombers. The player's own engine is
- * voiced separately.
+ * Every AI aircraft still flying: our wingman and jets, enemy fighters,
+ * strikers and helicopters, both sides' drones and both commanders'
+ * bombers. The player's own engine is voiced separately.
  */
 export function engineSources(w: World): EngineSource[] {
 	const out: EngineSource[] = [];
-	for (const j of w.jets())
+	const wings = w.wingman ? [w.wingman, ...w.escorts] : w.escorts;
+	for (const j of wings)
 		if (j.alive && !j.dying)
 			out.push({
 				key: j,
@@ -40,9 +44,14 @@ export function engineSources(w: World): EngineSource[] {
 				y: a.y,
 				vx: a.vx,
 				vy: a.vy,
-				engine: a.kind === 'heli' ? 'rotor' : 'jet',
+				engine: a.airframe ? AIRCRAFT[a.airframe].engine : a.kind === 'heli' ? 'rotor' : 'jet',
 				size: 1
 			});
+	for (const d of w.drones)
+		if (d.alive) {
+			const [engine, size] = DRONE_ENGINE[d.kind];
+			out.push({ key: d, x: d.x, y: d.y, vx: d.vx, vy: d.vy, engine, size });
+		}
 	for (const c of [w.command, w.enemyCommand])
 		for (const f of c.flybys)
 			out.push({

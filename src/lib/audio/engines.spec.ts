@@ -34,11 +34,14 @@ describe('engine mix', () => {
 		expect(going).toBeLessThan(1);
 	});
 
-	it('makes bombers louder and deeper', () => {
+	it('makes bombers louder and deeper, drones quieter and higher', () => {
 		const fighter = engineMix(jet(), view);
 		const bomber = engineMix(jet({ size: 2 }), view);
 		expect(bomber.gain).toBeGreaterThan(fighter.gain);
 		expect(bomber.rate).toBeLessThan(fighter.rate);
+		const drone = engineMix(jet({ size: 0.5 }), view);
+		expect(drone.gain).toBeLessThan(fighter.gain);
+		expect(drone.rate).toBeGreaterThan(fighter.rate);
 	});
 
 	it('stays audible, if quieter, with the camera zoomed far out', () => {
