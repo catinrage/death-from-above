@@ -35,6 +35,7 @@ export function simulateWorld(
 	w.allies.update(w, dt);
 	w.war.update(w, dt);
 	w.command.update(w, dt);
+	w.enemyCommand.update(w, dt);
 	w.civilians.update(w, dt);
 	w.gas.update(w, dt);
 	applyFireDamage(w, dt);

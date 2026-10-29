@@ -4,8 +4,12 @@ import type { AllyKind } from './allies';
 import { explode } from './combat';
 import { WORLD } from './constants';
 import { BOMBS, type BlastSpec } from './defs-bombs';
-import { groundPoint, seek } from './specials';
+import { BATTERY_PITCH, BATTERY_REACH, OUR_SITES, RACK_PITCH, THEIR_SITES } from './base';
+import { UNITS } from './defs-units';
+import { AirUnit } from './enemy-air';
+import { groundPoint, seek, seekAlly } from './specials';
 import type { AircraftId } from './types';
+import type { Side } from './war';
 import { dropBomb, predictImpact } from './weapons';
 import { Wingman, type WingOrder } from './wingman';
 import type { World } from './world';
@@ -15,6 +19,8 @@ import type { World } from './world';
  * it. A war chest fills with time, with every checkpoint held and with every
  * kill; it pays for troops and vehicles that roll up the road, jets that fly
  * their own sorties, and strikes launched from the base onto a chosen spot.
+ * The enemy commander has exactly the same chest and orders, run from their
+ * airfield at the far end.
  */
 
 export type CommandId =
@@ -267,6 +273,12 @@ export const START_FUNDS = 600;
 /** Funds per second from the airfield, and on top for every checkpoint held. */
 export const BASE_INCOME = 16;
 export const CHECKPOINT_INCOME = 6;
+/**
+ * The enemy's war chest fills this much faster: their troops are weaker
+ * than ours one for one (they were made to come in bigger waves), so they
+ * need more of them to hold the road.
+ */
+export const ENEMY_INCOME = 1.6;
 /** Share of a kill's score paid into the war chest. */
 export const BOUNTY = 0.35;
 /** Most of our units on the road at once (queued ones count). */
@@ -275,8 +287,14 @@ export const ARMY_LIMIT = 40;
 export const AIR_LIMIT = 4;
 /** Seconds between groups leaving the rally point, so they don't pile up. */
 const DEPLOY_GAP = 1.4;
-/** Where the base's missiles and the barrage are fired from. */
-export const LAUNCH_X = 240;
+/** What one of our jets shot down pays into the enemy's war chest (as their interceptor does ours). */
+const JET_SCORE = 300;
+/** What we hear when the enemy commander sends heavy ground units out. */
+const ENEMY_INTEL: Partial<Record<CommandId, string>> = {
+	tank: 'Enemy tank moving up the road',
+	rockets: 'Enemy rocket artillery moving up',
+	aa: 'Enemy AA carrier moving up'
+};
 
 /** Why an order can't be given right now. */
 export type Refusal = 'funds' | 'cooldown' | 'army' | 'air' | 'target' | 'inactive';
@@ -295,35 +313,56 @@ const BARRAGE_BLAST: BlastSpec = {
 const CRUISE_BLAST: BlastSpec = { ...BOMBS.cruise.blast, radius: 20, damage: 380 };
 /** Seconds of flight a base-launched cruise missile is allowed (the road is long). */
 const CRUISE_LIFE = 45;
-/** Height and speed of the carpet bomber's run, and how much of the road its stick covers. */
+/** Height and speed of the carpet bomber's run, how fast it climbs, and how much of the road its stick covers. */
 const BOMBER_ALT = 165;
 const BOMBER_SPEED = 150;
+const BOMBER_CLIMB = 20;
 const CARPET_HALF = 70;
 const CARPET_INTERVAL = 0.1;
+/**
+ * A barrage shell's time of flight (a moment plus this many seconds per metre
+ * of range), and the pull that bends it into a tall arc over the hills.
+ */
+const SHELL_TIME = 2.5;
+const SHELL_PACE = 1 / 600;
+const SHELL_G = 40;
 
-/** A bomber on a scripted run across the battlefield. Enemy guns can't reach it. */
+/**
+ * A bomber on a scripted run: it takes off from its side's runway, climbs
+ * out over the road and lays its stick across the target. Enemy guns can't
+ * reach it.
+ */
 export interface Flyby {
 	aircraft: AircraftId;
 	x: number;
 	y: number;
 	z: number;
+	/** Climb rate, until it reaches its bombing height over the target. */
+	vy: number;
 	dir: 1 | -1;
 	speed: number;
-	/** Release between these x positions. */
-	dropFrom: number;
-	dropTo: number;
+	/** Where the stick should land, and the height it bombs from. */
+	target: number;
+	cruise: number;
 	nextDrop: number;
 }
 
-/** A barrage shell: waiting to arrive (`delay`), then falling. */
+/** A barrage shell: waiting for its gun to fire (`delay`), then flying its arc to `tx`. */
 interface Round {
+	/** The gun it is fired from, and where it is in flight. */
+	gx: number;
+	gy: number;
 	x: number;
 	y: number;
+	z: number;
 	vx: number;
 	vy: number;
 	tx: number;
+	/** Seconds of flight to the target, and since firing. */
+	time: number;
+	age: number;
 	delay: number;
-	falling: boolean;
+	fired: boolean;
 }
 
 export class Command {
@@ -344,7 +383,21 @@ export class Command {
 	private nextDeploy = 0;
 	/** Our jets and what was ordered for each, so a loss can be reported. */
 	private readonly jets = new Map<Wingman, CommandId>();
+	/** The enemy commander's jets. */
+	private readonly planes = new Set<AirUnit>();
 	private patrolClock = 0;
+
+	/** `side`: whose army this commander runs. The enemy's mirrors ours from the far end. */
+	constructor(readonly side: Side = 'player') {}
+
+	private get ours(): boolean {
+		return this.side === 'player';
+	}
+
+	/** Which way this side's road runs: +1 from our airfield, -1 from theirs. */
+	private get dir(): 1 | -1 {
+		return this.ours ? 1 : -1;
+	}
 
 	start(funds = START_FUNDS): void {
 		this.active = true;
@@ -355,6 +408,7 @@ export class Command {
 		this.flybys.length = 0;
 		this.rounds.length = 0;
 		this.jets.clear();
+		this.planes.clear();
 		this.nextDeploy = 0;
 		this.patrolClock = 0;
 	}
@@ -365,14 +419,16 @@ export class Command {
 		this.flybys.length = 0;
 		this.rounds.length = 0;
 		this.jets.clear();
+		this.planes.clear();
 	}
 
 	/** Funds per second right now. */
 	income(w: World): number {
-		return BASE_INCOME + CHECKPOINT_INCOME * w.war.held('player');
+		const edge = this.ours ? 1 : ENEMY_INCOME;
+		return (BASE_INCOME + CHECKPOINT_INCOME * w.war.held(this.side)) * edge;
 	}
 
-	/** A kill by our side pays a share of its score into the war chest. */
+	/** A kill by this side pays a share of its score into the war chest. */
 	reward(score: number): void {
 		if (!this.active || score <= 0) return;
 		const pay = score * BOUNTY;
@@ -380,16 +436,20 @@ export class Command {
 		this.earned += pay;
 	}
 
-	/** Our units on the road plus those waiting to leave. */
+	/** This side's units on the road plus those waiting to leave. */
 	armySize(w: World): number {
-		let n = w.allies.alive();
+		let n = this.ours ? w.allies.alive() : enemyArmy(w);
 		for (const q of this.queue) n += q.units.length;
 		return n;
 	}
 
 	airborne(w: World): number {
 		let n = 0;
-		for (const e of w.escorts) if (e.active) n++;
+		if (this.ours) {
+			for (const e of w.escorts) if (e.active) n++;
+		} else {
+			for (const a of this.planes) if (a.alive && !a.dying) n++;
+		}
 		return n;
 	}
 
@@ -424,8 +484,9 @@ export class Command {
 		return null;
 	}
 
-	/** Where the fighting is: just ahead of our spearhead, or our furthest checkpoint. */
+	/** Where this side's fighting is: just ahead of its spearhead, or its furthest checkpoint. */
 	front(w: World): number {
+		if (!this.ours) return enemyFront(w);
 		const lead = w.allies.spearhead();
 		let x = lead ? lead.x + 120 : (w.war.rally(w).from ?? WORLD.baseMaxX + 300);
 		if (!lead) for (const c of w.war.checkpoints) if (c.owner === 'player') x = Math.max(x, c.x);
@@ -452,13 +513,28 @@ export class Command {
 		this.nextDeploy -= dt;
 		if (this.nextDeploy > 0 || this.queue.length === 0) return;
 		const next = this.queue.shift()!;
+		this.nextDeploy = DEPLOY_GAP + next.units.length * 0.25;
+		if (!this.ours) return this.deployEnemy(w, next);
 		const { from, note } = w.war.rally(w);
 		w.allies.deploy(w, next.units, from, note, COMMANDS[next.id].name.toUpperCase());
-		this.nextDeploy = DEPLOY_GAP + next.units.length * 0.25;
+	}
+
+	/** Their group forms up behind their foremost checkpoint, lead unit first, like a wave column. */
+	private deployEnemy(w: World, next: { id: CommandId; units: readonly AllyKind[] }): void {
+		let x = w.war.enemyStaging();
+		next.units.forEach((kind, i) => {
+			const infantry = UNITS[kind].category === 'infantry';
+			const z = infantry ? rnd.range(-3.2, 3.2) : i % 2 ? -1.8 : 1.6;
+			w.spawnUnit(kind, x, z, -1);
+			x += infantry ? 3 : 16;
+		});
+		const intel = ENEMY_INTEL[next.id];
+		if (intel) w.events.message('', intel, 'warn');
 	}
 
 	/** A jet climbs out from the end of the runway and takes up its standing order. */
 	private launch(w: World, def: CommandDef): void {
+		if (!this.ours) return this.launchEnemy(w, def);
 		const x = WORLD.runwayMaxX;
 		const jet = new Wingman(x, w.ground(x) + 30, { aircraft: def.aircraft, callsign: null });
 		jet.angle = 0.22;
@@ -476,88 +552,134 @@ export class Command {
 		);
 	}
 
-	/** Keeps our jets over the front as it moves, and reports any that go down. */
+	/** Their jet takes off from the near end of their runway, toward us. */
+	private launchEnemy(w: World, def: CommandDef): void {
+		const x = WORLD.enemyRunwayMinX;
+		const sams = def.order === 'sams';
+		const jet = new AirUnit(w.newId(), sams ? 'striker' : 'fighter', x, w.ground(x) + 30);
+		jet.angle = Math.PI - 0.22;
+		jet.vx = Math.cos(jet.angle) * 85;
+		jet.vy = Math.sin(jet.angle) * 85;
+		jet.role = sams ? 'sams' : 'attack';
+		jet.patrol = this.front(w);
+		w.air.push(jet);
+		this.planes.add(jet);
+		w.sound.play('missileLaunch', x, jet.y, 0.4, 0.5);
+		w.events.message(
+			sams ? 'ENEMY ATTACK JET' : 'ENEMY FIGHTER',
+			sams ? 'Taking off to hunt our AA' : 'Scrambled from their airfield',
+			'warn'
+		);
+	}
+
+	/** Keeps this side's jets over its front as it moves, and reports any of ours that go down. */
 	private patrol(w: World, dt: number): void {
 		for (const [jet, id] of this.jets) {
 			if (jet.active) continue;
 			this.jets.delete(jet);
 			w.events.message(`${COMMANDS[id].name.toUpperCase()} DOWN`, 'We lost an aircraft', 'warn');
+			w.enemyCommand.reward(JET_SCORE);
 		}
+		for (const a of this.planes) if (!a.alive || a.dying) this.planes.delete(a);
 		this.patrolClock -= dt;
 		if (this.patrolClock > 0) return;
 		this.patrolClock = 1;
 		const x = this.front(w);
-		for (const jet of w.escorts) jet.patrol = x;
+		if (this.ours) for (const jet of w.escorts) jet.patrol = x;
+		else for (const a of this.planes) a.patrol = x;
 	}
 
 	private strike(w: World, id: CommandId, x: number): void {
-		const ly = w.ground(LAUNCH_X);
+		const ours = this.ours;
+		const dir = this.dir;
+		const site = ours ? OUR_SITES : THEIR_SITES;
 		if (id === 'barrage') {
 			for (let i = 0; i < BARRAGE_ROUNDS; i++) {
+				// The battery's guns take it in turns.
+				const gx = site.battery[i % site.battery.length];
+				const gy = w.terrain.heightAtXZ(gx, site.z) + 1.1;
+				const mx = gx + dir * (0.2 + Math.cos(BATTERY_PITCH) * BATTERY_REACH);
+				const my = gy + Math.sin(BATTERY_PITCH) * BATTERY_REACH;
 				const tx = x + rnd.gauss(BARRAGE_SCATTER);
+				const time = SHELL_TIME + Math.abs(tx - mx) * SHELL_PACE;
 				this.rounds.push({
-					x: tx - 75,
-					y: w.ground(tx) + 420,
-					vx: 55,
-					vy: -300,
+					gx,
+					gy,
+					x: mx,
+					y: my,
+					z: site.z,
+					vx: (tx - mx) / time,
+					vy: (w.ground(tx) - my) / time + (SHELL_G * time) / 2,
 					tx,
-					delay: 1.6 + i * 0.22 + rnd.range(0, 0.1),
-					falling: false
+					time,
+					age: 0,
+					delay: 0.2 + i * 0.22 + rnd.range(0, 0.1),
+					fired: false
 				});
 			}
-			w.sound.play('artillery', LAUNCH_X, ly, 1);
-			w.events.message('BARRAGE INBOUND', 'Shells landing in a few seconds', 'info');
+			if (ours) w.events.message('BARRAGE INBOUND', 'Shells landing in a few seconds', 'info');
+			else w.events.message('ENEMY BARRAGE', 'Shells coming down on our lines', 'warn');
 			return;
 		}
 		if (id === 'cruise') {
-			const target = seek(w, x, 1, true) ?? groundPoint(w, x);
+			const target = (ours ? seek(w, x, 1, true) : seekAlly(w, x)) ?? groundPoint(w, x);
+			// Off the rail at the front of the rack, at the rack's angle.
+			const rx = site.launcher - dir * 2.4;
+			const ry = w.terrain.heightAtXZ(site.launcher, site.z) + 1.3;
+			const lx = rx + dir * Math.cos(RACK_PITCH) * 5.4;
+			const ly = ry + Math.sin(RACK_PITCH) * 5.4;
+			const angle = ours ? RACK_PITCH : Math.PI - RACK_PITCH;
 			w.strikes.push({
 				kind: 'cruise',
-				x: LAUNCH_X,
-				y: ly + 4,
-				z: 0,
-				vx: 60,
-				vy: 50,
-				angle: 0.7,
+				x: lx,
+				y: ly,
+				z: site.z,
+				vx: Math.cos(angle) * 70,
+				vy: Math.sin(angle) * 70,
+				angle,
 				target,
 				delay: 0,
 				age: 0,
 				trail: 0,
 				alive: true,
-				owner: 'player',
+				owner: this.side,
 				blast: CRUISE_BLAST,
 				life: CRUISE_LIFE
 			});
-			w.sound.play('missileLaunch', LAUNCH_X, ly, 1.2, 0.7);
-			w.fx.muzzleFlash(LAUNCH_X, ly + 4, 0, 0.7, 0.7, 2.4, [10, 6, 3]);
-			w.events.message('CRUISE MISSILE AWAY', 'Skimming the road to the target', 'info');
+			w.sound.play('missileLaunch', lx, ly, 1.2, 0.7);
+			w.fx.muzzleFlash(lx, ly, site.z, -Math.cos(angle), -Math.sin(angle), 2.4, [10, 6, 3]);
+			if (ours) w.events.message('CRUISE MISSILE AWAY', 'Skimming the road to the target', 'info');
+			else w.events.message('ENEMY CRUISE MISSILE', 'Inbound on our troops', 'warn');
 			return;
 		}
 		if (id === 'carpet') {
-			// Release early enough that the stick lands across the spot.
-			const startX = x - 1300;
-			const y = w.ground(x) + BOMBER_ALT;
-			const lead = predictImpact(w, startX, y, BOMBER_SPEED, 0, BOMBS.gp.drag, null).x - startX;
+			// It rolls from the far end of the runway and climbs out toward the target.
+			const startX = ours ? WORLD.runwayMinX + 40 : WORLD.enemyRunwayMaxX - 40;
 			this.flybys.push({
-				aircraft: 'b1',
+				aircraft: ours ? 'b1' : 'tu95',
 				x: startX,
-				y,
+				y: w.ground(startX) + 3,
 				z: 0,
-				dir: 1,
+				vy: BOMBER_CLIMB,
+				dir,
 				speed: BOMBER_SPEED,
-				dropFrom: x - CARPET_HALF - lead,
-				dropTo: x + CARPET_HALF - lead,
+				target: x,
+				cruise: w.ground(x) + BOMBER_ALT,
 				nextDrop: 0
 			});
-			w.events.message('BOMBER INBOUND', 'A B-1 is lining up on the target', 'info');
+			w.sound.play('missileLaunch', startX, w.ground(startX), 0.8, 0.35);
+			if (ours)
+				w.events.message('BOMBER TAKING OFF', 'A B-1 is climbing out toward the target', 'info');
+			else w.events.message('ENEMY BOMBER', 'A bomber has taken off for our troops', 'warn');
 			return;
 		}
 		const nuke = id === 'nuke';
+		const sy = w.terrain.heightAtXZ(site.silo, site.z);
 		w.strikes.push({
 			kind: 'ballistic',
-			x: LAUNCH_X,
-			y: ly + 3,
-			z: -4,
+			x: site.silo,
+			y: sy + 1,
+			z: site.z,
 			vx: 0,
 			vy: 30,
 			angle: Math.PI / 2,
@@ -566,33 +688,51 @@ export class Command {
 			age: 0,
 			trail: 0,
 			alive: true,
-			owner: 'player',
+			owner: this.side,
 			nuke
 		});
-		w.sound.play('missileLaunch', LAUNCH_X, ly, 1.4, 0.55);
-		w.events.message(
-			nuke ? 'TACTICAL NUKE LAUNCHED' : 'BALLISTIC MISSILE AWAY',
-			nuke ? 'Get our troops clear of the blast' : 'Climbing for re-entry: clear the target area',
-			'warn'
-		);
+		w.sound.play('missileLaunch', site.silo, sy, 1.4, 0.55);
+		w.fx.muzzleFlash(site.silo, sy + 1, site.z, 0, -1, 3, [10, 6, 3]);
+		if (ours)
+			w.events.message(
+				nuke ? 'TACTICAL NUKE LAUNCHED' : 'BALLISTIC MISSILE AWAY',
+				nuke ? 'Get our troops clear of the blast' : 'Climbing for re-entry: clear the target area',
+				'warn'
+			);
+		else
+			w.events.message(
+				nuke ? 'ENEMY NUKE LAUNCHED' : 'ENEMY BALLISTIC MISSILE',
+				'Pull our troops back from the marked spot',
+				'warn'
+			);
 	}
 
 	private updateRounds(w: World, dt: number): void {
+		const site = this.ours ? OUR_SITES : THEIR_SITES;
 		for (let i = this.rounds.length - 1; i >= 0; i--) {
 			const r = this.rounds[i];
-			if (!r.falling) {
+			if (!r.fired) {
 				r.delay -= dt;
-				if (r.delay <= 0) r.falling = true;
+				if (r.delay > 0) continue;
+				r.fired = true;
+				const ca = Math.cos(BATTERY_PITCH) * this.dir,
+					sa = Math.sin(BATTERY_PITCH);
+				w.fx.muzzleFlash(r.x, r.y, r.z, ca, sa, 2.2, [12, 7, 3]);
+				w.fx.trail(r.x, r.y, r.z, 1.6, 0.6, 0.55, 3, 0.1);
+				w.sound.play('artillery', r.gx, r.gy, 0.9);
 				continue;
 			}
-			r.vy -= WORLD.gravity * dt;
+			r.age += dt;
+			r.vy -= SHELL_G * dt;
 			r.x += r.vx * dt;
 			r.y += r.vy * dt;
-			w.fx.immediateGlow(r.x, r.y, 0, 0.8, 12, 6, 2);
-			w.fx.trail(r.x, r.y, 0, 0.5, 0.5, 0.5, 1.4, 0.25);
+			// Out of the gun pit and onto the battle line by the time it lands.
+			r.z = site.z * Math.max(0, 1 - r.age / r.time);
+			w.fx.immediateGlow(r.x, r.y, r.z, 0.8, 12, 6, 2);
+			w.fx.trail(r.x, r.y, r.z, 0.5, 0.5, 0.5, 1.4, 0.25);
 			const g = w.ground(r.x);
-			if (r.y > g) continue;
-			explode(w, r.x, g, 0, BARRAGE_BLAST, 'player');
+			if (r.y > g || r.age < r.time * 0.5) continue;
+			explode(w, r.x, g, 0, BARRAGE_BLAST, this.side);
 			this.rounds.splice(i, 1);
 		}
 	}
@@ -601,14 +741,41 @@ export class Command {
 		for (let i = this.flybys.length - 1; i >= 0; i--) {
 			const f = this.flybys[i];
 			f.x += f.dir * f.speed * dt;
-			f.y = Math.max(f.y, w.surface.clearance(f.x) + 60);
+			f.vy = f.y < f.cruise ? BOMBER_CLIMB : 0;
+			f.y = Math.max(f.y + f.vy * dt, Math.min(f.cruise, w.surface.clearance(f.x) + 60));
 			w.fx.immediateGlow(f.x - f.dir * 14, f.y, f.z, 1.2, 9, 5, 2);
 			f.nextDrop -= dt;
-			if (f.x >= f.dropFrom && f.x <= f.dropTo && f.nextDrop <= 0) {
-				f.nextDrop = CARPET_INTERVAL;
-				dropBomb(w, BOMBS.gp, f.x, f.y - 2, 0, f.dir * f.speed, 0, 0);
+			if (f.nextDrop <= 0 && Math.abs(f.x - f.target) < 1500) {
+				// Release whenever a bomb let go now would land across the target.
+				const vx = f.dir * f.speed;
+				const hit = predictImpact(w, f.x, f.y - 2, vx, f.vy, BOMBS.gp.drag, null).x;
+				if (Math.abs(hit - f.target) <= CARPET_HALF) {
+					f.nextDrop = CARPET_INTERVAL;
+					dropBomb(w, BOMBS.gp, f.x, f.y - 2, 0, vx, f.vy, 0).owner = this.side;
+				}
 			}
 			if (f.x > WORLD.terrainMaxX - 200 || f.x < WORLD.terrainMinX + 200) this.flybys.splice(i, 1);
 		}
 	}
+}
+
+/** The enemy's mobile army on the road: what counts toward their army limit. */
+export function enemyArmy(w: World): number {
+	let n = 0;
+	for (const u of w.units)
+		if (u.alive && !u.def.isStatic && !u.def.rail && !u.def.boss && u.def.kind !== 'cruiser') n++;
+	return n;
+}
+
+/** Where the enemy's fighting is: just ahead of their lead unit, or their foremost checkpoint. */
+function enemyFront(w: World): number {
+	let lead: number | null = null;
+	for (const u of w.units) {
+		if (!u.alive || u.def.isStatic || u.def.rail || u.x > WORLD.hqMinX) continue;
+		if (lead === null || u.x < lead) lead = u.x;
+	}
+	let x = lead !== null ? lead - 120 : w.war.enemyStaging() - 300;
+	if (lead === null)
+		for (const c of w.war.checkpoints) if (c.owner === 'enemy') x = Math.min(x, c.x);
+	return clamp(x, WORLD.baseMaxX + 80, WORLD.hqMinX - 250);
 }

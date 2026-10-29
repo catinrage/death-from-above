@@ -136,6 +136,8 @@ export interface CommandHud {
 	airMax: number;
 	/** Groups paid for and waiting to leave the rally point. */
 	queued: number;
+	/** The enemy commander, who has the same chest and orders. */
+	enemy: { funds: number; army: number; air: number };
 }
 
 /** Everything the HUD shows, refreshed ~15 times a second. */

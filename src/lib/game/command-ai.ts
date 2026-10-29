@@ -1,34 +1,58 @@
 import { fx as rnd } from '../engine/rng';
-import { COMMANDS, type CommandId } from './command';
+import { COMMANDS, type Command, type CommandId } from './command';
+import { UNITS } from './defs-units';
+import type { Side } from './war';
+import type { Unit } from './types';
 import type { World } from './world';
 
 /**
- * A simple stand-in commander for autoplay and balance tests: it keeps a mix
- * of troops and armour moving, puts a couple of jets up, and drops strikes on
- * the biggest enemy cluster near the front.
+ * A simple commander: it keeps a mix of troops and armour moving, puts a
+ * couple of jets up, and drops strikes on the biggest cluster of the other
+ * side near its front. It plays the enemy in every command game, and our
+ * side in autoplay and balance tests.
  */
 export class CommandAutopilot {
 	private clock = 0;
+	/** Seconds left saving up for a jet or a strike instead of buying troops. */
+	private saving = 0;
+
+	constructor(
+		readonly side: Side = 'player',
+		/** Seconds between decisions. */
+		private readonly pace = 0.5
+	) {}
 
 	update(w: World, dt: number): void {
-		const c = w.command;
+		const ours = this.side === 'player';
+		const c = ours ? w.command : w.enemyCommand;
 		if (!c.active) return;
 		this.clock -= dt;
 		if (this.clock > 0) return;
-		this.clock = 0.5;
-		const target = this.cluster(w);
+		this.clock = this.pace;
+		this.saving = Math.max(0, this.saving - this.pace);
+		const target = this.cluster(w, c);
 		if (target) {
-			for (const id of ['ballistic', 'carpet', 'cruise', 'barrage'] as CommandId[]) {
-				// Strikes only when the war chest can spare them, never on top of our own troops.
-				if (c.funds < COMMANDS[id].cost + 250) continue;
-				if (w.allies.list.some((u) => u.alive && Math.abs(u.x - target.x) < 60)) break;
-				if (target.weight >= weightFor(id) && !c.order(w, id, target.x)) return;
+			const friends = ours ? w.allies.list : w.units;
+			// While saving up, anything affordable goes; otherwise only what leaves some over.
+			const spare = this.saving > 0 ? 0 : 250;
+			for (const id of ['nuke', 'ballistic', 'carpet', 'cruise', 'barrage'] as CommandId[]) {
+				// Never on top of its own troops.
+				if (c.funds < COMMANDS[id].cost + spare) continue;
+				const clear = id === 'nuke' ? 180 : 60;
+				if (friends.some((u) => u.alive && !u.def.isStatic && Math.abs(u.x - target.x) < clear))
+					continue;
+				if (target.weight >= weightFor(id) && !c.order(w, id, target.x)) {
+					this.saving = 0;
+					return;
+				}
 			}
 		}
-		if (c.airborne(w) < 2 && c.funds > 700) {
-			c.order(w, rnd.chance(0.5) ? 'fighter' : 'striker');
+		if (c.airborne(w) < 2 && c.funds > COMMANDS.striker.cost) {
+			if (!c.order(w, rnd.chance(0.5) ? 'fighter' : 'striker')) this.saving = 0;
 			return;
 		}
+		// Saving for a jet or a strike: buy no troops for a while.
+		if (this.saving > 0) return;
 		const pick = rnd.pick<CommandId>([
 			'rifles',
 			'rifles',
@@ -41,25 +65,35 @@ export class CommandAutopilot {
 			'aa',
 			'rockets'
 		]);
-		c.order(w, pick);
+		if (c.order(w, pick) === null && rnd.chance(SAVE_CHANCE)) this.saving = SAVE_TIME;
 	}
 
-	/** The densest bunch of enemy ground units within reach of the front, by score. */
-	private cluster(w: World): { x: number; weight: number } | null {
-		const front = w.command.front(w);
+	/** The densest bunch of the other side's ground units within reach of the front, by score. */
+	private cluster(w: World, c: Command): { x: number; weight: number } | null {
+		const front = c.front(w);
+		const foes = this.side === 'player' ? w.units : w.allies.list;
 		let best: { x: number; weight: number } | null = null;
-		for (const u of w.units) {
+		for (const u of foes) {
 			if (!u.alive || u.def.isStatic || Math.abs(u.x - front) > 700) continue;
 			let weight = 0;
-			for (const o of w.units)
-				if (o.alive && Math.abs(o.x - u.x) < 40) weight += Math.max(10, o.def.score);
+			for (const o of foes) if (o.alive && Math.abs(o.x - u.x) < 40) weight += worth(o);
 			if (!best || weight > best.weight) best = { x: u.x, weight };
 		}
 		return best;
 	}
 }
 
+/** After buying troops, the chance it then saves up for a jet or a strike, and for how long. */
+const SAVE_CHANCE = 0.3;
+const SAVE_TIME = 25;
+
+/** What a unit is worth hitting (our own units score nothing for the player, so use the base def). */
+function worth(u: Unit): number {
+	return Math.max(10, UNITS[u.def.kind].score);
+}
+
 /** How juicy a cluster must be (summed score) to be worth each strike. */
 function weightFor(id: CommandId): number {
+	if (id === 'nuke') return 1800;
 	return id === 'ballistic' ? 600 : id === 'carpet' ? 450 : id === 'cruise' ? 150 : 200;
 }

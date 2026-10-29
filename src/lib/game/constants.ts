@@ -22,6 +22,11 @@ export const WORLD = {
 	hqMinX: 3570,
 	hqMaxX: 3760,
 	enemySpawnX: 3780,
+	/** The enemy airfield behind their HQ: ours mirrored, its runway pointing back at us. */
+	enemyBaseMinX: 3825,
+	enemyBaseMaxX: 4400,
+	enemyRunwayMinX: 3885,
+	enemyRunwayMaxX: 4290,
 	baseHeight: 2,
 	ceiling: 330,
 	gravity: 13

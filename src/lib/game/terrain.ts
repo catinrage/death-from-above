@@ -30,6 +30,17 @@ export const DEFAULT_SHAPE: Readonly<TerrainShape> = {
 };
 const MAX_DIG = 9;
 
+/** 1 on either airfield, ours or the enemy's, easing to 0 over `blend` metres outside it. */
+function apron(x: number, blend: number): number {
+	const ours =
+		smoothstep(WORLD.baseMaxX + blend, WORLD.baseMaxX, x) *
+		smoothstep(WORLD.baseMinX - blend, WORLD.baseMinX, x);
+	const theirs =
+		smoothstep(WORLD.enemyBaseMaxX + blend, WORLD.enemyBaseMaxX, x) *
+		smoothstep(WORLD.enemyBaseMinX - blend, WORLD.enemyBaseMinX, x);
+	return Math.max(ours, theirs);
+}
+
 interface HotZone {
 	r0: number;
 	r1: number;
@@ -119,10 +130,7 @@ export class Terrain {
 		const n = this.noise;
 		let h = n.fbm1(x * 0.0017, 4) * 24 + n.fbm1(x * 0.011 + 50, 3) * 4.5;
 		h += n.fbm1(x * 0.06 + 9, 2) * 0.35;
-		const flat =
-			smoothstep(WORLD.baseMaxX + 170, WORLD.baseMaxX, x) *
-			smoothstep(WORLD.baseMinX - 160, WORLD.baseMinX, x);
-		return lerp(h, WORLD.baseHeight, flat);
+		return lerp(h, WORLD.baseHeight, apron(x, 165));
 	}
 
 	private generate(x: number, z: number, profile: number): number {
@@ -146,12 +154,8 @@ export class Terrain {
 			h += crest * 4.5 * s.dunes * smoothstep(9, 30, Math.abs(z));
 		}
 		h += n.fbm2(x * 0.05, z * 0.05, 2) * 0.7 * (1 - road) * s.roughness;
-		// Keep the airbase apron flat in depth as well.
-		const baseW =
-			smoothstep(WORLD.baseMaxX + 120, WORLD.baseMaxX, x) *
-			smoothstep(WORLD.baseMinX - 120, WORLD.baseMinX, x) *
-			smoothstep(-90, -55, z) *
-			smoothstep(40, 20, z);
+		// Keep both airfield aprons flat in depth as well.
+		const baseW = apron(x, 120) * smoothstep(-90, -55, z) * smoothstep(40, 20, z);
 		return lerp(h, WORLD.baseHeight, baseW);
 	}
 

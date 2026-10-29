@@ -11,6 +11,15 @@ import { GEAR_HEIGHT, gearLayout } from './gear';
 import { debrisMatrix } from './debris';
 import { Props, type Prop } from './props';
 import { poseParts, poseScratch, rootMatrix } from './unit-pose';
+import {
+	BATTERY_PITCH,
+	OUR_SITES,
+	RACK_PITCH,
+	THEIR_SITES,
+	type BaseGun,
+	type BaseStructure,
+	type StrikeSites
+} from './base';
 import type { Flyby } from './command';
 import type { Player } from './player';
 import type { Unit } from './types';
@@ -141,32 +150,7 @@ export class SceneView {
 	}
 
 	private base(w: World, time: number): void {
-		const m = this.m;
-		const damage = 1 - w.base.hp / w.base.maxHp;
-		for (const s of w.base.structures) {
-			const y =
-				s.mesh === 'runway'
-					? 2.06
-					: w.terrain.heightAtXZ(s.x, s.z) +
-						(s.mesh === 'kestrel' || s.mesh === 'grizzly' ? 1.4 : 0);
-			mat4.fromTranslation(m, s.x, y, s.z);
-			mat4.rotateY(m, m, s.yaw);
-			const char = s.fire ? 0.55 : s.mesh === 'runway' ? 0 : damage * 0.25;
-			this.mesh(s.mesh).push(m, this.style(char, 0, 0, 1, 1, s.fire ? 0.5 : 0));
-			if (s.glow && w.night > 0.15)
-				this.mesh(s.glow).push(m, this.style(0, 0, 0, 1, w.night * 1.4));
-		}
-		for (const g of w.base.guns) {
-			const y = w.terrain.heightAtXZ(g.x, g.z);
-			mat4.fromTranslation(m, g.x, y, g.z);
-			this.models.flakBase.push(m, this.style());
-			mat4.translate(m, m, 0, 1.2, 0);
-			mat4.rotateY(m, m, g.yaw);
-			this.models.flakMount.push(m, this.style());
-			mat4.translate(m, m, 0, 1.0, 0);
-			mat4.rotateZ(m, m, g.pitch);
-			this.models.flakBarrel.push(m, this.style());
-		}
+		this.airfield(w, w.base.structures, w.base.guns, OUR_SITES, 1 - w.base.hp / w.base.maxHp);
 		// Runway edge lights and the tower beacon.
 		if (w.night > 0.2) {
 			for (let x = WORLD.runwayMinX + 6; x < WORLD.runwayMaxX; x += 24) {
@@ -177,6 +161,69 @@ export class SceneView {
 			w.fx.immediateGlow(309.1, w.ground(307.5) + 15.3, -32.4, 1.5, 9, 1, 0.6);
 	}
 
+	/** An airfield's buildings, parked aircraft and flak guns (ours or the enemy's). */
+	private airfield(
+		w: World,
+		structures: readonly BaseStructure[],
+		guns: readonly BaseGun[],
+		sites: StrikeSites,
+		damage: number
+	): void {
+		const m = this.m;
+		this.strikeSites(w, sites);
+		for (const s of structures) {
+			const y =
+				s.mesh === 'runway'
+					? WORLD.baseHeight + 0.06
+					: w.terrain.heightAtXZ(s.x, s.z) +
+						(s.mesh === 'kestrel' || s.mesh === 'grizzly' || s.mesh === 'enemyFighter' ? 1.4 : 0);
+			mat4.fromTranslation(m, s.x, y, s.z);
+			mat4.rotateY(m, m, s.yaw);
+			const char = s.fire ? 0.55 : s.mesh === 'runway' ? 0 : damage * 0.25;
+			this.mesh(s.mesh).push(m, this.style(char, 0, 0, 1, 1, s.fire ? 0.5 : 0));
+			if (s.glow && w.night > 0.15)
+				this.mesh(s.glow).push(m, this.style(0, 0, 0, 1, w.night * 1.4));
+		}
+		for (const g of guns) {
+			const y = w.terrain.heightAtXZ(g.x, g.z);
+			mat4.fromTranslation(m, g.x, y, g.z);
+			this.models.flakBase.push(m, this.style());
+			mat4.translate(m, m, 0, 1.2, 0);
+			mat4.rotateY(m, m, g.yaw);
+			this.models.flakMount.push(m, this.style());
+			mat4.translate(m, m, 0, 1.0, 0);
+			mat4.rotateZ(m, m, g.pitch);
+			this.models.flakBarrel.push(m, this.style());
+		}
+	}
+
+	/** Where an airfield's strikes come from: the gun pits, the missile rack and the silo. */
+	private strikeSites(w: World, sites: StrikeSites): void {
+		const m = this.m;
+		const face = sites.dir > 0 ? 0 : Math.PI;
+		for (const x of sites.battery) {
+			const y = w.terrain.heightAtXZ(x, sites.z);
+			mat4.fromTranslation(m, x, y, sites.z);
+			this.models.gunPit.push(m, this.style());
+			mat4.rotateY(m, m, face);
+			this.models.artilleryCarriage.push(m, this.style());
+			mat4.translate(m, m, 0.2, 1.1, 0);
+			mat4.rotateZ(m, m, BATTERY_PITCH);
+			this.models.artilleryBarrel.push(m, this.style());
+		}
+		let y = w.terrain.heightAtXZ(sites.launcher, sites.z);
+		mat4.fromTranslation(m, sites.launcher, y, sites.z);
+		mat4.rotateY(m, m, face);
+		this.models.launchPad.push(m, this.style());
+		mat4.translate(m, m, -2.4, 1.3, 0);
+		mat4.rotateZ(m, m, RACK_PITCH);
+		this.models.samRack.push(m, this.style());
+		y = w.terrain.heightAtXZ(sites.silo, sites.z);
+		mat4.fromTranslation(m, sites.silo, y, sites.z);
+		mat4.rotateY(m, m, face);
+		this.models.missileSilo.push(m, this.style());
+	}
+
 	/** The enemy HQ compound (rubble once it falls) and the checkpoint flags. */
 	private war(w: World, time: number): void {
 		const war = w.war;
@@ -184,6 +231,12 @@ export class SceneView {
 		const m = this.m;
 		const hq = war.hq;
 		const damage = 1 - hq.hp / hq.maxHp;
+		this.airfield(w, war.airfield.structures, war.airfield.guns, THEIR_SITES, damage);
+		if (w.night > 0.2) {
+			for (let x = WORLD.enemyRunwayMinX + 6; x < WORLD.enemyRunwayMaxX; x += 24) {
+				for (const z of [-12.5, 12.5]) w.fx.immediateGlow(x, 2.4, z, 0.7, 2.5, 1.0, 0.8);
+			}
+		}
 		for (const s of hq.structures) {
 			mat4.fromTranslation(m, s.x, w.terrain.heightAtXZ(s.x, s.z), s.z);
 			mat4.rotateY(m, m, s.yaw);
@@ -454,10 +507,15 @@ export class SceneView {
 		for (const a of w.air) {
 			mat4.fromTranslation(m, a.x, a.y, a.z);
 			const st = this.style(a.dying ? 0.6 : 0, a.flash * 0.7, 0, 1, 1, a.dying ? 1 : 0);
-			if (a.kind === 'fighter') {
+			if (a.kind !== 'heli') {
 				mat4.rotateZ(m, m, a.angle);
 				mat4.rotateX(m, m, a.roll);
-				this.models.enemyFighter.push(m, st);
+				if (a.kind === 'striker') {
+					// The enemy commander's attack jet: their Su-25.
+					const sc = AIRCRAFT.su25.scale;
+					mat4.scale(m, m, sc, sc, sc);
+					this.mesh(AIRCRAFT.su25.mesh).push(m, st);
+				} else this.models.enemyFighter.push(m, st);
 				const ca = Math.cos(a.angle),
 					sa = Math.sin(a.angle);
 				w.fx.immediateGlow(a.x - ca * 6.1, a.y - sa * 6.1, a.z, 1.4, 9, 4, 1.5);
@@ -480,6 +538,7 @@ export class SceneView {
 	private wingmen(w: World, time: number): void {
 		for (const a of w.jets()) this.wingman(w, a, time);
 		for (const f of w.command.flybys) this.flyby(f);
+		for (const f of w.enemyCommand.flybys) this.flyby(f);
 	}
 
 	/** A bomber on a scripted run: straight and level, out of reach. */
@@ -488,7 +547,8 @@ export class SceneView {
 		const def = AIRCRAFT[f.aircraft];
 		const sc = def.scale;
 		mat4.fromTranslation(m, f.x, f.y, f.z);
-		mat4.rotateZ(m, m, f.dir > 0 ? 0 : Math.PI);
+		const climb = Math.atan2(f.vy, f.speed);
+		mat4.rotateZ(m, m, f.dir > 0 ? climb : Math.PI - climb);
 		if (f.dir < 0) mat4.rotateX(m, m, Math.PI);
 		mat4.scale(m, m, sc, sc, sc);
 		this.mesh(def.mesh).push(m, this.style());

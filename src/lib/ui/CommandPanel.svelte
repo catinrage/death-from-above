@@ -50,6 +50,10 @@
 			<span title="Our units on the road">ARMY {command.army}/{command.armyMax}</span>
 			<span title="Our jets in the air">AIR {command.air}/{command.airMax}</span>
 			{#if command.queued > 0}<span class="queue">{command.queued} forming up</span>{/if}
+			<span class="foe" title="The enemy commander: same chest, same orders">
+				ENEMY {command.enemy.funds.toLocaleString()} · ARMY {command.enemy.army} · AIR {command
+					.enemy.air}
+			</span>
 		</div>
 		<p class="tip">
 			{#if aimed}
@@ -160,6 +164,10 @@
 
 	.queue {
 		color: #9fd8ff;
+	}
+
+	.foe {
+		color: #ff8a6a;
 	}
 
 	/* Takes whatever room the order bar leaves, never widening the panel. */

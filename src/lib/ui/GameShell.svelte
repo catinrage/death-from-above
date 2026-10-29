@@ -642,6 +642,29 @@
 		opacity: 0.9;
 	}
 
+	/* Command mode: a name board over each airfield and the enemy HQ, so both ends of the road read. */
+	.targeting :global(.tl-place) {
+		position: absolute;
+		left: 0;
+		top: 0;
+		translate: -50% -100%;
+		padding: 2px 8px 7px;
+		font-family: var(--display);
+		font-size: 12px;
+		letter-spacing: 0.18em;
+		white-space: nowrap;
+		pointer-events: none;
+		color: #04121f;
+		background: #6cc0ff;
+		clip-path: polygon(0 0, 100% 0, 100% 75%, 54% 75%, 50% 100%, 46% 75%, 0 75%);
+		opacity: 0.88;
+	}
+
+	.targeting :global(.tl-place.enemy) {
+		color: #1f0602;
+		background: #ff6a4a;
+	}
+
 	/* Badly hurt: it blinks. */
 	.targeting :global(.tl-ally.hurt) {
 		animation: tl-threat 0.4s ease-in-out infinite alternate;

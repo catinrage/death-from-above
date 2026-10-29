@@ -5,11 +5,34 @@ import { WORLD } from './constants';
 import type { BlastSpec } from './defs-bombs';
 import { launchMissile, spawnBullet } from './projectiles';
 import type { Player } from './player';
-import type { Owner, Trackable } from './types';
-import { nearestFriendly } from './wingman';
+import type { Owner, Trackable, Unit, UnitKind } from './types';
+import { nearestFriendly, type Wingman } from './wingman';
 import type { World } from './world';
 
-export type AirKind = 'fighter' | 'heli';
+export type AirKind = 'fighter' | 'heli' | 'striker';
+
+/**
+ * What the enemy commander sent a jet to do: 'attack' fights our aircraft
+ * and then whatever is near the front, 'sams' goes after our AA first.
+ * Aircraft from the old waves have no orders.
+ */
+export type AirRole = 'attack' | 'sams';
+
+/** An ordered fighter takes on our aircraft within this range; beyond it, our troops. */
+const INTERCEPT_RANGE = 900;
+/** Lowest an attack run may take a jet, and the height it waits at between runs. */
+const RUN_FLOOR = 38;
+const LOITER_ALT = 150;
+/** Seconds a jet runs out and climbs after a pass before it comes round again. */
+const EXTEND_TIME = 3;
+/** Our units an attack jet goes for first, most wanted first. */
+const PREY_WEIGHT: Partial<Record<UnitKind, number>> = {
+	spaag: 0.35,
+	manpads: 0.45,
+	rocketTruck: 0.7,
+	tank: 0.75,
+	lightTank: 0.8
+};
 
 /** How far ahead of the friendly spearhead a gunship hovers, and how far its rockets reach. */
 const ROCKET_STANDOFF = 220;
@@ -46,6 +69,12 @@ export class AirUnit implements Trackable {
 	readonly score: number;
 	heat = 1.6;
 	flash = 0;
+	/** The enemy commander's order for it, or null for a wave aircraft. */
+	role: AirRole | null = null;
+	/** Where an ordered jet hangs about while it has nothing to hit (the front). */
+	patrol = 0;
+	private prey: Unit | null = null;
+	private rescan = 0;
 	private state: 'attack' | 'extend' = 'attack';
 	private stateTime = 0;
 	private gunCd = 1;
@@ -61,11 +90,11 @@ export class AirUnit implements Trackable {
 		this.x = x;
 		this.y = y;
 		this.angle = Math.PI;
-		this.hp = this.maxHp = kind === 'fighter' ? 70 : 95;
-		this.radius = kind === 'fighter' ? 6 : 5.5;
-		this.score = kind === 'fighter' ? 300 : 220;
+		this.hp = this.maxHp = kind === 'fighter' ? 70 : kind === 'striker' ? 110 : 95;
+		this.radius = kind === 'heli' ? 5.5 : 6;
+		this.score = kind === 'fighter' ? 300 : kind === 'striker' ? 280 : 220;
 		this.missileCd = rnd.range(8, 14);
-		const sp = kind === 'fighter' ? 85 : 22;
+		const sp = kind === 'heli' ? 22 : 85;
 		this.vx = -sp;
 		this.roll = Math.PI;
 	}
@@ -79,80 +108,41 @@ export class AirUnit implements Trackable {
 		this.spinRate = rnd.sign() * rnd.range(2, 4);
 		w.fx.explosion(this.x, this.y, this.z, 0.6, false);
 		w.sound.boom(0.75, this.x, this.y, true);
-		w.events.kill(
-			this.kind === 'fighter' ? 'Interceptor' : 'Gunship',
-			this.score,
-			this.x,
-			this.y + 6,
-			by
-		);
+		w.events.kill(AIR_NAME[this.kind], this.score, this.x, this.y + 6, by);
 	}
 
 	update(w: World, dt: number): void {
 		this.flash = Math.max(0, this.flash - dt * 4);
 		this.rotor += dt * 32;
 		if (this.dying) return this.fall(w, dt);
-		if (this.kind === 'fighter') this.fly(w, dt);
-		else this.hover(w, dt);
+		if (this.kind === 'heli') this.hover(w, dt);
+		else this.fly(w, dt);
 	}
 
 	private fly(w: World, dt: number): void {
-		const p = nearestFriendly(w, this.x, this.y);
+		// The attack jet leaves our aircraft alone: it is after the ground.
+		const p = this.kind === 'striker' ? null : nearestFriendly(w, this.x, this.y);
 		this.stateTime += dt;
 		this.gunCd -= dt;
 		this.missileCd -= dt;
-		let target = this.angle;
+		this.rocketCd -= dt;
 		const ground = w.surface.clearance(this.x);
-		if (p) {
-			const dx = p.x - this.x,
-				dy = p.y - this.y;
-			const dist = Math.hypot(dx, dy);
-			const t = dist / 600;
-			const aim = Math.atan2(p.y + p.vy * t - this.y, p.x + p.vx * t - this.x);
-			if (this.state === 'attack') {
-				target = aim;
-				const err = Math.abs(angleDiff(this.angle, aim));
-				if (err < 0.13 && dist < 430) this.guns(w);
-				if (err < 0.45 && dist > 260 && dist < 720 * w.weather.irScale() && this.missileCd <= 0) {
-					this.missileCd = rnd.range(11, 16);
-					launchMissile(w, {
-						kind: 'air',
-						x: this.x,
-						y: this.y - 1,
-						z: 0,
-						angle: this.angle,
-						speed: 90,
-						maxSpeed: 230,
-						accel: 200,
-						turnRate: 2.4,
-						target: p,
-						burn: 2.6,
-						life: 6,
-						damage: 30,
-						owner: 'enemy',
-						seeker: 'heat'
-					});
-					if (w.pilots().includes(p as Player)) w.events.message('MISSILE LAUNCH', '', 'warn');
-				}
-				if (dist < 110) {
-					this.state = 'extend';
-					this.stateTime = 0;
-				}
-			} else {
-				target = this.angle + angleDiff(this.angle, Math.atan2(-dy, -dx)) * 0.4;
-				if (this.stateTime > rnd.range(2.2, 3.4)) this.state = 'attack';
-			}
-		} else {
-			target = this.x > 1200 ? Math.PI : 0;
-		}
-		if (this.y - ground < 70)
+		const engage = !!p && (!this.role || Math.hypot(p.x - this.x, p.y - this.y) < INTERCEPT_RANGE);
+		let target: number;
+		let floor = 70;
+		if (p && engage) target = this.dogfight(w, p);
+		else if (this.role) {
+			target = this.attackRun(w, dt);
+			floor = RUN_FLOOR;
+		} else target = this.x > 1200 ? Math.PI : 0;
+		if (this.y - ground < floor)
 			target =
 				0.9 * (Math.cos(this.angle) >= 0 ? 1 : -1) + (Math.cos(this.angle) >= 0 ? 0 : Math.PI);
 		if (this.y > WORLD.ceiling - 40) target = Math.cos(this.angle) >= 0 ? -0.4 : Math.PI + 0.4;
 		if (this.x < WORLD.arenaMinX + 80) target = 0.3;
 		if (this.x > WORLD.arenaMaxX + 80) target = Math.PI - 0.3;
 		this.angle = wrapAngle(this.angle + clamp(angleDiff(this.angle, target), -1.7 * dt, 1.7 * dt));
-		const speed = 88;
+		const speed = this.kind === 'striker' ? 80 : 88;
 		this.vx = Math.cos(this.angle) * speed;
 		this.vy = Math.sin(this.angle) * speed;
 		this.x += this.vx * dt;
@@ -174,6 +164,122 @@ export class AirUnit implements Trackable {
 			);
 			if (this.hp < this.maxHp * 0.5) w.fx.trail(this.x, this.y, 0, 1, 0.08, 0.7, 2, 0.2);
 		}
+	}
+
+	/** Heading to fight one of our aircraft: guns close in, a heat seeker from further out. */
+	private dogfight(w: World, p: Player | Wingman): number {
+		const dx = p.x - this.x,
+			dy = p.y - this.y;
+		const dist = Math.hypot(dx, dy);
+		if (this.state === 'extend') {
+			if (this.stateTime > rnd.range(2.2, 3.4)) this.state = 'attack';
+			return this.angle + angleDiff(this.angle, Math.atan2(-dy, -dx)) * 0.4;
+		}
+		const t = dist / 600;
+		const aim = Math.atan2(p.y + p.vy * t - this.y, p.x + p.vx * t - this.x);
+		const err = Math.abs(angleDiff(this.angle, aim));
+		if (err < 0.13 && dist < 430) this.guns(w);
+		if (err < 0.45 && dist > 260 && dist < 720 * w.weather.irScale() && this.missileCd <= 0) {
+			this.missileCd = rnd.range(11, 16);
+			launchMissile(w, {
+				kind: 'air',
+				x: this.x,
+				y: this.y - 1,
+				z: 0,
+				angle: this.angle,
+				speed: 90,
+				maxSpeed: 230,
+				accel: 200,
+				turnRate: 2.4,
+				target: p,
+				burn: 2.6,
+				life: 6,
+				damage: 30,
+				owner: 'enemy',
+				seeker: 'heat'
+			});
+			if (w.pilots().includes(p as Player)) w.events.message('MISSILE LAUNCH', '', 'warn');
+		}
+		if (dist < 110) {
+			this.state = 'extend';
+			this.stateTime = 0;
+		}
+		return aim;
+	}
+
+	/**
+	 * Heading for a pass at our troops: wait over the front at height, dive on
+	 * the chosen unit with guns (and rockets from the attack jet), then pull
+	 * off, climb out and come round again.
+	 */
+	private attackRun(w: World, dt: number): number {
+		this.rescan -= dt;
+		if (!this.prey?.alive || this.rescan <= 0) {
+			this.prey = pickPrey(w, this);
+			this.rescan = 4;
+		}
+		const dir = Math.cos(this.angle) >= 0 ? 1 : -1;
+		const level = (h: number): number => clamp((h - this.y) * 0.012, -0.35, 0.35);
+		const u = this.prey;
+		if (!u) {
+			// Nothing to hit: hold over the front, turning back at each end of the beat.
+			const head = this.x < this.patrol - 250 ? 1 : this.x > this.patrol + 250 ? -1 : dir;
+			const pitch = level(w.surface.clearance(this.x) + LOITER_ALT);
+			return head > 0 ? pitch : Math.PI - pitch;
+		}
+		const dx = u.x - this.x;
+		const dy = u.y + u.def.half[1] - this.y;
+		if (this.state === 'extend') {
+			if (this.stateTime > EXTEND_TIME) {
+				this.state = 'attack';
+				this.stateTime = 0;
+			}
+			return dir > 0 ? 0.4 : Math.PI - 0.4;
+		}
+		const dist = Math.hypot(dx, dy);
+		// Overshot: run on until there is room to turn and dive again.
+		if (dx * dir < 0 && Math.abs(dx) < 320) return dir > 0 ? 0.15 : Math.PI - 0.15;
+		// Still far out: close at height, then tip into the dive.
+		if (Math.abs(dx) > 700) {
+			const pitch = level(w.surface.clearance(this.x) + LOITER_ALT);
+			return dx > 0 ? pitch : Math.PI - pitch;
+		}
+		const tof = dist / 640;
+		const aim = Math.atan2(dy, dx + u.speed * u.dir * tof);
+		const err = Math.abs(angleDiff(this.angle, aim));
+		if (err < 0.12 && dist < 480) this.guns(w);
+		if (this.kind === 'striker' && err < 0.2 && dist < 560 && this.rocketCd <= 0)
+			this.rockets(w, u);
+		if (dist < 150 || this.y - w.surface.clearance(this.x) < RUN_FLOOR + 6) {
+			this.state = 'extend';
+			this.stateTime = 0;
+		}
+		return aim;
+	}
+
+	/** A pair of rockets at a ground unit, led by their time of flight. */
+	private rockets(w: World, u: Unit): void {
+		this.rocketCd = rnd.range(2.6, 3.6);
+		for (let i = 0; i < 2; i++) {
+			const tof = Math.hypot(u.x - this.x, u.y - this.y) / 190;
+			const tx = u.x + u.speed * u.dir * tof + rnd.gauss(3);
+			const a = Math.atan2(u.y + 0.5 - this.y, tx - this.x) + rnd.gauss(0.01);
+			w.shells.push({
+				kind: 'rocket',
+				x: this.x,
+				y: this.y - 1 - i,
+				z: i ? 1.6 : -1.6,
+				vx: Math.cos(a) * 190,
+				vy: Math.sin(a) * 190,
+				age: 0,
+				fuse: Infinity,
+				damage: 12,
+				radius: 6,
+				owner: 'enemy',
+				trail: 0
+			});
+		}
+		w.sound.play('missileLaunch', this.x, this.y, 0.5, 1.5);
 	}
 
 	private guns(w: World): void {
@@ -298,6 +404,31 @@ export class AirUnit implements Trackable {
 		explode(w, this.x, g, 0, CRASH, 'player', { playerScale: 0.5 });
 		w.fires.add(this.x, g, 0, 1.6, 16, { radius: 2.5 });
 	}
+}
+
+const AIR_NAME: Record<AirKind, string> = {
+	fighter: 'Interceptor',
+	heli: 'Gunship',
+	striker: 'Attack jet'
+};
+
+/**
+ * The unit of ours an ordered jet goes for: near the front it was sent to,
+ * with the attack jet weighting our AA (then armour) well ahead of the rest.
+ */
+function pickPrey(w: World, a: AirUnit): Unit | null {
+	let best: Unit | null = null;
+	let bestScore = 900;
+	for (const u of w.allies.list) {
+		if (!u.alive) continue;
+		const weight = a.role === 'sams' ? (PREY_WEIGHT[u.def.kind] ?? 1) : 1;
+		const score = Math.abs(u.x - a.patrol) * weight + (u.def.category === 'infantry' ? 40 : 0);
+		if (score < bestScore) {
+			bestScore = score;
+			best = u;
+		}
+	}
+	return best;
 }
 
 export function updateAir(w: World, dt: number): void {
