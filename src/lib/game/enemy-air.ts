@@ -5,10 +5,14 @@ import { WORLD } from './constants';
 import { AIRCRAFT } from './defs-aircraft';
 import type { BlastSpec } from './defs-bombs';
 import { FlareDrill, launchMissile, spawnBullet } from './projectiles';
+import { levelOff, pullUpRoom, safeTurn } from './terrain-floor';
 import type { Player } from './player';
 import type { AircraftId, Owner, Trackable, Unit, UnitKind } from './types';
 import { nearestFriendly, type AirAlly } from './wingman';
 import type { World } from './world';
+
+/** How fast their jets turn, rad/s. */
+const TURN = 1.7;
 
 export type AirKind = 'fighter' | 'heli' | 'striker';
 
@@ -155,18 +159,29 @@ export class AirUnit implements Trackable {
 			target = this.attackRun(w, dt);
 			floor = RUN_FLOOR;
 		} else target = this.x > 1200 ? Math.PI : 0;
-		if (this.y - ground < floor)
+		const speed = (this.kind === 'striker' ? 80 : 88) * this.pace;
+		const agl = this.y - ground;
+		if (agl < floor + pullUpRoom(this.angle, speed, TURN))
 			target =
 				0.9 * (Math.cos(this.angle) >= 0 ? 1 : -1) + (Math.cos(this.angle) >= 0 ? 0 : Math.PI);
 		if (this.y > WORLD.ceiling - 40) target = Math.cos(this.angle) >= 0 ? -0.4 : Math.PI + 0.4;
 		if (this.x < WORLD.arenaMinX + 80) target = 0.3;
 		if (this.x > WORLD.arenaMaxX + 80) target = Math.PI - 0.3;
-		this.angle = wrapAngle(this.angle + clamp(angleDiff(this.angle, target), -1.7 * dt, 1.7 * dt));
-		const speed = (this.kind === 'striker' ? 80 : 88) * this.pace;
+		const low = agl < (2 * speed) / TURN + floor;
+		const turn = safeTurn(this.angle, target, low);
+		this.angle = wrapAngle(this.angle + clamp(turn, -TURN * dt, TURN * dt));
 		this.vx = Math.cos(this.angle) * speed;
 		this.vy = Math.sin(this.angle) * speed;
 		this.x += this.vx * dt;
 		this.y += this.vy * dt;
+		// Never through the ground: skim it and level off.
+		const skim = w.surface.clearance(this.x) + 2;
+		if (this.y < skim) {
+			this.y = skim;
+			this.angle = levelOff(this.angle);
+			this.vx = Math.cos(this.angle) * speed;
+			this.vy = Math.sin(this.angle) * speed;
+		}
 		const c = Math.cos(this.angle);
 		this.roll = moveToward(this.roll, c > 0.15 ? 0 : c < -0.15 ? Math.PI : this.roll, dt * 3.5);
 		this.trail += dt;

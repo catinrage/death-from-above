@@ -7,6 +7,7 @@ import type { AirUnit } from './enemy-air';
 import type { Player } from './player';
 import { FlareDrill, launchMissile, spawnBullet } from './projectiles';
 import { trackUnit } from './targeting';
+import { levelOff, pullUpRoom, safeTurn } from './terrain-floor';
 import type { AircraftId, BombId, Trackable, Unit, UnitKind } from './types';
 import { dropBomb, predictImpact } from './weapons';
 import { rackCount, type WingProfile } from './wing-profile';
@@ -65,6 +66,8 @@ const PASS_SPEED = 62;
 const BOMB_ALT = 170;
 /** How far past the target a bomber flies before it comes round again. */
 const BOMB_OVERRUN = 260;
+/** With nothing to do, aircraft fly a level racetrack this far either side of their station. */
+const RACETRACK = 220;
 /** The gunship's and the drone's circle over the front: height, radius and depth. */
 const ORBIT_ALT = 230;
 const ORBIT_R = 190;
@@ -549,9 +552,9 @@ export class Wingman implements AirAlly {
 			const cx = this.patrol ?? (WORLD.runwayMinX + WORLD.runwayMaxX) / 2;
 			const cy = w.ground(cx) + (this.tactic === 'bomber' ? BOMB_ALT : 130);
 			this.speed = moveToward(this.speed, Math.min(90, this.profile.cruise), 40 * dt);
-			const toward = Math.atan2(cy - this.y, cx - this.x);
-			const d = Math.hypot(cx - this.x, cy - this.y);
-			return d > 160 ? toward : this.angle + 0.6;
+			// Back and forth across the station at its height, turning round up and over.
+			if ((this.x - cx) * this.runDir > RACETRACK) this.runDir = -this.runDir;
+			return Math.atan2(clamp(cy - this.y, -60, 60), this.runDir * 90);
 		}
 		const sp = Math.max(p.speed, 1);
 		const fx = p.vx / sp,
@@ -916,19 +919,31 @@ export class Wingman implements AirAlly {
 		let target = desired;
 		const ground = w.surface.clearance(this.x);
 		const right = Math.cos(this.angle) >= 0;
-		if (this.y - ground < (this.lowPass ? 6 : 45)) target = right ? 0.8 : Math.PI - 0.8;
+		const rate = this.profile.turn * (this.speed < 80 ? 1.2 : 1);
+		// Pull up early enough for this airframe to come out of its dive: bombers turn slowly.
+		const room = pullUpRoom(this.angle, this.speed, rate);
+		const agl = this.y - ground;
+		if (agl < (this.lowPass ? 6 : 45) + room) target = right ? 0.8 : Math.PI - 0.8;
 		if (this.y > WORLD.ceiling - 40) target = right ? -0.35 : Math.PI + 0.35;
 		if (this.x < WORLD.arenaMinX + 60) target = 0.3;
 		if (this.x > WORLD.arenaMaxX + 60) target = Math.PI - 0.3;
-		const rate = this.profile.turn * (this.speed < 80 ? 1.2 : 1);
 		this.z = moveToward(this.z, 0, 20 * dt);
+		const low = agl < (2 * this.speed) / rate + 45;
 		this.angle = wrapAngle(
-			this.angle + clamp(angleDiff(this.angle, target), -rate * dt, rate * dt)
+			this.angle + clamp(safeTurn(this.angle, target, low), -rate * dt, rate * dt)
 		);
 		this.vx = Math.cos(this.angle) * this.speed;
 		this.vy = Math.sin(this.angle) * this.speed;
 		this.x += this.vx * dt;
 		this.y += this.vy * dt;
+		// Never through the ground: skim it and level off.
+		const floor = w.surface.clearance(this.x) + 2;
+		if (this.y < floor) {
+			this.y = floor;
+			this.angle = levelOff(this.angle);
+			this.vx = Math.cos(this.angle) * this.speed;
+			this.vy = Math.sin(this.angle) * this.speed;
+		}
 		const c = Math.cos(this.angle);
 		this.roll = moveToward(this.roll, c > 0.15 ? 0 : c < -0.15 ? Math.PI : this.roll, dt * 3.5);
 		this.trail += dt;
