@@ -296,6 +296,13 @@ export class Allies {
 		w.events.message(title, note ?? 'Our troops are moving up the road. Clear their path', 'info');
 	}
 
+	/** Takes a unit that reached the road another way (a paratrooper touching down) into the army. */
+	enlist(u: Unit): void {
+		u.cooldown = rnd.range(0.5, 2);
+		this.list.push(u);
+		this.deployed++;
+	}
+
 	/** Friendly units still fighting. */
 	alive(): number {
 		let n = 0;

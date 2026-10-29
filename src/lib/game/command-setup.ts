@@ -102,9 +102,9 @@ export const CHALLENGES: readonly ChallengeDef[] = [
 	{
 		id: 'noAir',
 		name: 'No air power',
-		blurb: 'No aircraft and no drones. Troops, armour and strikes from base.',
+		blurb: 'No aircraft, drones or paratroopers. Troops, armour and strikes from base.',
 		income: 1,
-		allows: (d) => d.group !== 'air' && d.group !== 'drone'
+		allows: (d) => d.group !== 'air' && d.group !== 'drone' && d.id !== 'para'
 	},
 	{
 		id: 'shoestring',

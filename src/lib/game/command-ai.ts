@@ -47,6 +47,10 @@ export class CommandAutopilot {
 				}
 			}
 		}
+		// Now and then, paratroopers onto the front to take the next checkpoint.
+		if (c.funds > COMMANDS.para.cost + 200 && rnd.chance(PARA_CHANCE)) {
+			if (!c.order(w, 'para', c.front(w))) return;
+		}
 		if (c.airborne(w) < 3 && c.funds > AIR_FUNDS) {
 			if (!c.order(w, rnd.pick(AIRCRAFT_PICKS))) this.saving = 0;
 			return;
@@ -93,6 +97,8 @@ export class CommandAutopilot {
 /** The aircraft it sends up, and the funds it waits for before it does. */
 const AIRCRAFT_PICKS: readonly CommandId[] = ['f16', 'a10', 'su25', 'apache', 'ac130', 'b1', 'mq9'];
 const AIR_FUNDS = 750;
+/** Chance per decision of sending paratroopers when it can afford them. */
+const PARA_CHANCE = 0.04;
 
 /** After buying troops, the chance it then saves up for a jet or a strike, and for how long. */
 const SAVE_CHANCE = 0.3;

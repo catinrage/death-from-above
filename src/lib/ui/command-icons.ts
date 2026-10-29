@@ -273,6 +273,7 @@ const ICONS: Record<CommandId, readonly IconShape[]> = {
 	cruise: WEAPON_ICONS.cruise,
 	carpet: WEAPON_ICONS.stick,
 	ballistic: WEAPON_ICONS.ballistic,
+	para: WEAPON_ICONS.para,
 	nuke: WEAPON_ICONS.nuke
 };
 

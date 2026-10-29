@@ -97,6 +97,7 @@ export class SceneView {
 		this.units(w, nearMin - 30, nearMax + 30);
 		this.units(w, nearMin - 30, nearMax + 30, w.allies.list, true);
 		this.troops(w);
+		this.jumpers(w);
 		this.civilians(w, nearMin, nearMax);
 		this.strikes(w);
 		this.debris(w);
@@ -413,6 +414,29 @@ export class SceneView {
 			mat4.rotateZ(m, m, Math.sin(w.time * 1.3 + t.id) * 0.06 - t.vx * 0.01);
 			mat4.scale(m, m, t.chute, 0.3 + 0.7 * t.chute, t.chute);
 			this.models.parachute.push(m, this.style());
+		}
+	}
+
+	/** Command mode's paratroopers under their canopies, on both sides. */
+	private jumpers(w: World): void {
+		for (const c of [w.command, w.enemyCommand]) {
+			if (c.jumpers.length === 0) continue;
+			this.units(
+				w,
+				-1e9,
+				1e9,
+				c.jumpers.map((j) => j.unit),
+				c.side === 'player'
+			);
+			const m = this.m;
+			for (const j of c.jumpers) {
+				if (j.chute <= 0.02) continue;
+				const u = j.unit;
+				mat4.fromTranslation(m, u.x, u.y + 1.7, u.z);
+				mat4.rotateZ(m, m, Math.sin(w.time * 1.3 + u.id) * 0.06 - j.vx * 0.01);
+				mat4.scale(m, m, j.chute, 0.3 + 0.7 * j.chute, j.chute);
+				this.models.parachute.push(m, this.style());
+			}
 		}
 	}
 

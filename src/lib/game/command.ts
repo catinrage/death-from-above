@@ -1,6 +1,6 @@
 import { clamp } from '../engine/math';
 import { fx as rnd } from '../engine/rng';
-import type { AllyKind } from './allies';
+import { allyDef, type AllyKind } from './allies';
 import { explode } from './combat';
 import { WORLD } from './constants';
 import { AIRCRAFT } from './defs-aircraft';
@@ -10,7 +10,7 @@ import { UNITS } from './defs-units';
 import { AirUnit } from './enemy-air';
 import { Drone, type DroneKind } from './drones';
 import { BALLISTIC_SPEED, CRUISE_SPEED, groundPoint, seek, seekAlly } from './specials';
-import type { AircraftId } from './types';
+import type { AircraftId, Unit } from './types';
 import type { Side } from './war';
 import { dropBomb, predictImpact } from './weapons';
 import { TACTICS, wingProfile, type WingTactic } from './wing-profile';
@@ -47,7 +47,7 @@ export type GroundOrder =
 	| 'rockets'
 	| 'howitzer';
 export type DroneOrder = 'fpv' | 'delta';
-export type StrikeOrder = 'barrage' | 'cruise' | 'carpet' | 'ballistic' | 'nuke';
+export type StrikeOrder = 'barrage' | 'cruise' | 'carpet' | 'ballistic' | 'para' | 'nuke';
 /** Every order: troops, drones, strikes, and one air order per airframe. */
 export type CommandId = GroundOrder | DroneOrder | StrikeOrder | AircraftId;
 
@@ -333,6 +333,27 @@ const HEAVY: Partial<Record<AircraftId, Pick<Spec, 'tip' | 'cost' | 'cooldown'>>
 	tu95: { tip: 'Big turboprop bomber: slow, tough, carpets a wide strip.', cost: 640, cooldown: 20 }
 };
 
+/** Paratroopers: how many jump, how far along the road they land, and the transport's run. */
+export const PARA_SQUAD = 8;
+const PARA_SPREAD = 40;
+const PARA_ALT = 90;
+const PARA_SPEED = 140;
+/** Seconds between jumpers leaving the door: the stick spans the drop zone. */
+const PARA_GAP = (2 * PARA_SPREAD) / (PARA_SPEED * (PARA_SQUAD - 1));
+/** Seconds of free fall before the canopy opens, and the rate under it. */
+const PARA_FREEFALL = 1.2;
+const PARA_SINK = 11;
+/** Share of the transport's speed a jumper leaves the door with, and how fast it bleeds off. */
+const PARA_THROW = 0.15;
+const PARA_DRAG_FALL = 0.4;
+const PARA_DRAG_CHUTE = 1.5;
+/** How far forward a jumper drifts before the canopy stops it (so the stick is let go that much early). */
+const PARA_DRIFT =
+	PARA_SPEED *
+	PARA_THROW *
+	((1 - Math.exp(-PARA_DRAG_FALL * PARA_FREEFALL)) / PARA_DRAG_FALL +
+		Math.exp(-PARA_DRAG_FALL * PARA_FREEFALL) / PARA_DRAG_CHUTE);
+
 const STRIKES: Record<StrikeOrder, Spec & { code: string; key: string }> = {
 	barrage: {
 		name: 'Artillery barrage',
@@ -373,6 +394,16 @@ const STRIKES: Record<StrikeOrder, Spec & { code: string; key: string }> = {
 		code: 'KeyV',
 		key: 'V',
 		radius: BOMBS.ballistic.blast.radius
+	},
+	para: {
+		name: 'Paratroopers',
+		short: 'Para',
+		tip: 'A transport drops eight riflemen on the spot. They land and join the army.',
+		cost: 420,
+		cooldown: 30,
+		code: 'KeyB',
+		key: 'B',
+		radius: PARA_SPREAD
 	},
 	nuke: {
 		name: 'Tactical nuke',
@@ -526,6 +557,18 @@ export interface Flyby {
 	target: number;
 	cruise: number;
 	nextDrop: number;
+	/** A transport: paratroopers still to jump (bombers carry none). */
+	cargo?: number;
+}
+
+/** A paratrooper on the way down. They join the army as they touch down. */
+export interface Jumper {
+	unit: Unit;
+	vx: number;
+	vy: number;
+	/** Canopy deployment 0..1. */
+	chute: number;
+	age: number;
 }
 
 /** A strike on its way: where it lands and how long until it does (for the countdown marker). */
@@ -587,6 +630,8 @@ export class Command {
 	/** Groups paid for and waiting to set off. */
 	readonly queue: { id: CommandId; units: readonly AllyKind[] }[] = [];
 	readonly flybys: Flyby[] = [];
+	/** Paratroopers in the air. */
+	readonly jumpers: Jumper[] = [];
 	/** Strikes launched and not yet landed, with a countdown each. */
 	readonly pending: PendingStrike[] = [];
 	private readonly rounds: Round[] = [];
@@ -625,6 +670,7 @@ export class Command {
 		for (const id of COMMAND_ORDER) delete this.cooldowns[id];
 		this.queue.length = 0;
 		this.flybys.length = 0;
+		this.jumpers.length = 0;
 		this.pending.length = 0;
 		this.rounds.length = 0;
 		this.jets.clear();
@@ -638,6 +684,7 @@ export class Command {
 		this.active = false;
 		this.queue.length = 0;
 		this.flybys.length = 0;
+		this.jumpers.length = 0;
 		this.pending.length = 0;
 		this.rounds.length = 0;
 		this.jets.clear();
@@ -661,6 +708,9 @@ export class Command {
 	armySize(w: World): number {
 		let n = this.ours ? w.allies.alive() : enemyArmy(w);
 		for (const q of this.queue) n += q.units.length;
+		// Paratroopers in the air, and those still in the transport.
+		n += this.jumpers.length;
+		for (const f of this.flybys) n += f.cargo ?? 0;
 		return n;
 	}
 
@@ -689,6 +739,7 @@ export class Command {
 		if ((this.cooldowns[id] ?? 0) > 0) return 'cooldown';
 		if (this.funds < def.cost) return 'funds';
 		if (def.units && this.armySize(w) + def.units.length > ARMY_LIMIT) return 'army';
+		if (id === 'para' && this.armySize(w) + PARA_SQUAD > ARMY_LIMIT) return 'army';
 		if (def.group === 'air' && this.airborne(w) >= AIR_LIMIT) return 'air';
 		if (def.drone && this.drones(w) + (def.count ?? 1) > DRONE_LIMIT) return 'drones';
 		return null;
@@ -737,6 +788,7 @@ export class Command {
 		this.patrol(w, dt);
 		this.updateRounds(w, dt);
 		this.updateFlybys(w, dt);
+		this.updateJumpers(w, dt);
 		for (let i = this.pending.length - 1; i >= 0; i--) {
 			this.pending[i].t -= dt;
 			if (this.pending[i].t < -0.6) this.pending.splice(i, 1);
@@ -764,6 +816,12 @@ export class Command {
 			const hit = predictImpact(w, x, y, this.dir * BOMBER_SPEED, 0, BOMBS.gp.drag, null);
 			const lead = Math.abs(hit.x - x);
 			return Math.max(0, Math.abs(x - startX) - CARPET_HALF - lead) / BOMBER_SPEED + hit.t;
+		}
+		if (id === 'para') {
+			// The transport's run to the spot, then the fall: a short drop, then the canopy.
+			const startX = this.ours ? WORLD.runwayMinX + 40 : WORLD.enemyRunwayMaxX - 40;
+			const run = Math.max(0, Math.abs(x - startX) - PARA_SPREAD - PARA_DRIFT) / PARA_SPEED;
+			return run + PARA_FREEFALL + PARA_ALT / PARA_SINK;
 		}
 		// Ballistic: the boost, then straight down from 900 m up and 120 m short.
 		const nuke = id === 'nuke';
@@ -1009,6 +1067,28 @@ export class Command {
 			else w.events.message('ENEMY BOMBER', 'A bomber has taken off for our troops', 'warn');
 			return;
 		}
+		if (id === 'para') {
+			// A transport climbs out from the runway and drops its stick over the spot.
+			const startX = ours ? WORLD.runwayMinX + 40 : WORLD.enemyRunwayMaxX - 40;
+			this.flybys.push({
+				aircraft: 'ac130',
+				x: startX,
+				y: w.ground(startX) + 3,
+				z: 0,
+				vy: BOMBER_CLIMB,
+				dir,
+				speed: PARA_SPEED,
+				target: x,
+				cruise: w.ground(x) + PARA_ALT,
+				nextDrop: 0,
+				cargo: PARA_SQUAD
+			});
+			w.sound.play('missileLaunch', startX, w.ground(startX), 0.6, 0.3);
+			if (ours)
+				w.events.message('PARATROOPERS', 'A transport is on its way to the drop zone', 'info');
+			else w.events.message('ENEMY PARATROOPERS', 'A transport is heading over our lines', 'warn');
+			return;
+		}
 		const nuke = id === 'nuke';
 		const sy = w.terrain.heightAtXZ(site.silo, site.z);
 		w.strikes.push({
@@ -1081,7 +1161,8 @@ export class Command {
 			f.y = Math.max(f.y + f.vy * dt, Math.min(f.cruise, w.surface.clearance(f.x) + 60));
 			w.fx.immediateGlow(f.x - f.dir * 14, f.y, f.z, 1.2, 9, 5, 2);
 			f.nextDrop -= dt;
-			if (f.nextDrop <= 0 && Math.abs(f.x - f.target) < 1500) {
+			if (f.cargo !== undefined) this.jump(w, f);
+			else if (f.nextDrop <= 0 && Math.abs(f.x - f.target) < 1500) {
 				// Release whenever a bomb let go now would land across the target.
 				const vx = f.dir * f.speed;
 				const hit = predictImpact(w, f.x, f.y - 2, vx, f.vy, BOMBS.gp.drag, null).x;
@@ -1091,6 +1172,41 @@ export class Command {
 				}
 			}
 			if (f.x > WORLD.terrainMaxX - 200 || f.x < WORLD.terrainMinX + 200) this.flybys.splice(i, 1);
+		}
+	}
+
+	/** Over the drop zone, a transport lets its paratroopers go one at a time. */
+	private jump(w: World, f: Flyby): void {
+		if (!f.cargo || f.nextDrop > 0) return;
+		// Let go short of the spot by the drift, so the stick lands across it.
+		if (f.dir * (f.x - f.target) < -PARA_SPREAD - PARA_DRIFT) return;
+		f.nextDrop = PARA_GAP;
+		f.cargo--;
+		const u = w.makeUnit('rifleman', f.x - f.dir * 4, rnd.range(-3, 3), f.dir);
+		if (this.ours) u.def = allyDef('rifleman');
+		u.hp = u.def.hp;
+		u.y = f.y - 2;
+		this.jumpers.push({ unit: u, vx: f.dir * f.speed * PARA_THROW, vy: 0, chute: 0, age: 0 });
+	}
+
+	/** Paratroopers drifting down; each joins its side's army as it lands. */
+	private updateJumpers(w: World, dt: number): void {
+		for (let i = this.jumpers.length - 1; i >= 0; i--) {
+			const j = this.jumpers[i];
+			const u = j.unit;
+			j.age += dt;
+			if (j.age > PARA_FREEFALL) j.chute = Math.min(1, j.chute + dt * 1.6);
+			// Free fall speeds up; under the canopy it settles to a steady sink and the drift dies away.
+			j.vy = j.chute > 0 ? -(PARA_SINK + (1 - j.chute) * 12) : j.vy - WORLD.gravity * dt;
+			j.vx *= Math.exp(-(j.chute > 0 ? PARA_DRAG_CHUTE : PARA_DRAG_FALL) * dt);
+			u.x += j.vx * dt;
+			u.y += j.vy * dt;
+			const ground = w.surface.support(u.x, Infinity, u.z);
+			if (u.y > ground) continue;
+			u.y = ground;
+			this.jumpers.splice(i, 1);
+			if (this.ours) w.allies.enlist(u);
+			else w.units.push(u);
 		}
 	}
 }
