@@ -1,17 +1,32 @@
-import { angleDiff, clamp, moveToward, wrapAngle } from '../engine/math';
+import { angleDiff, clamp, damp, moveToward, wrapAngle } from '../engine/math';
 import { fx as rnd } from '../engine/rng';
 import { explode, inBattlePlane } from './combat';
 import { WORLD } from './constants';
-import type { BlastSpec } from './defs-bombs';
+import { BOMBS, ROCKET_SPEED, ROCKETS_PER_POD, type BlastSpec } from './defs-bombs';
 import type { AirUnit } from './enemy-air';
 import type { Player } from './player';
 import { launchMissile, spawnBullet, type Flare } from './projectiles';
 import { trackUnit } from './targeting';
-import type { AircraftId, Trackable, Unit, UnitKind } from './types';
+import type { AircraftId, BombId, Trackable, Unit, UnitKind } from './types';
+import { dropBomb, predictImpact } from './weapons';
+import { rackCount, type WingProfile } from './wing-profile';
 import type { World } from './world';
 
 /** What the pilot last told the wingman to do. */
 export type WingOrder = 'cover' | 'attack' | 'sams' | 'rearm';
+
+/**
+ * Anything flying on our side that enemy guns and missiles can go after: the
+ * wingman, the commander's aircraft and their kamikaze drones.
+ */
+export interface AirAlly extends Trackable {
+	/** Airborne and fighting (not falling). */
+	readonly active: boolean;
+	readonly landed: boolean;
+	/** Size of the circle enemy fire has to cross to hit it. */
+	readonly radius: number;
+	hit(w: World, amount: number): void;
+}
 
 /** Who the wingman is fighting: one ground unit or one aircraft. */
 export interface WingTarget {
@@ -46,6 +61,48 @@ const RTB_LINEUP = 130;
 /** Height and speed of the slow rearm pass over the runway. */
 const PASS_ALT = 12;
 const PASS_SPEED = 62;
+/** Bombers run in this high over the target. */
+const BOMB_ALT = 170;
+/** How far past the target a bomber flies before it comes round again. */
+const BOMB_OVERRUN = 260;
+/** The gunship's and the drone's circle over the front: height, radius and depth. */
+const ORBIT_ALT = 230;
+const ORBIT_R = 190;
+const DRONE_ALT = 300;
+const DRONE_R = 240;
+/** The circle's depth as a share of its width. */
+const DEPTH = 0.3;
+/** The helicopter hovers this far short of its target, this high. */
+const HELO_STANDOFF = 240;
+const HELO_ALT = 48;
+/** Reach of the gunship's and the helicopter's aimed guns. */
+const AIMED_RANGE = 520;
+/** Commander's aircraft head home for repairs below this share of their hit points. */
+const RTB_HP = 0.3;
+
+/** The player's wingman: an F-16 with guns and a few missiles, no bombs. */
+export const WING_PROFILE: WingProfile = {
+	hp: WING_HP,
+	cruise: CRUISE,
+	turn: TURN_RATE,
+	gun: WING_GUN_DAMAGE,
+	aimed: false,
+	explosive: 0,
+	heavy: false,
+	// The player's wingman never runs dry: its gun is unlimited and its missiles come back in the air.
+	rounds: Infinity,
+	shells: 0,
+	missiles: WING_MISSILES,
+	rack: {},
+	rockets: 0,
+	tactic: 'fighter'
+};
+
+/** Bombs worth dropping on armour, best first; anything else goes on soft targets. */
+const ANTI_ARMOUR: readonly BombId[] = ['penetrator', 'guided', 'hunter', 'skip', 'tesla', 'cryo'];
+const ANTI_SOFT: readonly BombId[] = ['cluster', 'napalm', 'frag', 'chemical', 'stick', 'mines'];
+
+const HEAVY_SHELL = { damage: 70, radius: 7, every: 2.6, speed: 330 };
 
 /** Air defences the wingman hunts on a "hit the SAMs" order, most dangerous first. */
 const AIR_DEFENCE: Partial<Record<UnitKind, number>> = {
@@ -86,7 +143,7 @@ const isLiveTarget = (t: WingTarget | null): t is WingTarget =>
  * player's. Shot down, it stays down until the next wave, when a replacement
  * climbs out from the airfield.
  */
-export class Wingman implements Trackable {
+export class Wingman implements AirAlly {
 	x: number;
 	y: number;
 	z = 0;
@@ -100,13 +157,25 @@ export class Wingman implements Trackable {
 	dying = false;
 	/** Never sits on the runway: lets ground gunners treat it like the player. */
 	readonly landed = false;
+	readonly radius = 3.6;
 	heat = 1.4;
 	flash = 0;
 	order: WingOrder = 'attack';
 	target: WingTarget | null = null;
 	/** True when the pilot picked the target; otherwise the wingman chose it. */
 	assigned = false;
-	missiles = WING_MISSILES;
+	missiles: number;
+	/** Bombs and rocket pods left (commander's aircraft; restocked on the runway). */
+	readonly rack: Partial<Record<BombId, number>>;
+	rockets: number;
+	/** Gun rounds and howitzer shells left. */
+	rounds: number;
+	shells: number;
+	readonly profile: WingProfile;
+	/** Heading in the ground plane for aircraft that circle (gunship, drone); 0 flies along the road. */
+	yaw = 0;
+	/** Propeller and rotor angle. */
+	spin = 0;
 	/** Orders carried out so far (lets the tutorial notice a repeated order). */
 	commands = 0;
 	/** Replacements that have joined since the start (the radio announces each). */
@@ -129,6 +198,20 @@ export class Wingman implements Trackable {
 	private missileCd = 2;
 	private reload = 0;
 	private flareCd = 0;
+	private bombCd = 0;
+	private rocketCd = 0;
+	private rocketQueue = 0;
+	private heavyCd = 0;
+	/** Bomber: which way the current run crosses the target. */
+	private runDir = 1;
+	/** Gunship and drone: angle around the circle. */
+	private orbit = 0;
+	private rocketGap = 0;
+	private orbiting = false;
+	/** Why a commander's aircraft last turned for home. */
+	homeFor: 'repair' | 'ammo' = 'ammo';
+	/** Commander's aircraft go home on their own to repair and rearm. */
+	private readonly autoRearm: boolean;
 	private spinRate = 0;
 	private trail = 0;
 	/** One tracking adapter per ground target, so its inbound missiles can be recognised. */
@@ -146,14 +229,45 @@ export class Wingman implements Trackable {
 	constructor(
 		x: number,
 		y: number,
-		opts: { aircraft?: AircraftId; callsign?: string | null } = {}
+		opts: {
+			aircraft?: AircraftId;
+			callsign?: string | null;
+			profile?: WingProfile;
+			autoRearm?: boolean;
+		} = {}
 	) {
 		this.x = x;
 		this.y = y;
 		this.aircraft = opts.aircraft ?? 'f16';
 		this.callsign = opts.callsign === undefined ? CALLSIGN : opts.callsign;
+		this.profile = opts.profile ?? WING_PROFILE;
+		this.autoRearm = !!opts.autoRearm;
+		this.hp = this.profile.hp;
+		this.speed = this.profile.cruise;
+		this.missiles = this.profile.missiles;
+		this.rack = { ...this.profile.rack };
+		this.rockets = this.profile.rockets;
+		this.rounds = this.profile.rounds;
+		this.shells = this.profile.shells;
 		this.vx = Math.cos(this.angle) * this.speed;
 		this.vy = Math.sin(this.angle) * this.speed;
+	}
+
+	get tactic(): WingProfile['tactic'] {
+		return this.profile.tactic;
+	}
+
+	/** Fully repaired and rearmed. */
+	private get topped(): boolean {
+		const p = this.profile;
+		return (
+			this.hp >= p.hp &&
+			this.missiles >= p.missiles &&
+			this.rockets >= p.rockets &&
+			this.rounds >= p.rounds &&
+			this.shells >= p.shells &&
+			rackCount(this.rack) >= rackCount(p.rack)
+		);
 	}
 
 	/** A radio call, unless this aircraft keeps quiet. */
@@ -263,21 +377,58 @@ export class Wingman implements Trackable {
 	update(w: World, dt: number): void {
 		this.flash = Math.max(0, this.flash - dt * 4);
 		if (!this.alive) return;
+		this.spin += dt * 40;
 		if (this.dying) return this.fall(w, dt);
 		this.gunCd -= dt;
 		this.missileCd -= dt;
 		this.flareCd -= dt;
-		if (this.missiles < WING_MISSILES && this.order !== 'rearm') {
+		this.bombCd -= dt;
+		this.rocketCd -= dt;
+		this.heavyCd -= dt;
+		// The wingman's missiles come back in the air; the commander's aircraft go home for more.
+		const regen = !this.autoRearm;
+		if (regen && this.missiles < this.profile.missiles && this.order !== 'rearm') {
 			this.reload += dt;
 			if (this.reload >= MISSILE_RELOAD) {
 				this.reload = 0;
 				this.missiles++;
 			}
 		}
+		this.checkRearm(w);
 		this.retarget(w, dt);
-		const desired = this.steer(w, dt);
-		this.fly(w, dt, desired);
+		this.rippleRockets(w, dt);
+		const circling = this.tactic === 'gunship' || this.tactic === 'drone';
+		if (circling && this.order !== 'rearm' && this.circle(w, dt)) {
+			// Flying its circle.
+		} else if (this.tactic === 'helo') {
+			this.hover(w, dt);
+		} else {
+			if (this.orbiting) this.leaveOrbit();
+			const desired = this.steer(w, dt);
+			this.fly(w, dt, desired);
+		}
 		this.countermeasures(w);
+	}
+
+	/**
+	 * A commander's aircraft heads home once it is badly hurt or has spent
+	 * what it fights with, and goes back to the front once repaired and rearmed.
+	 */
+	private checkRearm(w: World): void {
+		if (!this.autoRearm || this.order === 'rearm') return;
+		const hurt = this.hp < this.profile.hp * RTB_HP;
+		if (!hurt && !this.spent()) return;
+		this.homeFor = hurt ? 'repair' : 'ammo';
+		this.command(w, 'rearm');
+	}
+
+	/** Nothing left worth staying for: a bomber's rack, the drone's missiles, everyone else's lot. */
+	spent(): boolean {
+		const bombs = rackCount(this.rack);
+		if (this.tactic === 'bomber') return bombs === 0;
+		if (this.tactic === 'drone') return this.missiles === 0;
+		const gun = this.profile.gun > 0 && this.rounds > 0;
+		return !gun && this.missiles === 0 && bombs === 0 && this.rockets === 0 && this.shells === 0;
 	}
 
 	/** Keeps the order's target fresh: reports kills and moves on to the next job. */
@@ -317,7 +468,7 @@ export class Wingman implements Trackable {
 		this.scan -= dt;
 		if (this.scan > 0) return;
 		this.scan = RESCAN;
-		const threat = this.coverThreat(w);
+		const threat = this.tactic === 'fighter' ? this.coverThreat(w) : null;
 		if (threat) {
 			this.target = { unit: null, air: threat };
 			this.setPhase('attack');
@@ -336,9 +487,12 @@ export class Wingman implements Trackable {
 		const cx = p && p.alive && !p.landed ? p.x : (this.patrol ?? this.x);
 		let best: WingTarget | null = null;
 		let bestScore = Infinity;
+		// Bombers, gunships, drones and helicopters leave enemy aircraft to the fighters.
+		const tactic = this.tactic;
+		const airWeight = tactic === 'fighter' ? 0.5 : tactic === 'attack' ? 2.5 : Infinity;
 		for (const a of w.air) {
 			if (!a.alive || a.dying || Math.abs(a.x - cx) > HUNT_RADIUS) continue;
-			const score = Math.hypot(a.x - this.x, a.y - this.y) * 0.5;
+			const score = Math.hypot(a.x - this.x, a.y - this.y) * airWeight;
 			if (score < bestScore) {
 				bestScore = score;
 				best = { unit: null, air: a };
@@ -382,6 +536,7 @@ export class Wingman implements Trackable {
 		if (this.order === 'rearm') return this.returnToBase(w, dt);
 		this.lowPass = false;
 		const t = this.target;
+		if (this.tactic === 'bomber') return this.bombRun(w, dt, t?.unit ?? null);
 		if (t?.air) return this.dogfight(w, dt, t.air);
 		if (t?.unit) return this.groundAttack(w, dt, t.unit);
 		return this.formation(w, dt);
@@ -392,8 +547,8 @@ export class Wingman implements Trackable {
 		if (!p || !p.alive || p.landed) {
 			// Leader is down or parked (or there is none): orbit over the patrol line or the airfield.
 			const cx = this.patrol ?? (WORLD.runwayMinX + WORLD.runwayMaxX) / 2;
-			const cy = w.ground(cx) + 130;
-			this.speed = moveToward(this.speed, 90, 40 * dt);
+			const cy = w.ground(cx) + (this.tactic === 'bomber' ? BOMB_ALT : 130);
+			this.speed = moveToward(this.speed, Math.min(90, this.profile.cruise), 40 * dt);
 			const toward = Math.atan2(cy - this.y, cx - this.x);
 			const d = Math.hypot(cx - this.x, cy - this.y);
 			return d > 160 ? toward : this.angle + 0.6;
@@ -425,7 +580,7 @@ export class Wingman implements Trackable {
 			const fromEast = this.x > (lo + hi) / 2;
 			const ex = fromEast ? hi + RTB_LINEUP : lo - RTB_LINEUP;
 			const ey = w.ground(ex) + 35;
-			this.speed = moveToward(this.speed, CRUISE, 60 * dt);
+			this.speed = moveToward(this.speed, this.profile.cruise, 60 * dt);
 			if (Math.abs(this.x - ex) < 30) {
 				this.rtb = 'final';
 				this.passDir = fromEast ? -1 : 1;
@@ -436,7 +591,7 @@ export class Wingman implements Trackable {
 		this.speed = moveToward(this.speed, PASS_SPEED, 50 * dt);
 		const over = this.x >= lo && this.x <= hi;
 		if (over && this.y - w.ground(this.x) < 30) this.service(dt);
-		if (this.hp >= WING_HP && this.missiles >= WING_MISSILES) {
+		if (this.topped) {
 			this.lowPass = false;
 			this.order = 'attack';
 			this.scan = 0;
@@ -457,10 +612,16 @@ export class Wingman implements Trackable {
 
 	/** Repairs and reloads while over the runway. */
 	private service(dt: number): void {
-		this.hp = Math.min(WING_HP, this.hp + (WING_HP / WING_REARM_TIME) * dt);
-		if (this.missiles >= WING_MISSILES) return;
+		const p = this.profile;
+		this.hp = Math.min(p.hp, this.hp + (p.hp / WING_REARM_TIME) * dt);
+		// Bombs and rocket pods are loaded in one go; missiles go on one at a time.
+		Object.assign(this.rack, p.rack);
+		this.rockets = p.rockets;
+		this.rounds = p.rounds;
+		this.shells = p.shells;
+		if (this.missiles >= p.missiles) return;
 		this.rearmClock += dt;
-		if (this.rearmClock >= WING_REARM_TIME / WING_MISSILES) {
+		if (this.rearmClock >= WING_REARM_TIME / Math.max(1, p.missiles)) {
 			this.rearmClock = 0;
 			this.missiles++;
 		}
@@ -492,7 +653,7 @@ export class Wingman implements Trackable {
 			dy = ty - this.y;
 		const dist = Math.hypot(dx, dy);
 		const agl = this.y - w.surface.clearance(this.x);
-		this.speed = moveToward(this.speed, CRUISE, 90 * dt);
+		this.speed = moveToward(this.speed, this.profile.cruise, 90 * dt);
 		if (this.phase === 'extend') {
 			// Climb out ahead, then come around for another pass.
 			if (this.phaseTime > 2.6 && agl > 90) this.setPhase('attack');
@@ -510,8 +671,232 @@ export class Wingman implements Trackable {
 			this.fireMissile(w, u, 'agm');
 		}
 		if (err < 0.1 && dist < 380) this.guns(w);
+		if (err < 0.12 && dist < 420 && dist > 150) this.fireRockets();
+		if (err < 0.5) this.tryBomb(w, u);
 		if (dist < 110 || agl < 70) this.setPhase('extend');
 		return aim;
+	}
+
+	/**
+	 * Level bombing: runs across the target at height, laying bombs while the
+	 * sight is on it, then flies on, turns and comes back the other way.
+	 */
+	private bombRun(w: World, dt: number, u: Unit | null): number {
+		this.speed = moveToward(this.speed, this.profile.cruise, 40 * dt);
+		if (!u) return this.formation(w, dt);
+		const alt = Math.max(w.ground(u.x), w.surface.clearance(this.x)) + BOMB_ALT;
+		const dx = u.x - this.x;
+		if (dx * this.runDir < -BOMB_OVERRUN) this.runDir = -this.runDir;
+		this.tryBomb(w, u);
+		return Math.atan2(clamp(alt - this.y, -60, 60), this.runDir * 90);
+	}
+
+	/**
+	 * The gunship and the drone circle over the front (or their target), the
+	 * gunship shooting down into it, the drone sending missiles. Returns false
+	 * while still flying out to the circle (the usual flight takes it there).
+	 */
+	private circle(w: World, dt: number): boolean {
+		const u = this.target?.unit ?? null;
+		const drone = this.tactic === 'drone';
+		const r = drone ? DRONE_R : ORBIT_R;
+		const cx = u ? u.x : (this.patrol ?? this.x);
+		const cy = w.ground(cx) + (drone ? DRONE_ALT : ORBIT_ALT);
+		if (!this.orbiting) {
+			if (Math.abs(cx - this.x) > r * 1.2 || Math.abs(cy - this.y) > 90) return false;
+			// Join the circle where it is now, heading the way it already flies.
+			this.orbiting = true;
+			this.orbit =
+				Math.acos(clamp((this.x - cx) / r, -1, 1)) * (Math.cos(this.angle) >= 0 ? -1 : 1);
+			this.yaw = Math.cos(this.angle) >= 0 ? 0 : Math.PI;
+		}
+		const speed = this.profile.cruise;
+		this.speed = speed;
+		this.orbit += (speed / r) * dt;
+		const x0 = this.x,
+			y0 = this.y;
+		// Left-hand circle seen from above, squashed in depth so it stays near the road.
+		this.x = damp(this.x, cx + Math.cos(this.orbit) * r, 2, dt);
+		this.y = damp(this.y, Math.max(cy, w.surface.clearance(this.x) + 60), 0.8, dt);
+		this.z = Math.sin(this.orbit) * r * DEPTH;
+		this.vx = (this.x - x0) / dt;
+		this.vy = (this.y - y0) / dt;
+		this.yaw = Math.atan2(-Math.cos(this.orbit) * DEPTH, -Math.sin(this.orbit));
+		this.angle = 0;
+		this.roll = -0.3;
+		if (u) this.circleFire(w, u);
+		return true;
+	}
+
+	/** Back to flying along the road (heading home, or the circle moved away). */
+	private leaveOrbit(): void {
+		this.orbiting = false;
+		this.angle = Math.cos(this.yaw) >= 0 ? 0 : Math.PI;
+		this.roll = Math.cos(this.yaw) >= 0 ? 0 : Math.PI;
+		this.yaw = 0;
+		this.vx = Math.cos(this.angle) * this.speed;
+		this.vy = 0;
+	}
+
+	private circleFire(w: World, u: Unit): void {
+		const ty = u.y + u.def.half[1];
+		const dist = Math.hypot(u.x - this.x, ty - this.y);
+		if (this.tactic === 'drone') {
+			if (dist < 800 && this.missileCd <= 0 && this.missiles > 0) this.fireMissile(w, u, 'agm');
+			return;
+		}
+		if (dist > AIMED_RANGE) return;
+		this.aimedGuns(w, u.x, ty, dist);
+		if (this.shells > 0 && this.heavyCd <= 0) this.heavyShell(w, u.x, ty);
+		if (dist < 700 && this.missileCd <= 0 && this.missiles > 0) this.fireMissile(w, u, 'agm');
+	}
+
+	/**
+	 * The helicopter: hovers short of its target at treetop height, nose on,
+	 * firing its chin gun, Hellfires and rocket pods. Home over the runway to rearm.
+	 */
+	private hover(w: World, dt: number): void {
+		const cruise = this.profile.cruise;
+		let gx: number, gy: number;
+		const u = this.target?.unit ?? null;
+		this.z = moveToward(this.z, 0, 4 * dt);
+		this.yaw = 0;
+		if (this.order === 'rearm') {
+			gx = (WORLD.runwayMinX + WORLD.runwayMaxX) / 2;
+			gy = w.ground(gx) + PASS_ALT;
+			if (Math.abs(gx - this.x) < 25 && this.y - w.ground(this.x) < 22) {
+				this.service(dt);
+				if (this.topped) {
+					this.order = 'attack';
+					this.scan = 0;
+				}
+			}
+		} else {
+			gx = u ? u.x - HELO_STANDOFF : (this.patrol ?? this.x) - 120;
+			gy = w.surface.clearance(this.x) + HELO_ALT;
+		}
+		const wantVx = clamp((gx - this.x) * 0.5, -cruise, cruise);
+		const wantVy = clamp((gy - this.y) * 0.8, -15, 15);
+		this.vx = moveToward(this.vx, wantVx, 18 * dt);
+		this.vy = moveToward(this.vy, wantVy, 12 * dt);
+		this.x += this.vx * dt;
+		this.y += this.vy * dt;
+		this.y = Math.max(this.y, w.surface.clearance(this.x) + 4);
+		this.speed = Math.abs(this.vx);
+		// Faces its target, or the way it is going when it has none; noses down to fly forward.
+		const face = u && this.order !== 'rearm' ? Math.sign(u.x - this.x) || 1 : this.vx < -5 ? -1 : 1;
+		const pitch = -clamp((this.vx * face) / cruise, -1, 1) * 0.2;
+		this.angle = face > 0 ? pitch : Math.PI - pitch;
+		this.roll = face > 0 ? 0 : Math.PI;
+		if (!u || this.order === 'rearm') return;
+		const ty = u.y + u.def.half[1];
+		const dist = Math.hypot(u.x - this.x, ty - this.y);
+		if (dist < AIMED_RANGE) this.aimedGuns(w, u.x, ty, dist);
+		const inbound = w.missiles.some((m) => m.owner === 'player' && m.target === this.trackOf(u));
+		if (dist < 700 && this.missileCd <= 0 && this.missiles > 0 && !inbound)
+			this.fireMissile(w, u, 'agm');
+		if (dist < 430 && this.rockets > 0 && this.rocketCd <= 0) {
+			this.angle = Math.atan2(ty - this.y, u.x - this.x);
+			this.fireRockets();
+		}
+	}
+
+	/** Bomb release: when the predicted impact sits on the target, the best bomb for it goes. */
+	private tryBomb(w: World, u: Unit): void {
+		if (this.bombCd > 0 || Math.abs(u.x - this.x) > 700) return;
+		const id = this.pickBomb(u);
+		if (!id) return;
+		const def = BOMBS[id];
+		const vx = this.vx,
+			vy = this.vy;
+		const hit = predictImpact(w, this.x, this.y - 1.5, vx, vy, def.drag, null, def.lift);
+		const bomber = this.tactic === 'bomber';
+		const window = (bomber ? 26 : 7) + def.blast.radius * 0.3;
+		if (Math.abs(hit.x - u.x) > window) return;
+		// Keep it off our own troops.
+		if (w.allies.list.some((a) => a.alive && Math.abs(a.x - hit.x) < def.blast.radius + 6)) return;
+		this.rack[id] = (this.rack[id] ?? 0) - 1;
+		this.bombCd = bomber ? 0.14 : 0.6;
+		dropBomb(w, def, this.x, this.y - 1.5, 0, vx, vy, this.angle);
+	}
+
+	private pickBomb(u: Unit): BombId | null {
+		const prefer = u.def.category === 'infantry' ? ANTI_SOFT : ANTI_ARMOUR;
+		for (const id of prefer) if ((this.rack[id] ?? 0) > 0) return id;
+		if ((this.rack.gp ?? 0) > 0) return 'gp';
+		for (const k in this.rack) if ((this.rack[k as BombId] ?? 0) > 0) return k as BombId;
+		return null;
+	}
+
+	/** Queues a pod's worth of rockets, fired along the nose. */
+	private fireRockets(): void {
+		if (this.rockets <= 0 || this.rocketCd > 0 || this.rocketQueue > 0) return;
+		this.rockets--;
+		this.rocketQueue = ROCKETS_PER_POD;
+		this.rocketCd = rnd.range(2.5, 4);
+	}
+
+	private rippleRockets(w: World, dt: number): void {
+		if (this.rocketQueue <= 0) return;
+		this.rocketGap -= dt;
+		if (this.rocketGap > 0) return;
+		this.rocketGap = 0.07;
+		this.rocketQueue--;
+		const a = this.angle + rnd.gauss(0.025);
+		const ca = Math.cos(a),
+			sa = Math.sin(a);
+		w.shells.push({
+			kind: 'ffar',
+			x: this.x + ca * 2,
+			y: this.y - 0.8,
+			z: this.z,
+			vx: this.vx + ca * ROCKET_SPEED,
+			vy: this.vy + sa * ROCKET_SPEED,
+			age: 0,
+			fuse: 0,
+			damage: 0,
+			radius: 0,
+			owner: 'player',
+			trail: 0
+		});
+		w.fx.muzzleFlash(this.x + ca * 2, this.y - 0.8, this.z, ca, sa, 1, [12, 7, 3]);
+		w.sound.play('missileLaunch', this.x, this.y, 0.3);
+	}
+
+	/** Turret or side guns: bursts at the target whatever the heading. */
+	private aimedGuns(w: World, tx: number, ty: number, dist: number): void {
+		if (this.profile.gun <= 0) return;
+		const lead = dist / 640;
+		const a = Math.atan2(ty + 0.5 * 4 * lead * lead - this.y, tx - this.x);
+		this.guns(w, a);
+	}
+
+	/** The gunship's howitzer: a heavy shell lobbed onto the target every few seconds. */
+	private heavyShell(w: World, tx: number, ty: number): void {
+		this.heavyCd = HEAVY_SHELL.every;
+		this.shells--;
+		const dx = tx - this.x,
+			dy = ty - this.y;
+		const tof = Math.hypot(dx, dy) / HEAVY_SHELL.speed;
+		// Shells fall at 13 m/s² (see updateShells): aim high by the drop.
+		const a = Math.atan2(dy + 0.5 * 13 * tof * tof, dx);
+		w.shells.push({
+			kind: 'tank',
+			x: this.x,
+			y: this.y - 1,
+			z: this.z,
+			vx: Math.cos(a) * HEAVY_SHELL.speed,
+			vy: Math.sin(a) * HEAVY_SHELL.speed,
+			age: 0,
+			fuse: Infinity,
+			damage: HEAVY_SHELL.damage,
+			radius: HEAVY_SHELL.radius,
+			owner: 'player',
+			trail: 0,
+			aimX: tx
+		});
+		w.fx.muzzleFlash(this.x, this.y - 1, this.z, Math.cos(a), Math.sin(a), 3, [12, 6, 2]);
+		w.sound.play('tankGun', this.x, this.y, 0.5);
 	}
 
 	private setPhase(phase: 'attack' | 'extend'): void {
@@ -535,7 +920,8 @@ export class Wingman implements Trackable {
 		if (this.y > WORLD.ceiling - 40) target = right ? -0.35 : Math.PI + 0.35;
 		if (this.x < WORLD.arenaMinX + 60) target = 0.3;
 		if (this.x > WORLD.arenaMaxX + 60) target = Math.PI - 0.3;
-		const rate = TURN_RATE * (this.speed < 80 ? 1.2 : 1);
+		const rate = this.profile.turn * (this.speed < 80 ? 1.2 : 1);
+		this.z = moveToward(this.z, 0, 20 * dt);
 		this.angle = wrapAngle(
 			this.angle + clamp(angleDiff(this.angle, target), -rate * dt, rate * dt)
 		);
@@ -548,35 +934,39 @@ export class Wingman implements Trackable {
 		this.trail += dt;
 		if (this.trail > 0.04) {
 			this.trail = 0;
-			if (this.hp < WING_HP * 0.4) w.fx.trail(this.x, this.y, 0, 1, 0.08, 0.7, 2, 0.2);
+			if (this.hp < this.profile.hp * 0.4) w.fx.trail(this.x, this.y, this.z, 1, 0.08, 0.7, 2, 0.2);
 		}
 	}
 
-	private guns(w: World): void {
-		if (this.gunCd > 0) return;
-		if (this.burst <= 0) this.burst = 10;
+	/** A burst from the gun: along the nose, or along `aim` for turret and side guns. */
+	private guns(w: World, aim = this.angle): void {
+		const p = this.profile;
+		if (this.gunCd > 0 || p.gun <= 0 || this.rounds <= 0) return;
+		this.rounds--;
+		const heavy = p.explosive > 0;
+		if (this.burst <= 0) this.burst = heavy ? 4 : 10;
 		this.burst--;
-		this.gunCd = this.burst > 0 ? 0.06 : rnd.range(0.5, 0.9);
-		const a = this.angle + rnd.gauss(0.02);
-		const mx = this.x + Math.cos(this.angle) * 5,
-			my = this.y + Math.sin(this.angle) * 5;
+		this.gunCd = this.burst > 0 ? (heavy ? 0.22 : 0.06) : rnd.range(0.5, 0.9);
+		const a = aim + rnd.gauss(heavy ? 0.012 : 0.02);
+		const mx = this.x + Math.cos(aim) * 5,
+			my = this.y + Math.sin(aim) * 5;
 		spawnBullet(w, {
 			x: mx,
 			y: my,
-			z: 0,
+			z: this.z,
 			vx: Math.cos(a) * 700 + this.vx,
 			vy: Math.sin(a) * 700 + this.vy,
 			life: 1.1,
-			damage: WING_GUN_DAMAGE,
+			damage: p.gun,
 			pierce: 0.3,
 			owner: 'player',
 			tracer: true,
 			color: [3, 9, 12],
-			size: 0.2,
-			explosive: 0
+			size: heavy ? 0.32 : 0.2,
+			explosive: p.explosive
 		});
-		w.fx.muzzleFlash(mx, my, 0, Math.cos(a), Math.sin(a), 0.9, [8, 10, 12]);
-		w.sound.play('gun', mx, my, 0.3, 1.15);
+		w.fx.muzzleFlash(mx, my, this.z, Math.cos(a), Math.sin(a), heavy ? 1.6 : 0.9, [8, 10, 12]);
+		w.sound.play(heavy ? 'aaGun' : 'gun', mx, my, 0.3, heavy ? 0.8 : 1.15);
 	}
 
 	private fireMissile(w: World, t: Unit | AirUnit, kind: 'air' | 'agm'): void {
@@ -663,14 +1053,14 @@ export class Wingman implements Trackable {
 		this.y = w.ground(this.x) + 30;
 		this.angle = 0.22;
 		this.roll = 0;
-		this.speed = CRUISE;
+		this.speed = this.profile.cruise;
 		this.vx = Math.cos(this.angle) * this.speed;
 		this.vy = Math.sin(this.angle) * this.speed;
-		this.hp = WING_HP;
+		this.hp = this.profile.hp;
 		this.alive = true;
 		this.dying = false;
 		this.flash = 0;
-		this.missiles = WING_MISSILES;
+		this.missiles = this.profile.missiles;
 		this.order = 'attack';
 		this.target = null;
 		this.assigned = false;
@@ -685,11 +1075,11 @@ export class Wingman implements Trackable {
  * The friendly aircraft an enemy at (x, y) should shoot at: the player (or in
  * co-op, player two) or the wingman, whichever is closer (the player when both are equally placed).
  */
-export function nearestFriendly(w: World, x: number, y: number): Player | Wingman | null {
+export function nearestFriendly(w: World, x: number, y: number): Player | AirAlly | null {
 	if (w.godMode) return null;
 	// In co-op, the closer of the two human pilots.
 	const p = w.nearestPilot(x, y);
-	let wing: Wingman | null = null;
+	let wing: AirAlly | null = null;
 	let dw = Infinity;
 	for (const j of w.jets()) {
 		if (!j.active) continue;

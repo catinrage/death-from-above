@@ -4,6 +4,7 @@ import { inBattlePlane, segmentVsUnit } from './combat';
 import { WORLD } from './constants';
 import { killUnit } from './deaths';
 import { UNITS } from './defs-units';
+import type { Drone } from './drones';
 import type { AirUnit } from './enemy-air';
 import { launchMissile, spawnBullet } from './projectiles';
 import type { Unit, UnitDef } from './types';
@@ -26,7 +27,10 @@ export type AllyKind =
 	| 'lightTank'
 	| 'apc'
 	| 'spaag'
-	| 'rocketTruck';
+	| 'rocketTruck'
+	| 'sam'
+	| 'artillery'
+	| 'superTank';
 export const ALLY_KINDS: readonly AllyKind[] = [
 	'rifleman',
 	'manpads',
@@ -40,7 +44,10 @@ export const ALLY_KINDS: readonly AllyKind[] = [
 	'lightTank',
 	'apc',
 	'spaag',
-	'rocketTruck'
+	'rocketTruck',
+	'sam',
+	'artillery',
+	'superTank'
 ];
 
 /** How hard enemy small arms hit a friendly unit (their rounds are tuned against aircraft). */
@@ -81,6 +88,8 @@ interface AllyGun {
 	air?: boolean;
 	/** Heat-seeking missiles at aircraft. */
 	missile?: boolean;
+	/** The missiles are radar guided and long-ranged (a SAM battery, not a shoulder launcher). */
+	radar?: boolean;
 	/** Goes for vehicles before troops. */
 	antiArmor?: boolean;
 	/** Indirect fire, lobbed from behind the line. */
@@ -96,6 +105,16 @@ const GUNS: Partial<Record<AllyKind, AllyGun>> = {
 		damage: 60,
 		pierce: 0.7,
 		speed: 420,
+		shell: true
+	},
+	superTank: {
+		range: 540,
+		interval: 4.6,
+		burst: 2,
+		gap: 0.35,
+		damage: 130,
+		pierce: 0.85,
+		speed: 440,
 		shell: true
 	},
 	apc: { range: 380, interval: 2.4, burst: 6, gap: 0.09, damage: 7, pierce: 0.35, speed: 800 },
@@ -143,6 +162,28 @@ const GUNS: Partial<Record<AllyKind, AllyGun>> = {
 		speed: 0,
 		lob: { range: 950, theta: 0.75, scatter: 22 }
 	},
+	artillery: {
+		range: 1150,
+		interval: 7,
+		burst: 1,
+		gap: 0,
+		damage: 0,
+		pierce: 0,
+		speed: 0,
+		lob: { range: 1150, theta: 0.9, scatter: 16 }
+	},
+	sam: {
+		range: 1150,
+		interval: 6,
+		burst: 2,
+		gap: 0.7,
+		damage: 34,
+		pierce: 0,
+		speed: 0,
+		air: true,
+		missile: true,
+		radar: true
+	},
 	spaag: {
 		range: 620,
 		interval: 2,
@@ -184,7 +225,9 @@ for (const kind of ALLY_KINDS) {
 		name: `Friendly ${d.name.toLowerCase()}`,
 		hp: HP[kind] ?? d.hp,
 		score: 0,
-		supply: false
+		supply: false,
+		// Ours is just a big tank: no boss health bar or boss music.
+		boss: false
 	};
 }
 
@@ -596,12 +639,12 @@ export class Allies {
 		if (!this.trigger(u, gun, dt)) return;
 		const m = muzzlePoint(u, m3);
 		lobShell(w, m[0], m[1], m[2], tx + rnd.gauss(lob.scatter), lob.theta, 0, 'player');
-		w.sound.play(u.def.kind === 'rocketTruck' ? 'artillery' : 'tankGun', m[0], m[1], 0.45);
+		w.sound.play(u.def.kind === 'mortar' ? 'tankGun' : 'artillery', m[0], m[1], 0.45);
 	}
 
 	/** Mobile AA and missile troopers keep the sky over the column clear. */
 	private antiAir(w: World, u: Unit, gun: AllyGun, dt: number): void {
-		let target: AirUnit | null = null;
+		let target: AirUnit | Drone | null = null;
 		let best = gun.range;
 		const ox = u.x,
 			oy = u.y + u.def.half[1] * 2;
@@ -609,6 +652,15 @@ export class Allies {
 			if (!a.alive || a.dying) continue;
 			const d = Math.hypot(a.x - ox, a.y - oy);
 			if (d < best && a.y > oy + 15) {
+				best = d;
+				target = a;
+			}
+		}
+		// Their drones too, though they come in low: anything clear of the ground.
+		for (const a of w.drones) {
+			if (!a.alive || a.side !== 'enemy') continue;
+			const d = Math.hypot(a.x - ox, a.y - oy);
+			if (d < best && a.y > w.ground(a.x) + 6) {
 				best = d;
 				target = a;
 			}
@@ -624,24 +676,28 @@ export class Allies {
 		const m = muzzlePoint(u, m3);
 		const a = Math.atan2(ty - m[1], tx - m[0]);
 		if (gun.missile) {
+			const radar = !!gun.radar;
+			// A SAM leaves its rack steeply, then turns onto the target.
+			const angle = radar ? a * 0.3 + (tx >= u.x ? 0.95 : Math.PI - 0.95) * 0.7 : a;
 			launchMissile(w, {
-				kind: 'manpads',
+				kind: radar ? 'sam' : 'manpads',
 				x: m[0],
 				y: m[1],
 				z: m[2],
-				angle: a,
-				speed: 28,
-				maxSpeed: 205,
-				accel: 270,
-				turnRate: 2.8,
+				angle,
+				speed: radar ? 35 : 28,
+				maxSpeed: radar ? 265 : 205,
+				accel: radar ? 230 : 270,
+				turnRate: radar ? 2.25 : 2.8,
 				target,
-				burn: 2.3,
-				life: 5.5,
+				burn: radar ? 3.4 : 2.3,
+				life: radar ? 9 : 5.5,
 				damage: gun.damage,
 				owner: 'player',
-				seeker: 'heat'
+				seeker: radar ? 'radar' : 'heat'
 			});
-			w.fx.muzzleFlash(m[0], m[1], m[2], Math.cos(a), Math.sin(a), 2, [8, 9, 12]);
+			w.fx.muzzleFlash(m[0], m[1], m[2], Math.cos(angle), Math.sin(angle), 2, [8, 9, 12]);
+			if (radar) w.sound.play('missileLaunch', m[0], m[1], 0.5, 0.8);
 			return;
 		}
 		const aa = a + rnd.gauss(0.02);

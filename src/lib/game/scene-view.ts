@@ -23,6 +23,7 @@ import {
 import type { Flyby } from './command';
 import type { Player } from './player';
 import type { Unit } from './types';
+import type { Drone } from './drones';
 import type { Wingman } from './wingman';
 import type { World } from './world';
 
@@ -510,11 +511,11 @@ export class SceneView {
 			if (a.kind !== 'heli') {
 				mat4.rotateZ(m, m, a.angle);
 				mat4.rotateX(m, m, a.roll);
-				if (a.kind === 'striker') {
-					// The enemy commander's attack jet: their Su-25.
-					const sc = AIRCRAFT.su25.scale;
-					mat4.scale(m, m, sc, sc, sc);
-					this.mesh(AIRCRAFT.su25.mesh).push(m, st);
+				if (a.airframe || a.kind === 'striker') {
+					// The enemy commander's aircraft fly as whatever airframe it ordered (the Su-25 by default).
+					const def = AIRCRAFT[a.airframe ?? 'su25'];
+					mat4.scale(m, m, def.scale, def.scale, def.scale);
+					this.mesh(def.mesh).push(m, st);
 				} else this.models.enemyFighter.push(m, st);
 				const ca = Math.cos(a.angle),
 					sa = Math.sin(a.angle);
@@ -536,9 +537,34 @@ export class SceneView {
 
 	/** Friendly AI jets (the wingman's F-16 and the commander's air units), with blue nav strobes. */
 	private wingmen(w: World, time: number): void {
-		for (const a of w.jets()) this.wingman(w, a, time);
+		if (w.wingman) this.wingman(w, w.wingman, time);
+		for (const a of w.escorts) this.wingman(w, a, time);
 		for (const f of w.command.flybys) this.flyby(f);
 		for (const f of w.enemyCommand.flybys) this.flyby(f);
+		for (const d of w.drones) this.drone(w, d);
+	}
+
+	/** A kamikaze drone: the quadcopter tilts into its flight path, the delta flies along it. */
+	private drone(w: World, d: Drone): void {
+		const m = this.m;
+		mat4.fromTranslation(m, d.x, d.y, d.z);
+		const st = this.style();
+		if (d.kind === 'fpv') {
+			const facing = Math.cos(d.angle) >= 0;
+			if (!facing) mat4.rotateY(m, m, Math.PI);
+			// Pitches nose down to fly forward, harder in the dive.
+			const climb = facing ? d.angle : Math.PI - d.angle;
+			mat4.rotateZ(m, m, clamp(climb, -1.2, 0.4) - 0.25);
+			this.models.fpvDrone.push(m, st);
+			return;
+		}
+		mat4.rotateZ(m, m, d.angle);
+		if (Math.cos(d.angle) < 0) mat4.rotateX(m, m, Math.PI);
+		this.models.deltaDrone.push(m, st);
+		const ca = Math.cos(d.angle),
+			sa = Math.sin(d.angle);
+		if (Math.sin(d.spin * 0.2) > 0.6)
+			w.fx.immediateGlow(d.x - ca * 2, d.y - sa * 2, d.z, 0.6, 9, 3, 1);
 	}
 
 	/** A bomber on a scripted run: straight and level, out of reach. */
@@ -560,15 +586,32 @@ export class SceneView {
 		const def = AIRCRAFT[a.aircraft];
 		const sc = def.scale;
 		mat4.fromTranslation(m, a.x, a.y, a.z);
+		if (a.yaw !== 0) mat4.rotateY(m, m, a.yaw);
 		mat4.rotateZ(m, m, a.angle);
 		mat4.rotateX(m, m, a.roll);
 		mat4.scale(m, m, sc, sc, sc);
 		const st = this.style(a.dying ? 0.5 : 0, a.flash * 0.5, 0, 1, 1, a.dying ? 1 : 0);
 		this.mesh(def.mesh).push(m, st);
+		def.props.forEach((prop, i) => {
+			mat4.translate(this.m2, m, prop[0], prop[1], prop[2]);
+			mat4.rotateX(this.m2, this.m2, def.contra && i % 2 === 1 ? -a.spin : a.spin);
+			this.models.propeller.push(this.m2, st);
+		});
+		const rotor = def.rotor;
+		if (rotor) {
+			const k = rotor.size;
+			mat4.translate(this.m2, m, rotor.main[0], rotor.main[1], rotor.main[2]);
+			mat4.rotateY(this.m2, this.m2, a.spin * 0.9);
+			mat4.scale(this.m2, this.m2, k, 1, k);
+			this.models.heliRotor.push(this.m2, st);
+			mat4.translate(this.m2, m, rotor.tail[0], rotor.tail[1], rotor.tail[2]);
+			mat4.rotateZ(this.m2, this.m2, a.spin * 1.6);
+			this.models.heliTailRotor.push(this.m2, st);
+		}
 		if (a.dying) return;
-		const ca = Math.cos(a.angle),
+		const ca = Math.cos(a.angle) * Math.cos(a.yaw),
 			sa = Math.sin(a.angle);
-		w.fx.immediateGlow(a.x - ca * 6, a.y - sa * 6, a.z, 1.2, 9, 5, 2);
+		if (def.engine === 'jet') w.fx.immediateGlow(a.x - ca * 6, a.y - sa * 6, a.z, 1.2, 9, 5, 2);
 		if (Math.sin(time * 7 + 1.3) > 0.9) w.fx.immediateGlow(a.x, a.y + 1.4, a.z, 1.3, 2, 5, 12);
 	}
 

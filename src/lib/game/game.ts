@@ -9,7 +9,11 @@ import type { PopupLayer } from '../ui/popups';
 import {
 	ALLY_SLOTS,
 	FOE_SLOTS,
+	PLANE_SLOTS,
+	STRIKE_SLOTS,
 	type AllyMarker,
+	type PlaneMarker,
+	type StrikeLabel,
 	type PilotTagView,
 	type PlaceTag,
 	type TargetingLayer,
@@ -24,9 +28,15 @@ import {
 	AIR_LIMIT,
 	ARMY_LIMIT,
 	COMMAND_ORDER,
+	COMMAND_TABS,
 	COMMANDS,
+	DRONE_LIMIT,
 	enemyArmy,
-	type CommandId
+	TAB_KEYS,
+	tabOrders,
+	type CommandId,
+	type CommandTab,
+	type StrikeOrder
 } from './command';
 import { CommandAutopilot } from './command-ai';
 import { bossStatus } from './boss';
@@ -166,6 +176,8 @@ export class Game {
 	/** Command mode: where the view is headed along the road, and how far out (0 close, 1 wide). */
 	private viewX = 0;
 	private viewZoom = 0;
+	/** Command mode: the page of the order bar that is open. */
+	private commandTab: CommandTab = 'infantry';
 	private readonly p2Autopilot = new Autopilot();
 	/** Bullet time. */
 	readonly focus = new Focus();
@@ -549,6 +561,7 @@ export class Game {
 			this.aimX = Number.NaN;
 			this.viewX = WORLD.baseMaxX + 420;
 			this.viewZoom = VIEW_ZOOM;
+			this.commandTab = 'infantry';
 			this.commandCamera(0, null, true);
 		}
 		this.envPhase = this.envTarget = this.envFor(1);
@@ -863,6 +876,14 @@ export class Game {
 		this.aiming = null;
 	}
 
+	/** Opens a page of the order bar (a click on its tab, or Q / E / Tab). */
+	commandTabSelect(tab: CommandTab): void {
+		if (this.commandTab === tab) return;
+		this.commandTab = tab;
+		const w = this.world;
+		this.audio.play('select', w.camera.x, w.camera.y, 0.4);
+	}
+
 	/** Says why an order didn't go through. */
 	private refused(why: string): void {
 		const w = this.world;
@@ -874,8 +895,18 @@ export class Game {
 	/** Hotkeys, the strike cursor and clicks on the battlefield. */
 	private commandOrders(ci: CommandInput): void {
 		const w = this.world;
+		if (ci.tab !== 0) {
+			const i = COMMAND_TABS.findIndex((t) => t.id === this.commandTab);
+			const n = COMMAND_TABS.length;
+			this.commandTabSelect(COMMAND_TABS[(i + ci.tab + n) % n].id);
+		}
 		for (const code of ci.keys) {
-			const id = COMMAND_ORDER.find((k) => COMMANDS[k].code === code);
+			// Strikes keep their own keys; the number row picks from the open page.
+			const strike = COMMAND_ORDER.find(
+				(k) => COMMANDS[k].tab === null && COMMANDS[k].code === code
+			);
+			const slot = TAB_KEYS.findIndex(([c]) => c === code);
+			const id = strike ?? (slot >= 0 ? tabOrders(this.commandTab)[slot] : undefined);
 			if (id) this.commandSelect(id);
 		}
 		if (ci.cancel) this.aiming = null;
@@ -887,6 +918,11 @@ export class Game {
 		this.aiming = null;
 	}
 
+	/** How far out the commander's view sits for a zoom setting (0 close, 1 wide). */
+	private viewDist(zoom: number): number {
+		return VIEW_NEAR * Math.pow(VIEW_FAR / VIEW_NEAR, zoom);
+	}
+
 	/**
 	 * The commander's view: high over the battle line and tilted down on it,
 	 * panned along the road and zoomed by the player.
@@ -894,15 +930,26 @@ export class Game {
 	private commandCamera(raw: number, ci: CommandInput | null, snap = false): void {
 		const w = this.world;
 		const cam = w.camera;
+		let drag = false;
 		if (ci) {
-			this.viewZoom = clamp(this.viewZoom + ci.wheel * 0.08 + ci.zoom * raw * 0.9, 0, 1);
-			const span = lerp(VIEW_NEAR, VIEW_FAR, this.viewZoom);
+			const before = this.viewDist(this.viewZoom);
+			this.viewZoom = clamp(this.viewZoom + ci.wheel * WHEEL_ZOOM + ci.zoom * raw * 0.6, 0, 1);
+			const span = this.viewDist(this.viewZoom);
+			// The wheel zooms toward whatever is under the cursor, so it stays put on screen.
+			if (ci.wheel !== 0 && Number.isFinite(this.aimX))
+				this.viewX = this.aimX + (this.viewX - this.aimX) * (span / before);
 			this.viewX += ci.pan * span * (ci.fast ? 2.4 : 1.2) * raw;
+			// Dragging moves the map with the mouse, one to one at the ground.
+			if (ci.dragX !== 0) {
+				const perPx = (2 * Math.tan(cam.fovY / 2) * cam.dist) / Math.max(1, this.cssH);
+				this.viewX -= ci.dragX * perPx;
+			}
+			drag = ci.dragging;
 			if (ci.front) this.viewX = w.command.front(w);
 		}
 		this.viewX = clamp(this.viewX, WORLD.arenaMinX + 150, WORLD.enemyBaseMaxX + 30);
-		const dist = lerp(VIEW_NEAR, VIEW_FAR, this.viewZoom);
-		cam.x = snap ? this.viewX : damp(cam.x, this.viewX, 7, raw);
+		const dist = this.viewDist(this.viewZoom);
+		cam.x = snap || drag ? this.viewX : damp(cam.x, this.viewX, 7, raw);
 		cam.dist = snap ? dist : damp(cam.dist, dist, 6, raw);
 		cam.pitch = cam.pitchTarget = COMMAND_PITCH;
 		cam.interest = null;
@@ -914,9 +961,13 @@ export class Game {
 	private commandHud(): CommandHud {
 		const w = this.world;
 		const c = w.command;
+		const aiming = this.aiming as StrikeOrder | null;
 		return {
 			funds: Math.floor(c.funds),
 			income: c.income(w),
+			tab: this.commandTab,
+			tabs: COMMAND_TABS,
+			eta: aiming && Number.isFinite(this.aimX) ? c.eta(w, aiming, this.aimX) : null,
 			items: COMMAND_ORDER.map((id) => {
 				const d = COMMANDS[id];
 				return {
@@ -925,6 +976,7 @@ export class Game {
 					short: d.short,
 					tip: d.tip,
 					group: d.group,
+					tab: d.tab,
 					cost: d.cost,
 					key: d.key,
 					cooldown: d.cooldown > 0 ? (c.cooldowns[id] ?? 0) / d.cooldown : 0,
@@ -936,6 +988,8 @@ export class Game {
 			armyMax: ARMY_LIMIT,
 			air: c.airborne(w),
 			airMax: AIR_LIMIT,
+			drones: c.drones(w),
+			dronesMax: DRONE_LIMIT,
 			queued: c.queue.length,
 			enemy: {
 				funds: Math.floor(w.enemyCommand.funds),
@@ -1183,7 +1237,7 @@ export class Game {
 		}
 		if (this.mode === 'command' && this.phase !== 'title') {
 			// From the commander's height the far end of the road would vanish into the haze.
-			env.fog[0] *= clamp(VIEW_CLEAR / w.camera.dist, 0.25, 1);
+			env.fog[0] *= clamp(VIEW_CLEAR / w.camera.dist, 0.08, 1);
 		}
 		w.night = clamp(env.stars * 1.1, 0, 1);
 		w.fx.nightFactor = w.night;
@@ -1311,6 +1365,12 @@ export class Game {
 			const r = COMMANDS[this.aiming].radius ?? 20;
 			this.view.blastZone(w, this.aimX, r, this.time, AIM_COLOR);
 		}
+		if (this.mode === 'command' && flying) {
+			// Strikes on their way: a dimmer ring where each will land.
+			for (const p of w.command.pending)
+				if (p.t > 0)
+					this.view.blastZone(w, p.x, COMMANDS[p.id].radius ?? 20, this.time, PENDING_COLOR);
+		}
 		if (lo > hi) {
 			if (this.phase !== 'paused') w.camera.interest = null;
 			return;
@@ -1355,7 +1415,9 @@ export class Game {
 			pilots: visible && this.coop ? this.pilotTags() : [],
 			allies: visible ? this.allyMarkers() : [],
 			foes: visible && this.mode === 'command' ? this.foeMarkers() : [],
-			places: visible && this.mode === 'command' ? this.placeTags() : []
+			places: visible && this.mode === 'command' ? this.placeTags() : [],
+			planes: visible ? this.planeMarkers() : [],
+			strikes: visible && this.mode === 'command' ? this.strikeLabels() : []
 		};
 	}
 
@@ -1374,6 +1436,63 @@ export class Game {
 			add((hq.x0 + hq.x1) / 2, -26, 26, hq.destroyed ? 'ENEMY HQ · DOWN' : 'ENEMY HQ', true);
 			add(WORLD.enemyBaseMaxX + WORLD.baseMinX - 307.5, -27, 24, 'ENEMY AIRFIELD', true);
 		}
+		return out;
+	}
+
+	/**
+	 * A marker over every aircraft in shot: blue over ours (AI jets and drones),
+	 * red over theirs (command mode only, like the ground ticks).
+	 */
+	private planeMarkers(): PlaneMarker[] {
+		const w = this.world;
+		const out: PlaneMarker[] = [];
+		const add = (
+			x: number,
+			y: number,
+			z: number,
+			foe: boolean,
+			small: boolean,
+			hurt: boolean
+		): void => {
+			if (out.length >= PLANE_SLOTS) return;
+			const s = w.camera.project(x, y + (small ? 2.5 : 6), z, this.cssW, this.cssH);
+			if (!s || s[0] < -20 || s[0] > this.cssW + 20 || s[1] < -20 || s[1] > this.cssH + 20) return;
+			out.push({ x: s[0], y: s[1] - 2, foe, small, hurt });
+		};
+		const wing = w.wingman;
+		if (wing?.active) add(wing.x, wing.y, wing.z, false, false, wing.hp < wing.profile.hp * 0.35);
+		for (const e of w.escorts)
+			if (e.active) add(e.x, e.y, e.z, false, false, e.hp < e.profile.hp * 0.35);
+		if (this.mode === 'command') {
+			for (const a of w.air) if (a.alive && !a.dying) add(a.x, a.y, a.z, true, false, false);
+		}
+		for (const d of w.drones) add(d.x, d.y, d.z, d.side === 'enemy', true, false);
+		return out;
+	}
+
+	/**
+	 * The strike being aimed, with its time to impact beside the ring, and a
+	 * countdown over every spot a strike is on its way to.
+	 */
+	private strikeLabels(): StrikeLabel[] {
+		const w = this.world;
+		const c = w.command;
+		const out: StrikeLabel[] = [];
+		const label = (x: number, text: string, aim: boolean): void => {
+			if (out.length >= STRIKE_SLOTS) return;
+			const s = w.camera.project(x, w.ground(x) + 2, 0, this.cssW, this.cssH);
+			if (!s || s[0] < -40 || s[0] > this.cssW + 40) return;
+			out.push({ x: s[0], y: s[1], text, aim });
+		};
+		const aiming = this.aiming as StrikeOrder | null;
+		if (aiming && Number.isFinite(this.aimX))
+			label(
+				this.aimX,
+				`${COMMANDS[aiming].short} · impact in ${c.eta(w, aiming, this.aimX).toFixed(1)} s`,
+				true
+			);
+		for (const p of c.pending)
+			label(p.x, p.t > 0 ? `${COMMANDS[p.id].short} ${p.t.toFixed(1)} s` : 'IMPACT', false);
 		return out;
 	}
 
@@ -1623,20 +1742,25 @@ const MODE_TITLE: Record<GameMode, string> = {
 };
 
 /** The commander's view: how far out it sits, closest and widest, and how high the ground sits in it. */
-const VIEW_NEAR = 170;
-const VIEW_FAR = 820;
+const VIEW_NEAR = 110;
+const VIEW_FAR = 1900;
 const VIEW_LIFT = 0.42;
-const VIEW_ZOOM = 0.25;
+/** Where the zoom starts (about 330 m out), and how far one wheel notch moves it. */
+const VIEW_ZOOM = 0.39;
+const WHEEL_ZOOM = 0.06;
 /** The commander looks at the battle through less haze than a pilot down in it. */
 const VIEW_CLEAR = 200;
 /** Colour of the strike aiming ring. */
 const AIM_COLOR: [number, number, number] = [2.4, 0.9, 0.35];
+/** Colour of the rings over strikes already on their way. */
+const PENDING_COLOR: [number, number, number] = [1.6, 0.35, 0.2];
 
 /** What the player is told when an order can't be given. */
 const REFUSAL: Record<string, [string, string]> = {
 	funds: ['NOT ENOUGH FUNDS', 'Wait for the war chest to fill, or take more checkpoints'],
 	army: ['ARMY AT FULL STRENGTH', 'Wait until some of our units fall or reach the front'],
 	air: ['AIR WING FULL', 'Every squadron is already flying'],
+	drones: ['TOO MANY DRONES UP', 'Wait for some of the drones in the air to strike'],
 	target: ['NO TARGET', 'Click a spot on the battlefield']
 };
 

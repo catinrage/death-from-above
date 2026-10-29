@@ -1,6 +1,6 @@
 import type { Systems } from './damage';
 import type { BigKill } from './killcam';
-import type { CommandGroup, CommandId, Refusal } from './command';
+import type { CommandGroup, CommandId, CommandTab, Refusal } from './command';
 import type { CreditAward } from './progression';
 import type { TutorialCard } from './tutorial';
 import type { AircraftId, BombId } from './types';
@@ -114,6 +114,8 @@ export interface CommandItemHud {
 	short: string;
 	tip: string;
 	group: CommandGroup;
+	/** Its page of the order bar; null for the strikes, which are always shown. */
+	tab: CommandTab | null;
 	cost: number;
 	key: string;
 	/** Share of its cooldown still to run, 0 when ready. */
@@ -127,6 +129,11 @@ export interface CommandHud {
 	funds: number;
 	/** Funds per second. */
 	income: number;
+	/** The open page of the order bar, and every page. */
+	tab: CommandTab;
+	tabs: readonly { id: CommandTab; label: string }[];
+	/** Seconds from firing the strike being aimed to its impact, or null. */
+	eta: number | null;
 	items: CommandItemHud[];
 	/** The strike waiting for a spot to be clicked, or null. */
 	aiming: CommandId | null;
@@ -134,6 +141,8 @@ export interface CommandHud {
 	armyMax: number;
 	air: number;
 	airMax: number;
+	drones: number;
+	dronesMax: number;
 	/** Groups paid for and waiting to leave the rally point. */
 	queued: number;
 	/** The enemy commander, who has the same chest and orders. */

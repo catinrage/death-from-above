@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { fade } from 'svelte/transition';
-	import type { CommandId, CommandGroup } from '$lib/game/command';
+	import type { CommandId, CommandTab } from '$lib/game/command';
 	import type { CommandHud, CommandItemHud } from '$lib/game/hud';
 	import CommandIcon from './CommandIcon.svelte';
 
@@ -9,28 +9,36 @@
 		/** Name of the no-fire zone under the strike cursor ('' = clear). */
 		noFire: string;
 		onOrder: (id: CommandId) => void;
+		onTab: (tab: CommandTab) => void;
 	}
 
-	let { command, noFire, onOrder }: Props = $props();
+	let { command, noFire, onOrder, onTab }: Props = $props();
 
-	const GROUPS: { id: CommandGroup; label: string }[] = [
-		{ id: 'ground', label: 'Ground forces' },
-		{ id: 'air', label: 'Air wing' },
-		{ id: 'strike', label: 'Strikes from base' }
-	];
 	const REASON: Record<string, string> = {
 		funds: 'Not enough funds',
 		cooldown: 'Reloading',
 		army: 'Army at full strength',
-		air: 'Air wing full'
+		air: 'Air wing full',
+		drones: 'Too many drones in the air'
 	};
 
 	/** The order under the mouse, for the tip line. */
 	let hover = $state<CommandItemHud | null>(null);
 	const aimed = $derived(command.items.find((i) => i.id === command.aiming) ?? null);
-	const byGroup = $derived(
-		GROUPS.map((g) => ({ ...g, items: command.items.filter((i) => i.group === g.id) }))
-	);
+	/** The open page of orders, and the strikes beside it. */
+	const groups = $derived([
+		{
+			id: command.tab,
+			label: command.tabs.find((t) => t.id === command.tab)?.label ?? '',
+			items: command.items.filter((i) => i.tab === command.tab)
+		},
+		{ id: 'strike', label: 'Strikes from base', items: command.items.filter((i) => i.tab === null) }
+	]);
+
+	function pickTab(e: MouseEvent, tab: CommandTab): void {
+		(e.currentTarget as HTMLElement).blur();
+		onTab(tab);
+	}
 
 	function press(e: MouseEvent, id: CommandId): void {
 		// Keep focus on the battlefield, so Space and the hotkeys still reach the game.
@@ -48,7 +56,9 @@
 		</div>
 		<div class="counts">
 			<span title="Our units on the road">ARMY {command.army}/{command.armyMax}</span>
-			<span title="Our jets in the air">AIR {command.air}/{command.airMax}</span>
+			<span title="Our aircraft in the air">AIR {command.air}/{command.airMax}</span>
+			{#if command.drones > 0}<span title="Our drones in the air">DRONES {command.drones}</span
+				>{/if}
 			{#if command.queued > 0}<span class="queue">{command.queued} forming up</span>{/if}
 			<span class="foe" title="The enemy commander: same chest, same orders">
 				ENEMY {command.enemy.funds.toLocaleString()} · ARMY {command.enemy.army} · AIR {command
@@ -58,19 +68,35 @@
 		<p class="tip">
 			{#if aimed}
 				<b class="aim">{aimed.name}</b>
+				{#if command.eta !== null}<span class="eta"
+						>Impact {command.eta.toFixed(1)} s after firing ·
+					</span>{/if}
 				{#if noFire}<em class="warn">Over the {noFire} no-fire zone · </em>{/if}
 				Click the battlefield to fire · right click cancels
 			{:else if hover}
 				<b>{hover.name}</b>{hover.tip}
 			{:else}
-				Buy troops and jets, or pick a strike and click where it should land. A/D or the screen
-				edges pan · wheel zooms · Space jumps to the front
+				Drag the map to pan · wheel zooms · Q/E or Tab change page · Space jumps to the front
 			{/if}
 		</p>
 	</div>
 
+	<div class="tabs">
+		<span class="hint">Q</span>
+		{#each command.tabs as t (t.id)}
+			<button
+				class="tab"
+				class:open={command.tab === t.id}
+				tabindex="-1"
+				onmousedown={(e) => e.preventDefault()}
+				onclick={(e) => pickTab(e, t.id)}>{t.label}</button
+			>
+		{/each}
+		<span class="hint">E</span>
+	</div>
+
 	<div class="bar">
-		{#each byGroup as g (g.id)}
+		{#each groups as g (g.id)}
 			<div class="group {g.id}">
 				<span class="glabel">{g.label}</span>
 				<div class="items">
@@ -200,6 +226,48 @@
 		color: var(--danger);
 	}
 
+	.tabs {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		padding-left: 2px;
+	}
+
+	.hint {
+		font-family: var(--display);
+		font-size: 11px;
+		color: var(--ink-faint);
+		padding: 0 4px;
+	}
+
+	.tab {
+		padding: 3px 10px 4px;
+		border: 0;
+		border-bottom: 2px solid transparent;
+		background: rgba(8, 10, 16, 0.5);
+		color: var(--ink-dim);
+		font: inherit;
+		font-size: 12px;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		cursor: pointer;
+		pointer-events: auto;
+	}
+
+	.tab:hover {
+		color: var(--ink);
+	}
+
+	.tab.open {
+		color: var(--ink);
+		background: rgba(8, 10, 16, 0.8);
+		border-bottom-color: #9fd8ff;
+	}
+
+	.tip .eta {
+		color: #ffd27a;
+	}
+
 	.bar {
 		display: flex;
 		gap: 14px;
@@ -246,7 +314,12 @@
 			border-color 0.12s ease;
 	}
 
-	.air .order {
+	.support .order {
+		--c: #c9b2ff;
+	}
+
+	.air .order,
+	.heavy .order {
 		--c: #8fe3c8;
 	}
 

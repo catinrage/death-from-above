@@ -5,7 +5,7 @@ import { homeOnEmitter } from './arm';
 import { WORLD } from './constants';
 import { BOMBS, type BlastSpec } from './defs-bombs';
 import type { Player } from './player';
-import type { Wingman } from './wingman';
+import type { AirAlly } from './wingman';
 import type { Owner, Trackable, Unit } from './types';
 import { flareEmit, flareHeat } from './flare-fx';
 import { ALLY_BULLET_K } from './allies';
@@ -97,9 +97,6 @@ export interface Flare extends Trackable {
 	vz: number;
 }
 
-/** The wingman's hit circle. */
-const WING_RADIUS = 3.6;
-
 const SMALL_BLAST: BlastSpec = {
 	radius: 5,
 	damage: 18,
@@ -184,6 +181,17 @@ function bulletHitsPlayerSide(w: World, b: Bullet, x0: number, y0: number): bool
 			unit = null;
 		}
 	}
+	let droneHit = null;
+	for (const d of w.drones) {
+		if (!d.alive || d.side !== 'enemy') continue;
+		const t = segmentVsCircle(x0, y0, b.x, b.y, d.x, d.y, d.radius + 0.6);
+		if (t >= 0 && t < best) {
+			best = t;
+			droneHit = d;
+			airHit = null;
+			unit = null;
+		}
+	}
 	for (const m of w.missiles) {
 		if (m.owner === 'player' || !m.alive) continue;
 		if (segmentVsCircle(x0, y0, b.x, b.y, m.x, m.y, 2.2) >= 0) {
@@ -198,6 +206,7 @@ function bulletHitsPlayerSide(w: World, b: Bullet, x0: number, y0: number): bool
 		best = ally.t;
 		unit = null;
 		airHit = null;
+		droneHit = null;
 	}
 	if (best > 1) {
 		if (b.aircraft && w.troops.bulletHit(x0, y0, b.x, b.y, b.damage)) {
@@ -208,7 +217,10 @@ function bulletHitsPlayerSide(w: World, b: Bullet, x0: number, y0: number): bool
 	}
 	const hx = x0 + (b.x - x0) * best,
 		hy = y0 + (b.y - y0) * best;
-	if (ally && !unit && !airHit) {
+	if (droneHit) {
+		droneHit.hit(w, b.damage);
+		w.fx.impact(hx, hy, droneHit.z, 'metal');
+	} else if (ally && !unit && !airHit) {
 		w.allies.hit(ally.unit, b.damage, b.pierce, true);
 		w.fx.impact(hx, hy, ally.unit.z, ally.unit.def.category === 'infantry' ? 'soft' : 'metal');
 	} else if (unit) {
@@ -265,7 +277,7 @@ function updateBullets(w: World, dt: number): void {
 				}
 				for (const wing of jets) {
 					if (dead || !wing.active) continue;
-					if (segmentVsCircle(x0, y0, b.x, b.y, wing.x, wing.y, WING_RADIUS) < 0) continue;
+					if (segmentVsCircle(x0, y0, b.x, b.y, wing.x, wing.y, wing.radius) < 0) continue;
 					wing.hit(w, b.damage);
 					w.fx.impact(wing.x, wing.y, 0, 'metal');
 					dead = true;
@@ -324,7 +336,7 @@ function updateShells(w: World, dt: number): void {
 		}
 		let detonate = false;
 		let air = false;
-		let wingHit: Wingman | null = null;
+		let wingHit: AirAlly | null = null;
 		if (s.kind === 'flak' && s.age >= s.fuse) {
 			detonate = true;
 			air = true;
@@ -344,7 +356,7 @@ function updateShells(w: World, dt: number): void {
 		if (!detonate && s.owner === 'enemy' && s.kind !== 'artillery') {
 			for (const wing of jets) {
 				if (!wing.active) continue;
-				if (segmentVsCircle(x0, y0, s.x, s.y, wing.x, wing.y, WING_RADIUS) < 0) continue;
+				if (segmentVsCircle(x0, y0, s.x, s.y, wing.x, wing.y, wing.radius) < 0) continue;
 				detonate = true;
 				air = true;
 				wingHit = wing;
@@ -561,9 +573,10 @@ function detonateMissile(w: World, m: Missile, t: Trackable): void {
 	if (p) {
 		p.hit(m.damage, w, m.x, m.y, false, `missile:${m.kind}`);
 	} else if (w.jets().some((j) => j === t)) {
-		(t as Wingman).hit(w, m.damage);
+		(t as AirAlly).hit(w, m.damage);
 	} else {
 		for (const a of w.air) if (a === t) a.damage(w, m.damage * 3, m.owner);
+		for (const d of w.drones) if (d === t) d.hit(w, m.damage * 3);
 	}
 }
 

@@ -24,7 +24,8 @@ import { Terrain } from './terrain';
 import { War } from './war';
 import type { AirUnit } from './enemy-air';
 import type { Player } from './player';
-import type { Wingman } from './wingman';
+import type { AirAlly, Wingman } from './wingman';
+import type { Drone } from './drones';
 import type { Bomb } from './weapons';
 import type { Bullet, Flare, Missile, Shell } from './projectiles';
 import type { Owner, Unit, UnitKind } from './types';
@@ -152,6 +153,8 @@ export class World {
 	wingman: Wingman | null = null;
 	/** Air units the commander has launched (command mode): AI jets with no leader. */
 	readonly escorts: Wingman[] = [];
+	/** Kamikaze drones the commander has sent toward the front. */
+	readonly drones: Drone[] = [];
 	/** Second aircraft in local co-op, flown from a gamepad. */
 	player2: Player | null = null;
 	base!: AirBase;
@@ -260,11 +263,12 @@ export class World {
 		return this.nextId++;
 	}
 
-	/** Every friendly AI jet: the wingman and the commander's air units. */
-	jets(): Wingman[] {
-		const out: Wingman[] = [];
+	/** Everything on our side in the air bar the pilots: the wingman, the commander's aircraft and drones. */
+	jets(): AirAlly[] {
+		const out: AirAlly[] = [];
 		if (this.wingman) out.push(this.wingman);
 		for (const e of this.escorts) out.push(e);
+		for (const d of this.drones) if (d.side === 'player') out.push(d);
 		return out;
 	}
 
@@ -317,6 +321,7 @@ export class World {
 		this.player = null;
 		this.wingman = null;
 		this.escorts.length = 0;
+		this.drones.length = 0;
 		this.player2 = null;
 		this.designator = null;
 		this.time = 0;

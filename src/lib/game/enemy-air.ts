@@ -2,11 +2,12 @@ import { angleDiff, clamp, damp, moveToward, wrapAngle } from '../engine/math';
 import { fx as rnd } from '../engine/rng';
 import { explode } from './combat';
 import { WORLD } from './constants';
+import { AIRCRAFT } from './defs-aircraft';
 import type { BlastSpec } from './defs-bombs';
 import { launchMissile, spawnBullet } from './projectiles';
 import type { Player } from './player';
-import type { Owner, Trackable, Unit, UnitKind } from './types';
-import { nearestFriendly, type Wingman } from './wingman';
+import type { AircraftId, Owner, Trackable, Unit, UnitKind } from './types';
+import { nearestFriendly, type AirAlly } from './wingman';
 import type { World } from './world';
 
 export type AirKind = 'fighter' | 'heli' | 'striker';
@@ -83,14 +84,29 @@ export class AirUnit implements Trackable {
 	private trail = 0;
 	private spinRate = 0;
 	private rocketCd = 3;
+	/** Fly-speed factor for the airframe against the stock one for its kind. */
+	private readonly pace: number;
 
-	constructor(id: number, kind: AirKind, x: number, y: number) {
+	constructor(
+		id: number,
+		kind: AirKind,
+		x: number,
+		y: number,
+		/** The enemy commander's pick of airframe (drawn and named as it); null for the stock one. */
+		readonly airframe: AircraftId | null = null
+	) {
 		this.id = id;
 		this.kind = kind;
 		this.x = x;
 		this.y = y;
 		this.angle = Math.PI;
-		this.hp = this.maxHp = kind === 'fighter' ? 70 : kind === 'striker' ? 110 : 95;
+		// A sturdier or faster airframe than the stock one for its kind keeps the difference.
+		const stock = AIRCRAFT[STOCK[kind]];
+		const own = airframe ? AIRCRAFT[airframe] : stock;
+		const toughness = clamp(own.hp / stock.hp, 0.6, 2.6);
+		this.pace = clamp(own.cruise / stock.cruise, 0.75, 1.15);
+		const base = kind === 'fighter' ? 70 : kind === 'striker' ? 110 : 95;
+		this.hp = this.maxHp = Math.round(base * toughness);
 		this.radius = kind === 'heli' ? 5.5 : 6;
 		this.score = kind === 'fighter' ? 300 : kind === 'striker' ? 280 : 220;
 		this.missileCd = rnd.range(8, 14);
@@ -108,7 +124,8 @@ export class AirUnit implements Trackable {
 		this.spinRate = rnd.sign() * rnd.range(2, 4);
 		w.fx.explosion(this.x, this.y, this.z, 0.6, false);
 		w.sound.boom(0.75, this.x, this.y, true);
-		w.events.kill(AIR_NAME[this.kind], this.score, this.x, this.y + 6, by);
+		const name = this.airframe ? AIRCRAFT[this.airframe].name : AIR_NAME[this.kind];
+		w.events.kill(name, this.score, this.x, this.y + 6, by);
 	}
 
 	update(w: World, dt: number): void {
@@ -142,7 +159,7 @@ export class AirUnit implements Trackable {
 		if (this.x < WORLD.arenaMinX + 80) target = 0.3;
 		if (this.x > WORLD.arenaMaxX + 80) target = Math.PI - 0.3;
 		this.angle = wrapAngle(this.angle + clamp(angleDiff(this.angle, target), -1.7 * dt, 1.7 * dt));
-		const speed = this.kind === 'striker' ? 80 : 88;
+		const speed = (this.kind === 'striker' ? 80 : 88) * this.pace;
 		this.vx = Math.cos(this.angle) * speed;
 		this.vy = Math.sin(this.angle) * speed;
 		this.x += this.vx * dt;
@@ -167,7 +184,7 @@ export class AirUnit implements Trackable {
 	}
 
 	/** Heading to fight one of our aircraft: guns close in, a heat seeker from further out. */
-	private dogfight(w: World, p: Player | Wingman): number {
+	private dogfight(w: World, p: Player | AirAlly): number {
 		const dx = p.x - this.x,
 			dy = p.y - this.y;
 		const dist = Math.hypot(dx, dy);
@@ -405,6 +422,9 @@ export class AirUnit implements Trackable {
 		w.fires.add(this.x, g, 0, 1.6, 16, { radius: 2.5 });
 	}
 }
+
+/** The airframe each kind stands for when the commander doesn't pick one. */
+const STOCK: Record<AirKind, AircraftId> = { fighter: 'f16', heli: 'apache', striker: 'su25' };
 
 const AIR_NAME: Record<AirKind, string> = {
 	fighter: 'Interceptor',
