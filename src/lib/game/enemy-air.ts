@@ -4,7 +4,7 @@ import { explode } from './combat';
 import { WORLD } from './constants';
 import { AIRCRAFT } from './defs-aircraft';
 import type { BlastSpec } from './defs-bombs';
-import { launchMissile, spawnBullet } from './projectiles';
+import { FlareDrill, launchMissile, spawnBullet } from './projectiles';
 import type { Player } from './player';
 import type { AircraftId, Owner, Trackable, Unit, UnitKind } from './types';
 import { nearestFriendly, type AirAlly } from './wingman';
@@ -84,6 +84,8 @@ export class AirUnit implements Trackable {
 	private trail = 0;
 	private spinRate = 0;
 	private rocketCd = 3;
+	/** Pops flares at our missiles chasing it, when it sees them in time. */
+	private readonly drill = new FlareDrill();
 	/** Fly-speed factor for the airframe against the stock one for its kind. */
 	private readonly pace: number;
 
@@ -134,6 +136,7 @@ export class AirUnit implements Trackable {
 		if (this.dying) return this.fall(w, dt);
 		if (this.kind === 'heli') this.hover(w, dt);
 		else this.fly(w, dt);
+		this.drill.update(w, dt, this, 'player');
 	}
 
 	private fly(w: World, dt: number): void {

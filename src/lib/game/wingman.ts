@@ -5,7 +5,7 @@ import { WORLD } from './constants';
 import { BOMBS, ROCKET_SPEED, ROCKETS_PER_POD, type BlastSpec } from './defs-bombs';
 import type { AirUnit } from './enemy-air';
 import type { Player } from './player';
-import { launchMissile, spawnBullet, type Flare } from './projectiles';
+import { FlareDrill, launchMissile, spawnBullet } from './projectiles';
 import { trackUnit } from './targeting';
 import type { AircraftId, BombId, Trackable, Unit, UnitKind } from './types';
 import { dropBomb, predictImpact } from './weapons';
@@ -197,7 +197,8 @@ export class Wingman implements AirAlly {
 	private burst = 0;
 	private missileCd = 2;
 	private reload = 0;
-	private flareCd = 0;
+	/** Pops flares at missiles chasing it, when it sees them in time. */
+	private readonly drill = new FlareDrill();
 	private bombCd = 0;
 	private rocketCd = 0;
 	private rocketQueue = 0;
@@ -381,7 +382,6 @@ export class Wingman implements AirAlly {
 		if (this.dying) return this.fall(w, dt);
 		this.gunCd -= dt;
 		this.missileCd -= dt;
-		this.flareCd -= dt;
 		this.bombCd -= dt;
 		this.rocketCd -= dt;
 		this.heavyCd -= dt;
@@ -407,7 +407,7 @@ export class Wingman implements AirAlly {
 			const desired = this.steer(w, dt);
 			this.fly(w, dt, desired);
 		}
-		this.countermeasures(w);
+		this.drill.update(w, dt, this, 'enemy');
 	}
 
 	/**
@@ -991,36 +991,6 @@ export class Wingman implements AirAlly {
 			seeker: kind === 'air' ? 'heat' : 'radar',
 			blast: kind === 'agm' ? AGM_BLAST : undefined
 		});
-	}
-
-	/** Pops flares when an enemy missile chasing it gets close. */
-	private countermeasures(w: World): void {
-		if (this.flareCd > 0) return;
-		const close = w.missiles.some(
-			(m) =>
-				m.owner === 'enemy' && m.target === this && Math.hypot(m.x - this.x, m.y - this.y) < 380
-		);
-		if (!close) return;
-		this.flareCd = rnd.range(1.6, 2.4);
-		const ca = Math.cos(this.angle),
-			sa = Math.sin(this.angle);
-		for (let i = 0; i < 4; i++) {
-			const side = i % 2 === 0 ? 1 : -1;
-			const f: Flare = {
-				x: this.x - ca * 2.5,
-				y: this.y - sa * 2.5 - 0.8,
-				z: 0,
-				vx: this.vx * 0.8 - ca * 6,
-				vy: this.vy * 0.8 - sa * 6 - 8 - i * 2,
-				vz: side * (5 + i * 1.4),
-				alive: true,
-				heat: 4,
-				age: 0,
-				life: rnd.range(2.8, 3.6)
-			};
-			w.flares.push(f);
-		}
-		w.sound.play('flare', this.x, this.y, 0.5);
 	}
 
 	private fall(w: World, dt: number): void {
