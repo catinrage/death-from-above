@@ -12,6 +12,7 @@ import {
 	CAPTURE_RADIUS,
 	CAPTURE_RATE,
 	checkpointLayout,
+	DIG_CLEAR,
 	GROUP_INTERVAL,
 	HQ_HP,
 	planGroup
@@ -109,6 +110,43 @@ describe('checkpoints', () => {
 		expect(w.war.enemyBudgetScale()).toBeGreaterThan(before);
 		expect(w.war.enemyStaging()).toBeLessThan(w.war.checkpoints[2].x + 100);
 		expect(w.war.enemyStaging()).toBeGreaterThan(w.war.checkpoints[2].x);
+	});
+});
+
+describe('enemy emplacements', () => {
+	/** Launches wave 8 of a seed and returns the emplacements it dug in. */
+	function dig(w: World, seed: number): number[] {
+		const waves = new WaveDirector(seed);
+		waves.begin(w, 8);
+		for (let t = 0; t < 4; t += DT) waves.update(w, DT);
+		return w.units.filter((u) => u.alive && u.def.isStatic).map((u) => u.x);
+	}
+
+	it('only dig in ahead of our foremost troops and checkpoints', () => {
+		for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+			const w = war();
+			w.war.checkpoints[1].owner = 'player';
+			w.allies.deploy(w, ['tank'], 2300);
+			const front = Math.max(2300, w.war.checkpoints[1].x);
+			const xs = dig(w, seed);
+			expect(xs.length).toBeGreaterThan(0);
+			// A searchlight may stand a few paces to the side of its flak gun.
+			for (const x of xs) expect(x).toBeGreaterThan(front + DIG_CLEAR - 20);
+		}
+	});
+
+	it('stay off our own starting checkpoint', () => {
+		for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+			const w = war();
+			for (const x of dig(w, seed))
+				expect(x).toBeGreaterThan(w.war.checkpoints[0].x + DIG_CLEAR - 20);
+		}
+	});
+
+	it('dig in nowhere once our troops are up against the HQ guns', () => {
+		const w = war();
+		w.allies.deploy(w, ['tank'], WORLD.hqMinX - 300);
+		expect(dig(w, 3)).toEqual([]);
 	});
 });
 
