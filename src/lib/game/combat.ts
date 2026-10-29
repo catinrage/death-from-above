@@ -177,6 +177,13 @@ export function explode(
 		const d = Math.hypot(a.x - x, a.y - y) - a.radius;
 		if (d < r) a.damage(w, b.damage * (1 - Math.max(d, 0) / r) * 0.8, by);
 	}
+	// Their kamikaze drones are flimsy: any of our blasts near one brings it down.
+	if (by === 'player')
+		for (const dr of w.drones) {
+			if (!dr.alive || dr.side !== 'enemy') continue;
+			const d = Math.hypot(dr.x - x, dr.y - y) - dr.radius;
+			if (d < r) dr.hit(w, b.damage * (1 - Math.max(d, 0) / r));
+		}
 	for (const p of w.pilots()) {
 		if (!p.alive) continue;
 		const d = Math.max(0, Math.hypot(p.x - x, p.y - y) - p.def.radius * 0.5);

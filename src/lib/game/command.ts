@@ -3,14 +3,17 @@ import { fx as rnd } from '../engine/rng';
 import type { AllyKind } from './allies';
 import { explode } from './combat';
 import { WORLD } from './constants';
+import { AIRCRAFT } from './defs-aircraft';
 import { BOMBS, type BlastSpec } from './defs-bombs';
 import { BATTERY_PITCH, BATTERY_REACH, OUR_SITES, RACK_PITCH, THEIR_SITES } from './base';
 import { UNITS } from './defs-units';
 import { AirUnit } from './enemy-air';
-import { groundPoint, seek, seekAlly } from './specials';
+import { Drone, type DroneKind } from './drones';
+import { BALLISTIC_SPEED, CRUISE_SPEED, groundPoint, seek, seekAlly } from './specials';
 import type { AircraftId } from './types';
 import type { Side } from './war';
 import { dropBomb, predictImpact } from './weapons';
+import { TACTICS, wingProfile, type WingTactic } from './wing-profile';
 import { Wingman, type WingOrder } from './wingman';
 import type { World } from './world';
 
@@ -23,24 +26,59 @@ import type { World } from './world';
  * airfield at the far end.
  */
 
-export type CommandId =
+/** Orders that send troops or vehicles up the road. */
+export type GroundOrder =
 	| 'rifles'
+	| 'assault'
+	| 'platoon'
 	| 'antiTank'
+	| 'aaTeam'
+	| 'snipers'
+	| 'medics'
 	| 'mortars'
 	| 'jeep'
+	| 'apc'
 	| 'lightTank'
 	| 'tank'
+	| 'column'
+	| 'behemoth'
 	| 'aa'
+	| 'sam'
 	| 'rockets'
-	| 'fighter'
-	| 'striker'
-	| 'barrage'
-	| 'cruise'
-	| 'carpet'
-	| 'ballistic'
-	| 'nuke';
+	| 'howitzer';
+export type DroneOrder = 'fpv' | 'delta';
+export type StrikeOrder = 'barrage' | 'cruise' | 'carpet' | 'ballistic' | 'nuke';
+/** Every order: troops, drones, strikes, and one air order per airframe. */
+export type CommandId = GroundOrder | DroneOrder | StrikeOrder | AircraftId;
 
-export type CommandGroup = 'ground' | 'air' | 'strike';
+export type CommandGroup = 'ground' | 'air' | 'drone' | 'strike';
+
+/** The order bar's pages. Strikes sit beside them on fixed keys. */
+export type CommandTab = 'infantry' | 'vehicles' | 'support' | 'air' | 'heavy';
+
+export const COMMAND_TABS: readonly { id: CommandTab; label: string }[] = [
+	{ id: 'infantry', label: 'Infantry' },
+	{ id: 'vehicles', label: 'Vehicles' },
+	{ id: 'support', label: 'Support' },
+	{ id: 'air', label: 'Air' },
+	{ id: 'heavy', label: 'Heavy air' }
+];
+
+/** Keys for the orders on the open tab, in order, and the labels printed on the buttons. */
+export const TAB_KEYS: readonly (readonly [code: string, key: string])[] = [
+	['Digit1', '1'],
+	['Digit2', '2'],
+	['Digit3', '3'],
+	['Digit4', '4'],
+	['Digit5', '5'],
+	['Digit6', '6'],
+	['Digit7', '7'],
+	['Digit8', '8'],
+	['Digit9', '9'],
+	['Digit0', '0'],
+	['Minus', '-'],
+	['Equal', '=']
+];
 
 export interface CommandDef {
 	id: CommandId;
@@ -50,6 +88,8 @@ export interface CommandDef {
 	/** One plain line on what it is for. */
 	tip: string;
 	group: CommandGroup;
+	/** The order bar page it sits on; strikes sit on none (always shown). */
+	tab: CommandTab | null;
 	cost: number;
 	/** Seconds before it can be ordered again. */
 	cooldown: number;
@@ -61,139 +101,243 @@ export interface CommandDef {
 	/** Air orders: the airframe and its standing order. */
 	aircraft?: AircraftId;
 	order?: WingOrder;
+	/** Drone orders: what is launched, and how many. */
+	drone?: DroneKind;
+	count?: number;
 	/** Strikes: how far around the aim point it hurts (for the aiming ring). */
 	radius?: number;
 }
 
-export const COMMANDS: Record<CommandId, CommandDef> = {
+type Spec = Omit<CommandDef, 'id' | 'code' | 'key' | 'group' | 'tab'>;
+
+const r = (n: number): AllyKind[] => Array<AllyKind>(n).fill('rifleman');
+
+const INFANTRY: Partial<Record<GroundOrder, Spec>> = {
 	rifles: {
-		id: 'rifles',
 		name: 'Rifle squad',
 		short: 'Rifles',
 		tip: 'Four riflemen. Cheap, and they take checkpoints.',
-		group: 'ground',
 		cost: 100,
 		cooldown: 0,
-		code: 'Digit1',
-		key: '1',
-		units: ['rifleman', 'rifleman', 'rifleman', 'rifleman']
+		units: r(4)
+	},
+	assault: {
+		name: 'Assault squad',
+		short: 'Assault',
+		tip: 'Five riflemen, a rocket trooper and a medic: a squad that can hold.',
+		cost: 240,
+		cooldown: 0,
+		units: [...r(3), 'atTrooper', 'medic', ...r(2)]
+	},
+	platoon: {
+		name: 'Rifle platoon',
+		short: 'Platoon',
+		tip: 'Twelve men: riflemen with rockets, a missile man and a medic.',
+		cost: 470,
+		cooldown: 0,
+		units: [...r(4), 'atTrooper', 'medic', ...r(3), 'atTrooper', 'manpads', 'rifleman']
 	},
 	antiTank: {
-		id: 'antiTank',
 		name: 'Anti-tank team',
 		short: 'AT team',
 		tip: 'Two rocket troopers and a medic. They go for armour first.',
-		group: 'ground',
 		cost: 170,
 		cooldown: 0,
-		code: 'Digit2',
-		key: '2',
 		units: ['atTrooper', 'atTrooper', 'medic']
 	},
+	aaTeam: {
+		name: 'AA missile team',
+		short: 'AA team',
+		tip: 'Two shoulder-launched missiles and a rifleman to keep gunships off.',
+		cost: 190,
+		cooldown: 0,
+		units: ['rifleman', 'manpads', 'manpads']
+	},
+	snipers: {
+		name: 'Sniper pair',
+		short: 'Snipers',
+		tip: 'Pick off enemy troops from well beyond rifle range.',
+		cost: 150,
+		cooldown: 0,
+		units: ['sniper', 'sniper']
+	},
+	medics: {
+		name: 'Medic team',
+		short: 'Medics',
+		tip: 'Two medics who patch up our hurt soldiers at the front.',
+		cost: 90,
+		cooldown: 0,
+		units: ['medic', 'medic']
+	},
 	mortars: {
-		id: 'mortars',
 		name: 'Mortar team',
 		short: 'Mortars',
 		tip: 'Two mortars that shell the enemy from behind our line.',
-		group: 'ground',
 		cost: 180,
 		cooldown: 0,
-		code: 'Digit3',
-		key: '3',
 		units: ['mortar', 'mortar']
-	},
+	}
+};
+
+const VEHICLES: Partial<Record<GroundOrder, Spec>> = {
 	jeep: {
-		id: 'jeep',
 		name: 'Gun jeep',
 		short: 'Jeep',
 		tip: 'Fast and lightly armed. Good for a quick grab at a flag.',
-		group: 'ground',
 		cost: 90,
 		cooldown: 0,
-		code: 'Digit4',
-		key: '4',
 		units: ['jeep']
 	},
+	apc: {
+		name: 'APC with riflemen',
+		short: 'APC',
+		tip: 'An armoured carrier with a cannon, and four riflemen behind it.',
+		cost: 260,
+		cooldown: 0,
+		units: ['apc', ...r(4)]
+	},
 	lightTank: {
-		id: 'lightTank',
 		name: 'Light tank',
 		short: 'Lt tank',
 		tip: 'Quick, thin-skinned tank with a light gun.',
-		group: 'ground',
 		cost: 170,
 		cooldown: 0,
-		code: 'Digit5',
-		key: '5',
 		units: ['lightTank']
 	},
 	tank: {
-		id: 'tank',
 		name: 'Battle tank',
 		short: 'Tank',
 		tip: 'Heavy armour and a big gun. The backbone of a push.',
-		group: 'ground',
 		cost: 300,
 		cooldown: 0,
-		code: 'Digit6',
-		key: '6',
 		units: ['tank']
 	},
+	column: {
+		name: 'Armoured column',
+		short: 'Column',
+		tip: 'Two battle tanks, a light tank and an APC rolling together.',
+		cost: 820,
+		cooldown: 20,
+		units: ['tank', 'lightTank', 'tank', 'apc']
+	},
+	behemoth: {
+		name: 'Behemoth',
+		short: 'Behemoth',
+		tip: 'Our own super-heavy tank: twin 130 mm guns, armour like a bunker.',
+		cost: 1500,
+		cooldown: 90,
+		units: ['superTank']
+	}
+};
+
+const SUPPORT: Partial<Record<GroundOrder | DroneOrder, Spec>> = {
 	aa: {
-		id: 'aa',
 		name: 'AA carrier',
 		short: 'AA gun',
 		tip: 'Mobile flak that keeps gunships and jets off the column.',
-		group: 'ground',
 		cost: 260,
 		cooldown: 0,
-		code: 'Digit7',
-		key: '7',
 		units: ['spaag']
 	},
+	sam: {
+		name: 'SAM launcher',
+		short: 'SAM',
+		tip: 'Radar missiles that reach enemy aircraft over a kilometre out.',
+		cost: 420,
+		cooldown: 10,
+		units: ['sam']
+	},
 	rockets: {
-		id: 'rockets',
 		name: 'Rocket artillery',
 		short: 'Rockets',
 		tip: 'Long-range rocket salvos from well behind the front.',
-		group: 'ground',
 		cost: 320,
 		cooldown: 0,
-		code: 'Digit8',
-		key: '8',
 		units: ['rocketTruck']
 	},
-	fighter: {
-		id: 'fighter',
-		name: 'Fighter',
-		short: 'Fighter',
-		tip: 'An F-16 that hunts enemy aircraft, then whatever is near the front.',
-		group: 'air',
-		cost: 420,
-		cooldown: 8,
-		code: 'KeyQ',
-		key: 'Q',
-		aircraft: 'f16',
-		order: 'attack'
+	howitzer: {
+		name: 'Howitzer battery',
+		short: 'Howitzers',
+		tip: 'Two big guns that shell anything within a kilometre of them.',
+		cost: 380,
+		cooldown: 0,
+		units: ['artillery', 'artillery']
 	},
-	striker: {
-		id: 'striker',
-		name: 'Strike jet',
-		short: 'Strike jet',
-		tip: 'An A-10 that goes after SAMs, flak and radars first.',
-		group: 'air',
+	fpv: {
+		name: 'FPV drone swarm',
+		short: 'FPV swarm',
+		tip: 'Six small kamikaze drones that each fly into a vehicle near the front.',
+		cost: 220,
+		cooldown: 6,
+		drone: 'fpv',
+		count: 6
+	},
+	delta: {
+		name: 'Delta attack drones',
+		short: 'Delta drones',
+		tip: 'Three one-way drones that cruise high, then dive on the best target.',
+		cost: 360,
+		cooldown: 10,
+		drone: 'delta',
+		count: 3
+	}
+};
+
+/** Air orders: one per airframe, flown by an AI pilot with its tactic. */
+const AIR: Partial<Record<AircraftId, Pick<Spec, 'tip' | 'cost' | 'cooldown' | 'order'>>> = {
+	f16: {
+		tip: 'Fighter: clears enemy aircraft, then strafes near the front.',
+		cost: 420,
+		cooldown: 8
+	},
+	wraith: { tip: 'Stealth fighter: fast, hard to lock, guided bombs.', cost: 520, cooldown: 8 },
+	f4: {
+		tip: 'Heavy fighter-bomber: dogfights and drops bombs on the way.',
+		cost: 440,
+		cooldown: 8
+	},
+	kestrel: { tip: 'Fighter-bomber that goes for the ground first.', cost: 400, cooldown: 8 },
+	a10: {
+		tip: 'Goes after SAMs, flak and radars first, then armour.',
 		cost: 480,
 		cooldown: 8,
-		code: 'KeyE',
-		key: 'E',
-		aircraft: 'a10',
 		order: 'sams'
 	},
+	su25: { tip: 'Armoured attack jet with bombs and rocket pods.', cost: 430, cooldown: 8 },
+	grizzly: { tip: 'Tough ground-attack jet with a heavy cannon.', cost: 450, cooldown: 8 },
+	stuka: { tip: 'Dive bomber: cheap, slow and deadly on a column.', cost: 300, cooldown: 8 },
+	a1: { tip: 'Propeller attack plane with rockets and napalm.', cost: 320, cooldown: 8 }
+};
+const HEAVY: Partial<Record<AircraftId, Pick<Spec, 'tip' | 'cost' | 'cooldown'>>> = {
+	apache: {
+		tip: 'Attack helicopter that hovers off the front with Hellfires.',
+		cost: 380,
+		cooldown: 10
+	},
+	mq9: {
+		tip: 'Drone that circles high and fires missiles, then goes home for more.',
+		cost: 340,
+		cooldown: 10
+	},
+	ac130: {
+		tip: 'Gunship that circles the front pouring aimed fire down.',
+		cost: 680,
+		cooldown: 20
+	},
+	albatross: {
+		tip: 'Heavy bomber: level runs over the enemy, home to rearm.',
+		cost: 600,
+		cooldown: 16
+	},
+	b1: { tip: 'Strategic bomber with the longest bomb load of all.', cost: 720, cooldown: 20 },
+	tu95: { tip: 'Big turboprop bomber: slow, tough, carpets a wide strip.', cost: 640, cooldown: 20 }
+};
+
+const STRIKES: Record<StrikeOrder, Spec & { code: string; key: string }> = {
 	barrage: {
-		id: 'barrage',
 		name: 'Artillery barrage',
 		short: 'Barrage',
 		tip: 'Ten heavy shells scattered around the spot you click.',
-		group: 'strike',
 		cost: 150,
 		cooldown: 10,
 		code: 'KeyZ',
@@ -201,11 +345,9 @@ export const COMMANDS: Record<CommandId, CommandDef> = {
 		radius: 30
 	},
 	cruise: {
-		id: 'cruise',
 		name: 'Cruise missile',
 		short: 'Cruise',
 		tip: 'Skims the ground from the base and picks the best target near the spot.',
-		group: 'strike',
 		cost: 240,
 		cooldown: 12,
 		code: 'KeyX',
@@ -213,11 +355,9 @@ export const COMMANDS: Record<CommandId, CommandDef> = {
 		radius: 24
 	},
 	carpet: {
-		id: 'carpet',
 		name: 'Carpet bombing',
 		short: 'Carpet',
 		tip: 'A B-1 lays a line of bombs across the spot.',
-		group: 'strike',
 		cost: 450,
 		cooldown: 40,
 		code: 'KeyC',
@@ -225,11 +365,9 @@ export const COMMANDS: Record<CommandId, CommandDef> = {
 		radius: 80
 	},
 	ballistic: {
-		id: 'ballistic',
 		name: 'Ballistic missile',
 		short: 'Ballistic',
 		tip: 'Climbs out of sight and comes down at Mach 6. A few seconds’ warning.',
-		group: 'strike',
 		cost: 520,
 		cooldown: 35,
 		code: 'KeyV',
@@ -237,11 +375,9 @@ export const COMMANDS: Record<CommandId, CommandDef> = {
 		radius: BOMBS.ballistic.blast.radius
 	},
 	nuke: {
-		id: 'nuke',
 		name: 'Tactical nuke',
 		short: 'Nuke',
 		tip: 'Flattens everything for 150 m, our own troops included.',
-		group: 'strike',
 		cost: 1600,
 		cooldown: 150,
 		code: 'KeyN',
@@ -250,23 +386,52 @@ export const COMMANDS: Record<CommandId, CommandDef> = {
 	}
 };
 
-export const COMMAND_ORDER: readonly CommandId[] = [
-	'rifles',
-	'antiTank',
-	'mortars',
-	'jeep',
-	'lightTank',
-	'tank',
-	'aa',
-	'rockets',
-	'fighter',
-	'striker',
-	'barrage',
-	'cruise',
-	'carpet',
-	'ballistic',
-	'nuke'
-];
+const title = (s: string): string => s.charAt(0) + s.slice(1).toLowerCase();
+
+function buildCommands(): Record<CommandId, CommandDef> {
+	const out = {} as Record<CommandId, CommandDef>;
+	const page = (tab: CommandTab, specs: Partial<Record<CommandId, Spec>>): void => {
+		(Object.entries(specs) as [CommandId, Spec][]).forEach(([id, spec], i) => {
+			const [code, key] = TAB_KEYS[i];
+			const group: CommandGroup = spec.drone ? 'drone' : spec.aircraft ? 'air' : 'ground';
+			out[id] = { ...spec, id, group, tab, code, key };
+		});
+	};
+	const air = (specs: typeof AIR): Partial<Record<CommandId, Spec>> => {
+		const o: Partial<Record<CommandId, Spec>> = {};
+		for (const [id, a] of Object.entries(specs) as [AircraftId, (typeof AIR)[AircraftId]][]) {
+			const def = AIRCRAFT[id];
+			o[id] = {
+				...a!,
+				name: `${title(def.name)} (${def.real ?? def.role})`,
+				short: title(def.name),
+				aircraft: id
+			};
+		}
+		return o;
+	};
+	page('infantry', INFANTRY);
+	page('vehicles', VEHICLES);
+	page('support', SUPPORT);
+	page('air', air(AIR));
+	page('heavy', air(HEAVY));
+	for (const [id, spec] of Object.entries(STRIKES) as [
+		StrikeOrder,
+		(typeof STRIKES)[StrikeOrder]
+	][])
+		out[id] = { ...spec, id, group: 'strike', tab: null };
+	return out;
+}
+
+export const COMMANDS: Record<CommandId, CommandDef> = buildCommands();
+
+/** Every order, tab by tab and then the strikes. */
+export const COMMAND_ORDER: readonly CommandId[] = Object.keys(COMMANDS) as CommandId[];
+
+/** The orders on one page of the bar. */
+export function tabOrders(tab: CommandTab): CommandId[] {
+	return COMMAND_ORDER.filter((id) => COMMANDS[id].tab === tab);
+}
 
 /** Funds the war chest opens with. */
 export const START_FUNDS = 600;
@@ -283,8 +448,10 @@ export const ENEMY_INCOME = 1.6;
 export const BOUNTY = 0.35;
 /** Most of our units on the road at once (queued ones count). */
 export const ARMY_LIMIT = 40;
-/** Most of our jets in the air at once. */
-export const AIR_LIMIT = 4;
+/** Most of our aircraft in the air at once. */
+export const AIR_LIMIT = 6;
+/** Most kamikaze drones in the air at once. */
+export const DRONE_LIMIT = 24;
 /** Seconds between groups leaving the rally point, so they don't pile up. */
 const DEPLOY_GAP = 1.4;
 /** What one of our jets shot down pays into the enemy's war chest (as their interceptor does ours). */
@@ -297,7 +464,7 @@ const ENEMY_INTEL: Partial<Record<CommandId, string>> = {
 };
 
 /** Why an order can't be given right now. */
-export type Refusal = 'funds' | 'cooldown' | 'army' | 'air' | 'target' | 'inactive';
+export type Refusal = 'funds' | 'cooldown' | 'army' | 'air' | 'drones' | 'target' | 'inactive';
 
 const BARRAGE_ROUNDS = 10;
 const BARRAGE_SCATTER = 14;
@@ -313,6 +480,11 @@ const BARRAGE_BLAST: BlastSpec = {
 const CRUISE_BLAST: BlastSpec = { ...BOMBS.cruise.blast, radius: 20, damage: 380 };
 /** Seconds of flight a base-launched cruise missile is allowed (the road is long). */
 const CRUISE_LIFE = 45;
+/** The ballistic missile's boost before it turns over, and the nuke's (a heavier rocket). */
+/** Seconds a cruise missile takes to clear the rack and reach cruise speed, net. */
+const CRUISE_SPOOL = 0.3;
+const BALLISTIC_BOOST = 3;
+const NUKE_BOOST = 4;
 /** Height and speed of the carpet bomber's run, how fast it climbs, and how much of the road its stick covers. */
 const BOMBER_ALT = 165;
 const BOMBER_SPEED = 150;
@@ -347,6 +519,33 @@ export interface Flyby {
 	nextDrop: number;
 }
 
+/** A strike on its way: where it lands and how long until it does (for the countdown marker). */
+export interface PendingStrike {
+	id: StrikeOrder;
+	x: number;
+	t: number;
+}
+
+/** What each of our aircraft is up to, for the radio call as it climbs out. */
+const TASKING: Record<WingTactic, string> = {
+	fighter: 'Hunting near the front',
+	attack: 'Going after ground targets at the front',
+	bomber: 'Bombing runs over the enemy, home to rearm when empty',
+	gunship: 'Circling the front with its guns',
+	helo: 'Hovering off the front line',
+	drone: 'Circling high over the front with missiles'
+};
+
+/** The radio call when one of theirs takes off. */
+const ENEMY_TASKING: Record<WingTactic, string> = {
+	fighter: 'Scrambled from their airfield',
+	attack: 'Inbound on our troops',
+	bomber: 'A bomber is heading for our lines',
+	gunship: 'A gunship is heading for our lines',
+	helo: 'An attack helicopter is coming for our spearhead',
+	drone: 'An armed drone is heading for our lines'
+};
+
 /** A barrage shell: waiting for its gun to fire (`delay`), then flying its arc to `tx`. */
 interface Round {
 	/** The gun it is fired from, and where it is in flight. */
@@ -379,12 +578,16 @@ export class Command {
 	/** Groups paid for and waiting to set off. */
 	readonly queue: { id: CommandId; units: readonly AllyKind[] }[] = [];
 	readonly flybys: Flyby[] = [];
+	/** Strikes launched and not yet landed, with a countdown each. */
+	readonly pending: PendingStrike[] = [];
 	private readonly rounds: Round[] = [];
 	private nextDeploy = 0;
 	/** Our jets and what was ordered for each, so a loss can be reported. */
 	private readonly jets = new Map<Wingman, CommandId>();
 	/** The enemy commander's jets. */
 	private readonly planes = new Set<AirUnit>();
+	/** Those of them on their way home to the airfield. */
+	private readonly homeward = new Set<Wingman>();
 	private patrolClock = 0;
 
 	/** `side`: whose army this commander runs. The enemy's mirrors ours from the far end. */
@@ -406,9 +609,11 @@ export class Command {
 		for (const id of COMMAND_ORDER) delete this.cooldowns[id];
 		this.queue.length = 0;
 		this.flybys.length = 0;
+		this.pending.length = 0;
 		this.rounds.length = 0;
 		this.jets.clear();
 		this.planes.clear();
+		this.homeward.clear();
 		this.nextDeploy = 0;
 		this.patrolClock = 0;
 	}
@@ -417,6 +622,7 @@ export class Command {
 		this.active = false;
 		this.queue.length = 0;
 		this.flybys.length = 0;
+		this.pending.length = 0;
 		this.rounds.length = 0;
 		this.jets.clear();
 		this.planes.clear();
@@ -453,6 +659,13 @@ export class Command {
 		return n;
 	}
 
+	/** This side's kamikaze drones in the air. */
+	drones(w: World): number {
+		let n = 0;
+		for (const d of w.drones) if (d.side === this.side) n++;
+		return n;
+	}
+
 	/** Whether an order can be given now, or why not. */
 	refusal(w: World, id: CommandId): Refusal | null {
 		if (!this.active) return 'inactive';
@@ -461,6 +674,7 @@ export class Command {
 		if (this.funds < def.cost) return 'funds';
 		if (def.units && this.armySize(w) + def.units.length > ARMY_LIMIT) return 'army';
 		if (def.group === 'air' && this.airborne(w) >= AIR_LIMIT) return 'air';
+		if (def.drone && this.drones(w) + (def.count ?? 1) > DRONE_LIMIT) return 'drones';
 		return null;
 	}
 
@@ -474,8 +688,9 @@ export class Command {
 		const def = COMMANDS[id];
 		if (def.group === 'strike') {
 			if (x === undefined || !Number.isFinite(x)) return 'target';
-			this.strike(w, id, clamp(x, WORLD.arenaMinX, WORLD.arenaMaxX));
+			this.strike(w, id as StrikeOrder, clamp(x, WORLD.arenaMinX, WORLD.arenaMaxX));
 		} else if (def.group === 'air') this.launch(w, def);
+		else if (def.drone) this.launchDrones(w, def.drone, def.count ?? 1);
 		else this.queue.push({ id, units: def.units ?? [] });
 		this.funds -= def.cost;
 		this.spent += def.cost;
@@ -506,6 +721,38 @@ export class Command {
 		this.patrol(w, dt);
 		this.updateRounds(w, dt);
 		this.updateFlybys(w, dt);
+		for (let i = this.pending.length - 1; i >= 0; i--) {
+			this.pending[i].t -= dt;
+			if (this.pending[i].t < -0.6) this.pending.splice(i, 1);
+		}
+	}
+
+	/**
+	 * Seconds from giving a strike order on `x` to the first of it landing
+	 * there (the aiming ring and the countdown show it).
+	 */
+	eta(w: World, id: StrikeOrder, x: number): number {
+		const site = this.ours ? OUR_SITES : THEIR_SITES;
+		if (id === 'barrage') {
+			// The first gun fires after a moment; its shell flies for a set time plus a bit per metre.
+			return 0.2 + SHELL_TIME + Math.abs(x - site.battery[0]) * SHELL_PACE;
+		}
+		if (id === 'cruise') {
+			// Off the rack and up to speed, then a straight run down the road and the pop-up.
+			return CRUISE_SPOOL + Math.abs(x - site.launcher) / CRUISE_SPEED;
+		}
+		if (id === 'carpet') {
+			// Takeoff roll and climb at full speed, then the release lead short of the target.
+			const startX = this.ours ? WORLD.runwayMinX + 40 : WORLD.enemyRunwayMaxX - 40;
+			const y = w.ground(x) + BOMBER_ALT;
+			const hit = predictImpact(w, x, y, this.dir * BOMBER_SPEED, 0, BOMBS.gp.drag, null);
+			const lead = Math.abs(hit.x - x);
+			return Math.max(0, Math.abs(x - startX) - CARPET_HALF - lead) / BOMBER_SPEED + hit.t;
+		}
+		// Ballistic: the boost, then straight down from 900 m up and 120 m short.
+		const nuke = id === 'nuke';
+		const drop = Math.hypot(120, 900 - (nuke ? 30 : 0));
+		return (nuke ? NUKE_BOOST : BALLISTIC_BOOST) + drop / BALLISTIC_SPEED;
 	}
 
 	/** Sends the next paid-for group up the road once the last one has cleared the rally point. */
@@ -532,53 +779,120 @@ export class Command {
 		if (intel) w.events.message('', intel, 'warn');
 	}
 
-	/** A jet climbs out from the end of the runway and takes up its standing order. */
+	/** An aircraft climbs out from the end of the runway and takes up its standing order. */
 	private launch(w: World, def: CommandDef): void {
 		if (!this.ours) return this.launchEnemy(w, def);
+		const id = def.aircraft ?? 'f16';
+		const profile = wingProfile(id);
 		const x = WORLD.runwayMaxX;
-		const jet = new Wingman(x, w.ground(x) + 30, { aircraft: def.aircraft, callsign: null });
-		jet.angle = 0.22;
-		jet.vx = Math.cos(jet.angle) * jet.speed;
-		jet.vy = Math.sin(jet.angle) * jet.speed;
+		const helo = profile.tactic === 'helo';
+		const jet = new Wingman(x, w.ground(x) + (helo ? 6 : 30), {
+			aircraft: id,
+			callsign: null,
+			profile,
+			autoRearm: true
+		});
+		jet.angle = helo ? 0 : 0.22;
+		jet.vx = helo ? 0 : Math.cos(jet.angle) * jet.speed;
+		jet.vy = helo ? 0 : Math.sin(jet.angle) * jet.speed;
 		jet.patrol = this.front(w);
 		if (def.order && def.order !== 'attack') jet.command(w, def.order);
 		w.escorts.push(jet);
 		this.jets.set(jet, def.id);
 		w.sound.play('missileLaunch', x, jet.y, 0.4, 0.5);
 		w.events.message(
-			`${def.name.toUpperCase()} AIRBORNE`,
-			def.order === 'sams' ? 'Hunting their air defences' : 'Hunting near the front',
+			`${AIRCRAFT[id].name} AIRBORNE`,
+			def.order === 'sams' ? 'Hunting their air defences' : TASKING[profile.tactic],
 			'good'
 		);
 	}
 
-	/** Their jet takes off from the near end of their runway, toward us. */
+	/**
+	 * Their aircraft takes off from the near end of their runway, toward us,
+	 * as the airframe ordered: fighters hunt our aircraft, the helicopter
+	 * hunts our spearhead, and everything else flies attack runs on our troops.
+	 */
 	private launchEnemy(w: World, def: CommandDef): void {
+		const id = def.aircraft ?? 'f16';
+		const tactic = TACTICS[id];
+		const kind = tactic === 'helo' ? 'heli' : tactic === 'fighter' ? 'fighter' : 'striker';
 		const x = WORLD.enemyRunwayMinX;
 		const sams = def.order === 'sams';
-		const jet = new AirUnit(w.newId(), sams ? 'striker' : 'fighter', x, w.ground(x) + 30);
-		jet.angle = Math.PI - 0.22;
-		jet.vx = Math.cos(jet.angle) * 85;
-		jet.vy = Math.sin(jet.angle) * 85;
+		const jet = new AirUnit(w.newId(), kind, x, w.ground(x) + (kind === 'heli' ? 8 : 30), id);
+		if (kind !== 'heli') {
+			jet.angle = Math.PI - 0.22;
+			jet.vx = Math.cos(jet.angle) * 85;
+			jet.vy = Math.sin(jet.angle) * 85;
+		}
 		jet.role = sams ? 'sams' : 'attack';
 		jet.patrol = this.front(w);
 		w.air.push(jet);
 		this.planes.add(jet);
 		w.sound.play('missileLaunch', x, jet.y, 0.4, 0.5);
 		w.events.message(
-			sams ? 'ENEMY ATTACK JET' : 'ENEMY FIGHTER',
-			sams ? 'Taking off to hunt our AA' : 'Scrambled from their airfield',
+			`ENEMY ${AIRCRAFT[id].name}`,
+			sams ? 'Taking off to hunt our AA' : ENEMY_TASKING[tactic],
 			'warn'
 		);
 	}
 
-	/** Keeps this side's jets over its front as it moves, and reports any of ours that go down. */
+	/** A batch of kamikaze drones lifts off the near end of this side's runway and heads for the front. */
+	private launchDrones(w: World, kind: DroneKind, count: number): void {
+		const front = this.front(w);
+		const x0 = this.ours ? WORLD.runwayMaxX : WORLD.enemyRunwayMinX;
+		for (let i = 0; i < count; i++) {
+			const x = x0 - this.dir * i * 6;
+			const d = new Drone(kind, x, w.ground(x) + 4 + i * 1.5, rnd.range(-6, 6), front, this.side);
+			w.drones.push(d);
+		}
+		w.sound.play('missileLaunch', x0, w.ground(x0), 0.3, 1.6);
+		if (this.ours)
+			w.events.message(
+				kind === 'fpv' ? 'FPV SWARM AWAY' : 'DELTA DRONES AWAY',
+				'Heading for the front to find targets',
+				'good'
+			);
+		else
+			w.events.message(
+				kind === 'fpv' ? 'ENEMY FPV SWARM' : 'ENEMY DELTA DRONES',
+				'Kamikaze drones inbound on our troops',
+				'warn'
+			);
+	}
+
+	/**
+	 * Keeps this side's aircraft over its front as it moves, and reports any
+	 * of ours that go down, turn for home to rearm or repair, or rejoin the fight.
+	 */
 	private patrol(w: World, dt: number): void {
 		for (const [jet, id] of this.jets) {
-			if (jet.active) continue;
-			this.jets.delete(jet);
-			w.events.message(`${COMMANDS[id].name.toUpperCase()} DOWN`, 'We lost an aircraft', 'warn');
-			w.enemyCommand.reward(JET_SCORE);
+			const name = AIRCRAFT[jet.aircraft].name;
+			if (!jet.active) {
+				this.jets.delete(jet);
+				this.homeward.delete(jet);
+				w.events.message(`${name} DOWN`, 'We lost an aircraft', 'warn');
+				w.enemyCommand.reward(JET_SCORE);
+				continue;
+			}
+			const home = jet.order === 'rearm';
+			if (home === this.homeward.has(jet)) continue;
+			if (home) {
+				this.homeward.add(jet);
+				w.events.message(
+					`${name} RTB`,
+					jet.homeFor === 'repair'
+						? 'Badly damaged: heading home for repairs'
+						: 'Out of ammo: heading home to rearm',
+					'info'
+				);
+			} else {
+				this.homeward.delete(jet);
+				w.events.message(
+					`${name} BACK IN THE FIGHT`,
+					COMMANDS[id].short + ' repaired and rearmed',
+					'good'
+				);
+			}
 		}
 		for (const a of this.planes) if (!a.alive || a.dying) this.planes.delete(a);
 		this.patrolClock -= dt;
@@ -587,12 +901,14 @@ export class Command {
 		const x = this.front(w);
 		if (this.ours) for (const jet of w.escorts) jet.patrol = x;
 		else for (const a of this.planes) a.patrol = x;
+		for (const d of w.drones) if (d.side === this.side) d.patrol = x;
 	}
 
-	private strike(w: World, id: CommandId, x: number): void {
+	private strike(w: World, id: StrikeOrder, x: number): void {
 		const ours = this.ours;
 		const dir = this.dir;
 		const site = ours ? OUR_SITES : THEIR_SITES;
+		this.pending.push({ id, x, t: this.eta(w, id, x) });
 		if (id === 'barrage') {
 			for (let i = 0; i < BARRAGE_ROUNDS; i++) {
 				// The battery's guns take it in turns.
@@ -623,6 +939,10 @@ export class Command {
 		}
 		if (id === 'cruise') {
 			const target = (ours ? seek(w, x, 1, true) : seekAlly(w, x)) ?? groundPoint(w, x);
+			// The seeker picked its own target near the spot: count down to that.
+			const p = this.pending[this.pending.length - 1];
+			p.x = target.x;
+			p.t = this.eta(w, id, target.x);
 			// Off the rail at the front of the rack, at the rack's angle.
 			const rx = site.launcher - dir * 2.4;
 			const ry = w.terrain.heightAtXZ(site.launcher, site.z) + 1.3;
@@ -684,7 +1004,7 @@ export class Command {
 			vy: 30,
 			angle: Math.PI / 2,
 			target: groundPoint(w, x),
-			delay: nuke ? 4 : 3,
+			delay: nuke ? NUKE_BOOST : BALLISTIC_BOOST,
 			age: 0,
 			trail: 0,
 			alive: true,

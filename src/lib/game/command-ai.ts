@@ -7,9 +7,9 @@ import type { World } from './world';
 
 /**
  * A simple commander: it keeps a mix of troops and armour moving, puts a
- * couple of jets up, and drops strikes on the biggest cluster of the other
- * side near its front. It plays the enemy in every command game, and our
- * side in autoplay and balance tests.
+ * few aircraft up, sends drones at big clusters, and drops strikes on the
+ * biggest cluster of the other side near its front. It plays the enemy in
+ * every command game, and our side in autoplay and balance tests.
  */
 export class CommandAutopilot {
 	private clock = 0;
@@ -47,23 +47,30 @@ export class CommandAutopilot {
 				}
 			}
 		}
-		if (c.airborne(w) < 2 && c.funds > COMMANDS.striker.cost) {
-			if (!c.order(w, rnd.chance(0.5) ? 'fighter' : 'striker')) this.saving = 0;
+		if (c.airborne(w) < 3 && c.funds > AIR_FUNDS) {
+			if (!c.order(w, rnd.pick(AIRCRAFT_PICKS))) this.saving = 0;
+			return;
+		}
+		if (target && target.weight >= 300 && c.funds > 600 && rnd.chance(0.25)) {
+			c.order(w, rnd.chance(0.6) ? 'fpv' : 'delta');
 			return;
 		}
 		// Saving for a jet or a strike: buy no troops for a while.
 		if (this.saving > 0) return;
 		const pick = rnd.pick<CommandId>([
 			'rifles',
-			'rifles',
+			'assault',
 			'antiTank',
 			'mortars',
 			'jeep',
+			'apc',
 			'lightTank',
 			'tank',
 			'tank',
 			'aa',
-			'rockets'
+			'rockets',
+			'howitzer',
+			'aaTeam'
 		]);
 		if (c.order(w, pick) === null && rnd.chance(SAVE_CHANCE)) this.saving = SAVE_TIME;
 	}
@@ -82,6 +89,10 @@ export class CommandAutopilot {
 		return best;
 	}
 }
+
+/** The aircraft it sends up, and the funds it waits for before it does. */
+const AIRCRAFT_PICKS: readonly CommandId[] = ['f16', 'a10', 'su25', 'apache', 'ac130', 'b1', 'mq9'];
+const AIR_FUNDS = 750;
 
 /** After buying troops, the chance it then saves up for a jet or a strike, and for how long. */
 const SAVE_CHANCE = 0.3;

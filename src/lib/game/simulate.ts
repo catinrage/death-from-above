@@ -1,3 +1,4 @@
+import { updateDrones } from './drones';
 import { updateAir } from './enemy-air';
 import { ORBIT_PITCH, SIDE_PITCH } from './camera';
 import type { PilotInput } from './player';
@@ -28,6 +29,7 @@ export function simulateWorld(
 	updateUnits(w, dt);
 	updateAir(w, dt);
 	updateWingman(w, dt);
+	updateDrones(w, dt);
 	updateBombs(w, dt);
 	updateProjectiles(w, dt);
 	updateStrikes(w, dt);

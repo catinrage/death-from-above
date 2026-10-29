@@ -7,11 +7,16 @@ import {
 	BOUNTY,
 	CHECKPOINT_INCOME,
 	COMMAND_ORDER,
+	COMMAND_TABS,
 	COMMANDS,
 	ENEMY_INCOME,
 	enemyArmy,
-	START_FUNDS
+	START_FUNDS,
+	TAB_KEYS,
+	tabOrders
 } from './command';
+import { AIRCRAFT } from './defs-aircraft';
+import type { AircraftId } from './types';
 import { CommandAutopilot } from './command-ai';
 import { WORLD } from './constants';
 import { UNITS } from './defs-units';
@@ -47,20 +52,40 @@ function holdAt(w: World, x: number): boolean {
 
 describe('the order list', () => {
 	it('gives every order a price, a hotkey of its own and a one-line tip', () => {
-		const codes = new Set<string>();
+		// Keys are unique on each page, and the strikes' keys clash with none of them.
+		const strikeCodes = new Set<string>();
+		for (const id of COMMAND_ORDER)
+			if (COMMANDS[id].tab === null) strikeCodes.add(COMMANDS[id].code);
+		for (const tab of COMMAND_TABS) {
+			const codes = new Set<string>(strikeCodes);
+			const page = tabOrders(tab.id);
+			expect(page.length).toBeGreaterThan(0);
+			expect(page.length).toBeLessThanOrEqual(TAB_KEYS.length);
+			for (const id of page) {
+				expect(codes.has(COMMANDS[id].code), id).toBe(false);
+				codes.add(COMMANDS[id].code);
+			}
+		}
 		for (const id of COMMAND_ORDER) {
 			const d = COMMANDS[id];
 			expect(d.id).toBe(id);
 			expect(d.cost).toBeGreaterThan(0);
-			expect(d.tip.length).toBeGreaterThan(10);
-			expect(d.tip.length).toBeLessThan(90);
-			expect(codes.has(d.code)).toBe(false);
-			codes.add(d.code);
+			expect(d.tip.length, id).toBeGreaterThan(10);
+			expect(d.tip.length, id).toBeLessThan(90);
 			if (d.group === 'ground') expect(d.units?.length).toBeGreaterThan(0);
-			if (d.group === 'air') expect(d.aircraft).toBeDefined();
+			if (d.group === 'air') expect(d.aircraft).toBe(id);
+			if (d.group === 'drone') expect(d.count).toBeGreaterThan(0);
 			if (d.group === 'strike') expect(d.radius).toBeGreaterThan(0);
+			if (d.units) expect(d.units.length).toBeLessThanOrEqual(ARMY_LIMIT);
 		}
 		expect(COMMAND_ORDER.length).toBe(Object.keys(COMMANDS).length);
+	});
+
+	it('offers every aircraft in the hangar as an air order', () => {
+		for (const id of Object.keys(AIRCRAFT) as AircraftId[]) {
+			expect(COMMANDS[id]?.group, id).toBe('air');
+			expect(COMMANDS[id].tab === 'air' || COMMANDS[id].tab === 'heavy').toBe(true);
+		}
 	});
 });
 
@@ -140,21 +165,21 @@ describe('ground orders', () => {
 describe('air orders', () => {
 	it('puts a jet up that hunts near the front and is a target for enemy guns', () => {
 		const w = command(2000);
-		expect(w.command.order(w, 'fighter')).toBeNull();
+		expect(w.command.order(w, 'f16')).toBeNull();
 		expect(w.escorts.length).toBe(1);
 		const jet = w.escorts[0];
 		expect(jet.callsign).toBeNull();
 		run(w, 2);
 		expect(jet.patrol).toBeGreaterThan(WORLD.baseMaxX);
 		expect(nearestFriendly(w, jet.x + 50, jet.y)).toBe(jet);
-		expect(COMMANDS.fighter.cooldown).toBeGreaterThan(0);
-		expect(w.command.order(w, 'fighter')).toBe('cooldown');
+		expect(COMMANDS.f16.cooldown).toBeGreaterThan(0);
+		expect(w.command.order(w, 'f16')).toBe('cooldown');
 	});
 
 	it('flies the strike jet against the air defences first', () => {
 		const w = command(2000);
 		const sam = w.spawnUnit('sam', 1800, -11);
-		w.command.order(w, 'striker');
+		w.command.order(w, 'a10');
 		expect(w.escorts[0].order).toBe('sams');
 		expect(w.escorts[0].target?.unit).toBe(sam);
 		expect(w.escorts[0].aircraft).toBe('a10');
@@ -163,16 +188,16 @@ describe('air orders', () => {
 	it('keeps at most a few jets up at once and forgets the ones shot down', () => {
 		const w = command(1e5);
 		for (let i = 0; i < AIR_LIMIT; i++) {
-			w.command.cooldowns.fighter = 0;
-			expect(w.command.order(w, 'fighter')).toBeNull();
+			w.command.cooldowns.f16 = 0;
+			expect(w.command.order(w, 'f16')).toBeNull();
 		}
-		w.command.cooldowns.fighter = 0;
-		expect(w.command.order(w, 'fighter')).toBe('air');
+		w.command.cooldowns.f16 = 0;
+		expect(w.command.order(w, 'f16')).toBe('air');
 		const lost = w.escorts[0];
 		lost.hit(w, 1e4);
 		run(w, 20, () => !w.escorts.includes(lost));
 		expect(w.escorts.includes(lost)).toBe(false);
-		expect(w.command.order(w, 'fighter')).toBeNull();
+		expect(w.command.order(w, 'f16')).toBeNull();
 	});
 });
 
@@ -300,7 +325,7 @@ describe('the enemy commander', () => {
 	it('scrambles jets from its own runway that go after our troops', () => {
 		const w = both(2000);
 		w.allies.deploy(w, ['spaag', 'rifleman', 'rifleman'], 2000);
-		expect(w.enemyCommand.order(w, 'striker')).toBeNull();
+		expect(w.enemyCommand.order(w, 'a10')).toBeNull();
 		const jet = w.air[0];
 		expect(jet.kind).toBe('striker');
 		expect(jet.role).toBe('sams');
@@ -316,8 +341,8 @@ describe('the enemy commander', () => {
 
 	it('flies its fighter at our jets first', () => {
 		const w = both(5000);
-		w.command.order(w, 'fighter');
-		w.enemyCommand.order(w, 'fighter');
+		w.command.order(w, 'f16');
+		w.enemyCommand.order(w, 'f16');
 		const bandit = w.air[0];
 		const ours = w.escorts[0];
 		// Our jet is within reach of theirs, though their own front is far off.
@@ -376,7 +401,7 @@ describe('a whole war', () => {
 		};
 		const ours = new CommandAutopilot('player');
 		const theirs = new CommandAutopilot('enemy');
-		const spent = { ground: 0, air: 0, strike: 0 };
+		const spent = { ground: 0, air: 0, drone: 0, strike: 0 };
 		const order = w.enemyCommand.order.bind(w.enemyCommand);
 		w.enemyCommand.order = (ww, id, x) => {
 			const why = order(ww, id, x);
