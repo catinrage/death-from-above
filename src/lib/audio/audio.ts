@@ -1,5 +1,6 @@
 import type { SfxId, SoundSink } from '../game/world';
-import { softClipCurve, synthBoom, type BoomContext } from './boom';
+import { outdoorImpulse } from './blast';
+import { BoomBank, softClipCurve, synthBoom, type BoomContext } from './boom';
 import { ALERTS, ALERT_ORDER, Announcer, type Alert, type AlertState } from './cockpit';
 import { RADIO, RADIO_CUES, RECORDED, RadioDesk, type RadioCue, type Transmission } from './radio';
 
@@ -154,16 +155,17 @@ export class AudioEngine implements SoundSink {
 		this.send.gain.value = 0.32;
 		this.send.connect(reverb);
 		reverb.connect(this.warpFilter);
-		// Explosions: soft-clip drive for weight, then a bass shelf for the chest punch.
+		// Explosions: the blasts are already saturated, so only a light clip to glue
+		// overlapping ones, then a bass shelf for the chest punch.
 		const shaper = ctx.createWaveShaper();
-		shaper.curve = softClipCurve(2.2);
+		shaper.curve = softClipCurve(1.2);
 		shaper.oversample = '2x';
 		const shelf = ctx.createBiquadFilter();
 		shelf.type = 'lowshelf';
-		shelf.frequency.value = 120;
-		shelf.gain.value = 6;
+		shelf.frequency.value = 100;
+		shelf.gain.value = 4;
 		this.boomBus = ctx.createGain();
-		this.boomBus.gain.value = 0.85;
+		this.boomBus.gain.value = 1;
 		this.boomBus.connect(shaper);
 		shaper.connect(shelf);
 		shelf.connect(this.bus);
@@ -174,9 +176,9 @@ export class AudioEngine implements SoundSink {
 			out: this.boomBus,
 			dry: this.bus,
 			reverb: this.send,
-			white: this.white,
-			brown: this.brown
+			bank: new BoomBank(ctx)
 		};
+		this.boomGraph.bank.warm();
 		this.startEngine();
 		this.startAmbience();
 		this.loadVoices();
@@ -235,12 +237,10 @@ export class AudioEngine implements SoundSink {
 
 	private impulse(seconds: number): AudioBuffer {
 		const ctx = this.ctx as AudioContext;
-		const len = Math.floor(ctx.sampleRate * seconds);
-		const buf = ctx.createBuffer(2, len, ctx.sampleRate);
-		for (let c = 0; c < 2; c++) {
-			const d = buf.getChannelData(c);
-			for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2);
-		}
+		const [l, r] = outdoorImpulse(ctx.sampleRate, seconds);
+		const buf = ctx.createBuffer(2, l.length, ctx.sampleRate);
+		buf.getChannelData(0).set(l);
+		buf.getChannelData(1).set(r);
 		return buf;
 	}
 
