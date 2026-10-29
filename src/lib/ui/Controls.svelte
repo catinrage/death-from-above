@@ -27,6 +27,21 @@
 		['Pause', 'Esc  /  P  /  Start']
 	];
 
+	/** Command mode: the player gives orders from the ground instead of flying. */
+	const COMMAND_ROWS: [string, string][] = [
+		['Buy troops and armour', '1 – 8  /  click the order bar'],
+		['Launch a fighter / strike jet', 'Q  ·  E'],
+		[
+			'Pick a strike, then click the spot',
+			'Z barrage  ·  X cruise  ·  C carpet  ·  V ballistic  ·  N nuke'
+		],
+		['Put the strike away', 'Right mouse  /  Backspace'],
+		['Pan the map', 'A D  /  Arrow keys  /  Screen edges  /  Left stick'],
+		['Pan faster', 'Shift'],
+		['Zoom', 'Mouse wheel  /  W S  /  Right stick'],
+		['Jump to the front', 'Space  /  Y']
+	];
+
 	const TIPS = [
 		'Every sortie starts on the runway: steer or boost to release the brakes, pull up past take-off speed, then raise the gear with B.',
 		'Fly low and slow over your runway to rearm specials and repair. To land, lower the gear first and touch down level.',
@@ -90,6 +105,20 @@
 			<dl>
 				{#each ROWS as [what, keys], i (what)}
 					<div class="row m-rise" style:--i={i * 0.4} style:--d="120ms">
+						<dt>{what}</dt>
+						<dd>
+							{#each bindings(keys) as b, k (k)}
+								{#if k > 0}<span class="or" aria-hidden="true">/</span>{/if}
+								<span class="kb">{b}</span>
+							{/each}
+						</dd>
+					</div>
+				{/each}
+			</dl>
+			<p class="m-label tips-h">Command mode</p>
+			<dl>
+				{#each COMMAND_ROWS as [what, keys], i (what)}
+					<div class="row m-rise" style:--i={(ROWS.length + i) * 0.4} style:--d="120ms">
 						<dt>{what}</dt>
 						<dd>
 							{#each bindings(keys) as b, k (k)}

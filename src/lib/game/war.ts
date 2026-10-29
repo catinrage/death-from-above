@@ -57,6 +57,8 @@ export interface WarSetup {
 	reinforce?: number;
 	/** The first group out, instead of a planned one. */
 	opening?: readonly AllyKind[];
+	/** False: no reinforcements of its own (the commander sends every unit). */
+	auto?: boolean;
 }
 
 /** Where the checkpoints stand: one at each side of the river crossing and one in each half of the road. */
@@ -417,7 +419,21 @@ export class War {
 		}
 	}
 
+	/**
+	 * Where new troops set off from: just behind our furthest safe checkpoint
+	 * (`from`, undefined meaning the airfield), and how to say so.
+	 */
+	rally(w: World): { from: number | undefined; note: string } {
+		const cp = this.forward(w);
+		const from = cp && cp.x > WORLD.baseMaxX + 70 ? cp.x - 20 : undefined;
+		return {
+			from,
+			note: cp && from !== undefined ? `Forming up at ${cp.name}` : 'Rolling out from the airfield'
+		};
+	}
+
 	private reinforce(w: World, dt: number): void {
+		if (this.setup.auto === false) return;
 		this.nextGroup -= dt;
 		if (this.nextGroup > 0) return;
 		this.nextGroup = GROUP_INTERVAL;
@@ -427,14 +443,8 @@ export class War {
 			this.groups === 0 && this.setup.opening
 				? this.setup.opening
 				: planGroup(Math.max(1, w.wave), this.rng, scale);
-		const cp = this.forward(w);
-		const from = cp && cp.x > WORLD.baseMaxX + 70 ? cp.x - 20 : undefined;
-		w.allies.deploy(
-			w,
-			kinds,
-			from,
-			cp ? `Forming up at ${cp.name}` : 'Rolling out from the airfield'
-		);
+		const { from, note } = this.rally(w);
+		w.allies.deploy(w, kinds, from, note);
 		this.groups++;
 	}
 }

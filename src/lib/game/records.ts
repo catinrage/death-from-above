@@ -1,16 +1,20 @@
 const BEST_KEY = 'dfa.best';
+/** Command mode keeps a best score of its own: it plays too differently to share one. */
+const COMMAND_BEST_KEY = 'dfa.best.command';
 
-export function readBest(): number {
+const bestKey = (command: boolean): string => (command ? COMMAND_BEST_KEY : BEST_KEY);
+
+export function readBest(command = false): number {
 	try {
-		return Number(localStorage.getItem(BEST_KEY) ?? 0) || 0;
+		return Number(localStorage.getItem(bestKey(command)) ?? 0) || 0;
 	} catch {
 		return 0;
 	}
 }
 
-export function writeBest(v: number): void {
+export function writeBest(v: number, command = false): void {
 	try {
-		localStorage.setItem(BEST_KEY, String(v));
+		localStorage.setItem(bestKey(command), String(v));
 	} catch {
 		// Storage may be unavailable (private mode); the best score just won't persist.
 	}

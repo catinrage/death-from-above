@@ -3,6 +3,7 @@ import { LightSystem } from '../engine/lights';
 import { ParticleSystem } from '../engine/particles';
 import { Rng } from '../engine/rng';
 import { CameraRig } from './camera';
+import { Command } from './command';
 import { DebrisSystem } from './debris';
 import { UNITS } from './defs-units';
 import { Effects } from './effects';
@@ -136,6 +137,8 @@ export class World {
 	readonly allies = new Allies();
 	/** The enemy HQ, the checkpoints and our reinforcements (inactive outside a war). */
 	readonly war = new War();
+	/** The commander's war chest, orders and strikes (inactive unless commanding). */
+	readonly command = new Command();
 	/** Chemical clouds. */
 	readonly gas = new GasClouds();
 	/** Wind, rain, snow and lightning. */
@@ -145,6 +148,8 @@ export class World {
 	player: Player | null = null;
 	/** The player's AI wingman (absent in training and the attract demo). */
 	wingman: Wingman | null = null;
+	/** Air units the commander has launched (command mode): AI jets with no leader. */
+	readonly escorts: Wingman[] = [];
 	/** Second aircraft in local co-op, flown from a gamepad. */
 	player2: Player | null = null;
 	base!: AirBase;
@@ -253,6 +258,14 @@ export class World {
 		return this.nextId++;
 	}
 
+	/** Every friendly AI jet: the wingman and the commander's air units. */
+	jets(): Wingman[] {
+		const out: Wingman[] = [];
+		if (this.wingman) out.push(this.wingman);
+		for (const e of this.escorts) out.push(e);
+		return out;
+	}
+
 	/** Every aircraft on our side: the player and, in co-op, player two. */
 	pilots(): Player[] {
 		const out: Player[] = [];
@@ -297,8 +310,10 @@ export class World {
 		this.civilians.populate(this);
 		this.base.reset();
 		this.war.stop();
+		this.command.stop();
 		this.player = null;
 		this.wingman = null;
+		this.escorts.length = 0;
 		this.player2 = null;
 		this.designator = null;
 		this.time = 0;

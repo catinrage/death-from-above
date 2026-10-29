@@ -1,18 +1,21 @@
 import type { Systems } from './damage';
 import type { BigKill } from './killcam';
+import type { CommandGroup, CommandId, Refusal } from './command';
 import type { CreditAward } from './progression';
 import type { TutorialCard } from './tutorial';
 import type { AircraftId, BombId } from './types';
 import type { BiomeId } from './biomes';
 import type { WingOrder } from './wingman';
 
-/** How a sortie is played: flight training, or the war itself. */
-export type GameMode = 'tutorial' | 'war';
+/** How a sortie is played: flight training, the war itself, or the war run from the ground. */
+export type GameMode = 'tutorial' | 'war' | 'command';
 
 export type ModeStart = (
 	| { mode: 'tutorial' }
 	/** The war, on a given map (a random one when left out). */
 	| { mode: 'war'; biome?: BiomeId }
+	/** The same war with the player as its commander instead of a pilot. */
+	| { mode: 'command'; biome?: BiomeId }
 ) & {
 	/** Local two-player co-op: a second aircraft flown from a gamepad (not in training). */
 	coop?: boolean;
@@ -102,6 +105,37 @@ export interface WarHud {
 	/** Seconds to the next reinforcement group. */
 	next: number;
 	points: WarPointHud[];
+}
+
+/** One button of the commander's order bar. */
+export interface CommandItemHud {
+	id: CommandId;
+	name: string;
+	short: string;
+	tip: string;
+	group: CommandGroup;
+	cost: number;
+	key: string;
+	/** Share of its cooldown still to run, 0 when ready. */
+	cooldown: number;
+	/** Why it can't be ordered right now, or null. */
+	refusal: Refusal | null;
+}
+
+/** The commander's panel: the war chest and every order on offer. */
+export interface CommandHud {
+	funds: number;
+	/** Funds per second. */
+	income: number;
+	items: CommandItemHud[];
+	/** The strike waiting for a spot to be clicked, or null. */
+	aiming: CommandId | null;
+	army: number;
+	armyMax: number;
+	air: number;
+	airMax: number;
+	/** Groups paid for and waiting to leave the rally point. */
+	queued: number;
 }
 
 /** Everything the HUD shows, refreshed ~15 times a second. */
@@ -197,6 +231,8 @@ export interface HudSnapshot {
 	wingman: { order: WingOrder; hp: number; down: boolean } | null;
 	/** Name of the no-fire zone under the bomb sight ('' = clear to drop). */
 	noFire: string;
+	/** The commander's panel (command mode only). */
+	command: CommandHud | null;
 }
 
 export interface GameOverStats {
@@ -287,6 +323,7 @@ export function emptyHud(): HudSnapshot {
 		lockDir: 0,
 		flareWindow: 450,
 		wingman: null,
-		noFire: ''
+		noFire: '',
+		command: null
 	};
 }

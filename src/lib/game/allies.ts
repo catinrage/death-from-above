@@ -231,7 +231,13 @@ export class Allies {
 	 * Sends a group up the road from `from` (the airfield by default), lead
 	 * unit first. Infantry spreads across the road; vehicles keep to two lanes.
 	 */
-	deploy(w: World, kinds: readonly AllyKind[], from?: number, note?: string): void {
+	deploy(
+		w: World,
+		kinds: readonly AllyKind[],
+		from?: number,
+		note?: string,
+		title = 'REINFORCEMENTS'
+	): void {
 		let x = from ?? WORLD.baseMaxX + 70;
 		kinds.forEach((kind, i) => {
 			const infantry = DEFS[kind].category === 'infantry';
@@ -244,11 +250,7 @@ export class Allies {
 			x -= infantry ? 3 : 16;
 		});
 		this.deployed += kinds.length;
-		w.events.message(
-			'REINFORCEMENTS',
-			note ?? 'Our troops are moving up the road. Clear their path',
-			'info'
-		);
+		w.events.message(title, note ?? 'Our troops are moving up the road. Clear their path', 'info');
 	}
 
 	/** Friendly units still fighting. */

@@ -14,6 +14,8 @@ export interface TargetingView {
 	pilots: PilotTagView[];
 	/** A blue chevron over each of our own ground units in shot, so they read apart from the enemy. */
 	allies: AllyMarker[];
+	/** Command mode: a red tick over each enemy unit in shot, since the view sits so far out. */
+	foes: AllyMarker[];
 }
 
 export interface AllyMarker {
@@ -54,6 +56,7 @@ const THREAT_SLOTS = 8;
 const PILOT_SLOTS = 2;
 /** Enough for a full army plus a paratroop drop. */
 export const ALLY_SLOTS = 40;
+export const FOE_SLOTS = 60;
 
 /** DOM overlay for the aiming reticle, the target under it and painted locks. */
 export class TargetingLayer {
@@ -64,10 +67,12 @@ export class TargetingLayer {
 	private readonly threats: HTMLDivElement[] = [];
 	private readonly pilots: HTMLDivElement[] = [];
 	private readonly allies: HTMLDivElement[] = [];
+	private readonly foes: HTMLDivElement[] = [];
 
 	constructor(private readonly root: HTMLElement) {
 		// First, so the reticle and lock boxes draw over them.
 		for (let i = 0; i < ALLY_SLOTS; i++) this.allies.push(this.el('tl-ally', ''));
+		for (let i = 0; i < FOE_SLOTS; i++) this.foes.push(this.el('tl-foe', ''));
 		this.reticle = this.el(
 			'tl-reticle',
 			'<i class="ring"></i><i class="ticks"></i><i class="dot"></i>'
@@ -159,6 +164,15 @@ export class TargetingLayer {
 			}
 			this.place(el, a.x, a.y);
 			el.classList.toggle('hurt', a.hurt);
+		}
+		for (let i = 0; i < FOE_SLOTS; i++) {
+			const el = this.foes[i];
+			const f = v.foes[i];
+			if (!f) {
+				el.style.display = 'none';
+				continue;
+			}
+			this.place(el, f.x, f.y);
 		}
 	}
 }
