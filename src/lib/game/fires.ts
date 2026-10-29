@@ -9,6 +9,8 @@ export interface FireSource extends FireHandle {
 	radius: number;
 	/** Damage per second to anything standing in it. */
 	dps: number;
+	/** Started by the player: our own troops in it take friendly fire. */
+	ours: boolean;
 	smoke: boolean;
 	light: PointLight | null;
 	emit: number;
@@ -20,6 +22,8 @@ export interface FireOptions {
 	dps?: number;
 	smoke?: boolean;
 	light?: boolean;
+	/** The player's own fire (napalm, a nuke): it burns our troops too. */
+	ours?: boolean;
 }
 
 /** Long-lived fires: burning wrecks, napalm pools, base damage. */
@@ -50,6 +54,7 @@ export class FireSystem {
 			dead: false,
 			radius: o.radius ?? 1.5,
 			dps: o.dps ?? 0,
+			ours: o.ours ?? false,
 			smoke: o.smoke ?? true,
 			light: null,
 			emit: 0,

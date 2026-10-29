@@ -269,7 +269,8 @@ export function nuclearBlast(w: World, x: number, y: number, z: number, by: Owne
 		const fx = x + rnd.range(-130, 130);
 		w.fires.add(fx, w.ground(fx), rnd.range(-20, 10), rnd.range(1.5, 3), rnd.range(20, 40), {
 			radius: 4,
-			dps: 20
+			dps: 20,
+			ours: by === 'player'
 		});
 		w.terrain.burn(fx, 0, 18, 1, 0.6);
 	}

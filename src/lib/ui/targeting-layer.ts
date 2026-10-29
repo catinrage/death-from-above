@@ -12,6 +12,16 @@ export interface TargetingView {
 	threats: ThreatMarker[];
 	/** Co-op name tags over each aircraft (empty when flying solo). */
 	pilots: PilotTagView[];
+	/** A blue chevron over each of our own ground units in shot, so they read apart from the enemy. */
+	allies: AllyMarker[];
+}
+
+export interface AllyMarker {
+	/** Just above the unit, in CSS px. */
+	x: number;
+	y: number;
+	/** Badly hurt: the chevron blinks. */
+	hurt: boolean;
 }
 
 export interface PilotTagView {
@@ -42,6 +52,8 @@ export interface ThreatMarker {
 const SLOTS = 6;
 const THREAT_SLOTS = 8;
 const PILOT_SLOTS = 2;
+/** Enough for a full army plus a paratroop drop. */
+export const ALLY_SLOTS = 40;
 
 /** DOM overlay for the aiming reticle, the target under it and painted locks. */
 export class TargetingLayer {
@@ -51,8 +63,11 @@ export class TargetingLayer {
 	private readonly shown: boolean[] = [];
 	private readonly threats: HTMLDivElement[] = [];
 	private readonly pilots: HTMLDivElement[] = [];
+	private readonly allies: HTMLDivElement[] = [];
 
 	constructor(private readonly root: HTMLElement) {
+		// First, so the reticle and lock boxes draw over them.
+		for (let i = 0; i < ALLY_SLOTS; i++) this.allies.push(this.el('tl-ally', ''));
 		this.reticle = this.el(
 			'tl-reticle',
 			'<i class="ring"></i><i class="ticks"></i><i class="dot"></i>'
@@ -134,6 +149,16 @@ export class TargetingLayer {
 			this.place(el, t.x, t.y);
 			el.className = `tl-pilot${t.wing ? ' wing' : ''}${t.off ? ' off' : ''}`;
 			if (el.textContent !== t.label) el.textContent = t.label;
+		}
+		for (let i = 0; i < ALLY_SLOTS; i++) {
+			const el = this.allies[i];
+			const a = v.allies[i];
+			if (!a) {
+				el.style.display = 'none';
+				continue;
+			}
+			this.place(el, a.x, a.y);
+			el.classList.toggle('hurt', a.hurt);
 		}
 	}
 }

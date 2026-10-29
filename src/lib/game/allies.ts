@@ -61,6 +61,8 @@ const HEAL_RADIUS = 16;
 const HEAL_RATE = 3;
 /** Indirect fire holds off a target with our own troops this close to it. */
 const DANGER_CLOSE = 25;
+/** Seconds between friendly-fire warnings. */
+const FF_WARN_GAP = 3;
 /** Gap the column keeps between vehicles, and between soldiers. */
 const SPACING = 7;
 const SPACING_INFANTRY = 1.4;
@@ -219,6 +221,11 @@ export class Allies {
 	lost = 0;
 	/** Units sent out this game. */
 	deployed = 0;
+	/** Of those lost, how many the player's own fire finished off. */
+	friendlyKills = 0;
+	/** Whether each unit's latest hit came from our side, so a death can be put down to friendly fire. */
+	private readonly lastHitOurs = new Map<Unit, boolean>();
+	private ffWarnedAt = -Infinity;
 
 	/**
 	 * Sends a group up the road from `from` (the airfield by default), lead
@@ -299,20 +306,47 @@ export class Allies {
 		return best;
 	}
 
-	hit(u: Unit, amount: number, pierce: number): void {
+	/** `ours`: the hit came from our own side (the player's guns or bombs): friendly fire. */
+	hit(u: Unit, amount: number, pierce: number, ours = false): void {
 		if (!u.alive || amount <= 0) return;
 		u.hp -= amount * (1 - u.def.armor * (1 - Math.min(pierce, 1)));
 		u.flash = Math.min(1, u.flash + 0.6);
+		this.lastHitOurs.set(u, ours);
 	}
 
-	/** Enemy fire striking a friendly unit; returns the unit it hit. */
-	bulletHit(x0: number, y0: number, x1: number, y1: number, damage: number): Unit | null {
+	/** Fire striking a friendly unit; returns the unit it hit. */
+	bulletHit(
+		x0: number,
+		y0: number,
+		x1: number,
+		y1: number,
+		damage: number,
+		pierce = 0,
+		ours = false
+	): Unit | null {
 		for (const u of this.list) {
 			if (!u.alive || segmentVsUnit(u, x0, y0, x1, y1) < 0) continue;
-			this.hit(u, damage, 0);
+			this.hit(u, damage, pierce, ours);
 			return u;
 		}
 		return null;
+	}
+
+	/** Closest friendly unit the segment strikes, as a fraction along it (for the player's guns). */
+	firstHit(
+		x0: number,
+		y0: number,
+		x1: number,
+		y1: number,
+		pad = 0
+	): { unit: Unit; t: number } | null {
+		let best: { unit: Unit; t: number } | null = null;
+		for (const u of this.list) {
+			if (!u.alive || Math.abs(u.x - x1) > 40) continue;
+			const t = segmentVsUnit(u, x0, y0, x1, y1, pad);
+			if (t >= 0 && (!best || t < best.t)) best = { unit: u, t };
+		}
+		return best;
 	}
 
 	/** An enemy tank round (or anti-tank rocket) reaching a friendly unit. */
@@ -332,15 +366,27 @@ export class Allies {
 		return null;
 	}
 
-	/** Blast damage, your own bombs included. */
-	blast(x: number, y: number, radius: number, damage: number, pierce: number): void {
+	/** Blast damage, your own bombs included (`ours` marks it as friendly fire). */
+	blast(x: number, y: number, radius: number, damage: number, pierce: number, ours = false): void {
 		for (const u of this.list) {
 			if (!u.alive || Math.abs(u.x - x) > radius + u.def.half[0]) continue;
 			const d = Math.max(0, Math.hypot(u.x - x, u.y + u.def.half[1] - y) - u.def.half[0]);
 			if (d < radius) {
 				const k = 1 - d / radius;
-				this.hit(u, damage * (0.15 + 0.85 * k * k), pierce);
+				this.hit(u, damage * (0.15 + 0.85 * k * k), pierce, ours);
 			}
+		}
+	}
+
+	/**
+	 * The player's fire or gas lingering over our troops: `infantry` and
+	 * `vehicle` are this tick's damage to each.
+	 */
+	soak(x: number, reach: number, infantry: number, vehicle: number, pierce: number): void {
+		for (const u of this.list) {
+			if (!u.alive || Math.abs(u.x - x) > reach + u.def.half[0]) continue;
+			this.hit(u, u.def.category === 'infantry' ? infantry : vehicle, pierce, true);
+			u.flash = Math.min(u.flash, 0.3);
 		}
 	}
 
@@ -353,7 +399,20 @@ export class Allies {
 				// Kills by the enemy score nothing; the wreck behaves like any other.
 				killUnit(w, u, u.x + 10, 'blast', 'enemy');
 				this.lost++;
-				if (u.def.category !== 'infantry') w.events.message('', `${u.def.name} destroyed`, 'warn');
+				if (this.lastHitOurs.get(u)) {
+					this.friendlyKills++;
+					// One warning per volley: a bomb on a squad would otherwise flood the feed.
+					if (w.time - this.ffWarnedAt > FF_WARN_GAP) {
+						this.ffWarnedAt = w.time;
+						w.events.message(
+							'FRIENDLY FIRE',
+							`You hit our own ${u.def.name.toLowerCase()}`,
+							'warn'
+						);
+					}
+				} else if (u.def.category !== 'infantry')
+					w.events.message('', `${u.def.name} destroyed`, 'warn');
+				this.lastHitOurs.delete(u);
 			}
 			if (!u.alive) {
 				wreck(w, u, dt);
@@ -618,6 +677,9 @@ export class Allies {
 	clear(): void {
 		this.list.length = 0;
 		this.lost = 0;
+		this.friendlyKills = 0;
+		this.lastHitOurs.clear();
+		this.ffWarnedAt = -Infinity;
 		this.deployed = 0;
 	}
 }

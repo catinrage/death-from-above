@@ -6,11 +6,13 @@ import { Renderer, type PostFrame, type Quality } from '../engine/renderer';
 import { createModels } from '../models';
 import type { EdgeLayer } from '../ui/edge-layer';
 import type { PopupLayer } from '../ui/popups';
-import type {
-	PilotTagView,
-	TargetingLayer,
-	TargetingView,
-	ThreatMarker
+import {
+	ALLY_SLOTS,
+	type AllyMarker,
+	type PilotTagView,
+	type TargetingLayer,
+	type TargetingView,
+	type ThreatMarker
 } from '../ui/targeting-layer';
 import { Focus } from './focus';
 import { KillCam } from './killcam';
@@ -1171,8 +1173,25 @@ export class Game {
 			hover,
 			locks,
 			threats: visible ? this.threatMarkers() : [],
-			pilots: visible && this.coop ? this.pilotTags() : []
+			pilots: visible && this.coop ? this.pilotTags() : [],
+			allies: visible ? this.allyMarkers() : []
 		};
+	}
+
+	/** A chevron over each of our own ground units (and landed paratroopers) in shot. */
+	private allyMarkers(): AllyMarker[] {
+		const w = this.world;
+		const out: AllyMarker[] = [];
+		for (const list of [w.allies.list, w.troops.list]) {
+			for (const u of list) {
+				if (!u.alive || out.length >= ALLY_SLOTS) continue;
+				const s = w.camera.project(u.x, u.y + u.def.half[1] * 2 + 1, u.z, this.cssW, this.cssH);
+				if (!s || s[0] < -20 || s[0] > this.cssW + 20 || s[1] < -20 || s[1] > this.cssH + 20)
+					continue;
+				out.push({ x: s[0], y: s[1] - 2, hurt: u.hp < u.def.hp * 0.35 });
+			}
+		}
+		return out;
 	}
 
 	/** "P1" and "P2" over each co-op aircraft, held at the screen edge when one strays out of shot. */

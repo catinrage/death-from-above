@@ -852,7 +852,8 @@ export class Player implements Trackable {
 			tracer: shot % gun.tracerEvery === 0,
 			color: gun.color,
 			size: gun.explosive > 0 ? 0.32 : 0.2,
-			explosive: gun.explosive
+			explosive: gun.explosive,
+			aircraft: true
 		});
 		w.fx.muzzleFlash(
 			m[0],
