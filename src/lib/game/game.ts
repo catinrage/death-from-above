@@ -72,6 +72,7 @@ import { predictImpact } from './weapons';
 import { trainConsist } from './railway';
 import { simulateWorld } from './simulate';
 import { AIRCRAFT } from './defs-aircraft';
+import { engineSources } from './engine-sources';
 import type { Loadout } from './loadout';
 import {
 	battleCredits,
@@ -1268,6 +1269,11 @@ export class Game {
 		this.updateSkyFlash(dt);
 
 		this.audio.setListener(w.camera.x, w.camera.y);
+		this.audio.aircraft(this.phase === 'playing' ? engineSources(w) : [], {
+			x: w.camera.x,
+			y: w.camera.y,
+			...w.camera.viewExtents()
+		});
 		this.audio.update(dt, {
 			alive: !!p && p.alive,
 			throttle: p?.throttle ?? 0,
