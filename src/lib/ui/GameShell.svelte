@@ -718,12 +718,12 @@
 		animation: tl-threat 0.4s ease-in-out infinite alternate;
 	}
 
-	/* Command mode: time to impact by the strike ring, and over each strike on its way. */
+	/* Command mode: countdowns sit above each strike on its way, the aimed strike's time below its ring. */
 	.targeting :global(.tl-strike) {
 		position: absolute;
 		left: 0;
 		top: 0;
-		translate: -50% 10px;
+		translate: -50% calc(-100% - 10px);
 		padding: 1px 6px;
 		font-family: var(--display);
 		font-size: 12px;
@@ -736,6 +736,7 @@
 	}
 
 	.targeting :global(.tl-strike.aim) {
+		translate: -50% 10px;
 		color: #ffe0b0;
 		font-size: 13px;
 		background: rgba(40, 14, 4, 0.75);

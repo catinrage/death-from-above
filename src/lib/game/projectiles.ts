@@ -5,6 +5,7 @@ import { homeOnEmitter } from './arm';
 import { WORLD } from './constants';
 import { BOMBS, type BlastSpec } from './defs-bombs';
 import type { Player } from './player';
+import type { AirUnit } from './enemy-air';
 import type { AirAlly } from './wingman';
 import type { Owner, Trackable, Unit } from './types';
 import { flareEmit, flareHeat } from './flare-fx';
@@ -495,6 +496,7 @@ function updateMissiles(w: World, dt: number): void {
 		else m.speed = Math.max(MISSILE_STALL * 0.7, m.speed - 30 * dt);
 		if (m.owner === 'enemy') seek(w, m);
 		else if (m.kind === 'arm') homeOnEmitter(w, m);
+		else seekAir(w, m);
 		const t = m.target;
 		if (t && t.alive) {
 			const dx = t.x - m.x,
@@ -580,6 +582,78 @@ function detonateMissile(w: World, m: Missile, t: Trackable): void {
 	}
 }
 
+/** A salvo of four flares fanned out behind an aircraft. */
+export function popFlares(
+	w: World,
+	x: number,
+	y: number,
+	vx: number,
+	vy: number,
+	angle: number,
+	heat = 4
+): void {
+	const ca = Math.cos(angle),
+		sa = Math.sin(angle);
+	for (let i = 0; i < 4; i++) {
+		const side = i % 2 === 0 ? 1 : -1;
+		w.flares.push({
+			x: x - ca * 2.5,
+			y: y - sa * 2.5 - 0.8,
+			z: 0,
+			vx: vx * 0.8 - ca * 6,
+			vy: vy * 0.8 - sa * 6 - 8 - i * 2,
+			vz: side * (5 + i * 1.4),
+			alive: true,
+			heat,
+			age: 0,
+			life: rnd.range(2.8, 3.6)
+		});
+	}
+	w.sound.play('flare', x, y, 0.5);
+}
+
+/** Chance an AI pilot doesn't see a missile coming until it is too late to flare it. */
+export const FLARE_MISS = 0.2;
+/** Chance it flares, but badly: mistimed, the salvo never outshines the aircraft to the seeker. */
+export const FLARE_DUD = 0.3;
+/** How close a missile has to be before the pilot takes any notice. */
+const FLARE_WATCH = 650;
+
+/**
+ * An AI pilot's flare drill. It notices each missile chasing it (or misses it
+ * altogether) once, judges a range to flare at, and pops a salvo when the
+ * missile closes inside it. The luck is in whether the salvo takes: a good one
+ * pulls the seeker off, a mistimed one is too cool against the engines and the
+ * missile comes straight through.
+ */
+export class FlareDrill {
+	private readonly reaction = new WeakMap<Missile, { at: number; heat: number }>();
+	private cd = 0;
+
+	update(w: World, dt: number, self: Trackable & { angle: number }, foe: Owner): void {
+		this.cd -= dt;
+		if (this.cd > 0) return;
+		for (const m of w.missiles) {
+			if (m.owner !== foe || m.target !== self || !m.alive) continue;
+			const d = Math.hypot(m.x - self.x, m.y - self.y);
+			if (d > FLARE_WATCH) continue;
+			let r = this.reaction.get(m);
+			if (!r) {
+				const luck = rnd.next();
+				r = {
+					at: luck < FLARE_MISS ? -1 : rnd.range(140, 440),
+					heat: luck < FLARE_MISS + FLARE_DUD ? 0.3 : 4
+				};
+				this.reaction.set(m, r);
+			}
+			if (d > r.at) continue;
+			this.cd = rnd.range(1.6, 2.4);
+			popFlares(w, self.x, self.y, self.vx, self.vy, self.angle, r.heat);
+			return;
+		}
+	}
+}
+
 function updateFlares(w: World, dt: number): void {
 	for (let i = w.flares.length - 1; i >= 0; i--) {
 		const f = w.flares[i];
@@ -659,6 +733,35 @@ function seek(w: World, m: Missile): void {
 		if (p && near && apparent(m, p, 1, true, SEARCH_FOV) > 0) m.target = p;
 		return;
 	}
+	decoy(w, m, t);
+}
+
+/**
+ * Our missiles after enemy aircraft and drones: their flares can pull them off
+ * the same way, and one that loses its flare looks again for the nearest bandit.
+ */
+function seekAir(w: World, m: Missile): void {
+	const t = m.target;
+	if (t && t.alive) {
+		if (w.air.includes(t as AirUnit) || w.flares.includes(t as Flare)) decoy(w, m, t);
+		return;
+	}
+	if (t === null || !w.flares.includes(t as Flare)) return;
+	let best: Trackable | null = null;
+	let bestD = REACQUIRE;
+	for (const a of w.air) {
+		if (!a.alive || a.dying) continue;
+		const d = Math.hypot(a.x - m.x, a.y - m.y);
+		if (d < bestD && apparent(m, a, 1, true, SEARCH_FOV) > 0) {
+			bestD = d;
+			best = a;
+		}
+	}
+	m.target = best;
+}
+
+/** A flare that outshines the seeker's target from where the missile is looking steals the lock. */
+function decoy(w: World, m: Missile, t: Trackable): void {
 	if (w.flares.includes(t as Flare)) return;
 	let best = apparent(m, t, m.seeker === 'heat' ? t.heat : 1, false);
 	// Range gate: a flare farther away than the aircraft cannot steal the lock.

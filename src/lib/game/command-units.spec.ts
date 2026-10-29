@@ -4,6 +4,7 @@ import { COMMANDS, START_FUNDS, type StrikeOrder } from './command';
 import { WORLD } from './constants';
 import { AIRCRAFT } from './defs-aircraft';
 import { AirUnit } from './enemy-air';
+import { launchMissile } from './projectiles';
 import { simulateWorld } from './simulate';
 import { testWorld } from './test-world';
 import type { AircraftId, Unit } from './types';
@@ -374,5 +375,76 @@ describe('the enemy commander gets the same orders', () => {
 		const n = w.drones.length;
 		run(w, 90, () => w.drones.length < n);
 		expect(w.drones.length).toBeLessThan(n);
+	});
+});
+
+describe('flares', () => {
+	/** Fires a heat seeker from behind at an aircraft: did it hit, and did a flare pull it off? */
+	function shot(
+		w: World,
+		target: { x: number; y: number; vx: number },
+		owner: 'player' | 'enemy'
+	): { decoyed: boolean } {
+		const m = launchMissile(w, {
+			kind: 'air',
+			x: target.x - 600 * Math.sign(target.vx || 1),
+			y: target.y,
+			z: 0,
+			angle: target.vx < 0 ? Math.PI : 0,
+			speed: 120,
+			maxSpeed: 260,
+			accel: 200,
+			turnRate: 2.4,
+			target: target as never,
+			burn: 2.6,
+			life: 6,
+			damage: 30,
+			owner,
+			seeker: 'heat'
+		});
+		let decoyed = false;
+		run(w, 7, () => {
+			if (w.flares.includes(m.target as never)) decoyed = true;
+			return !w.missiles.includes(m);
+		});
+		return { decoyed };
+	}
+
+	it('has their aircraft flare our missiles, and only sometimes get away with it', () => {
+		let flared = 0,
+			hit = 0;
+		for (let i = 0; i < 24; i++) {
+			const w = command(0);
+			const bandit = new AirUnit(w.newId(), 'striker', 2400, w.ground(2400) + 200, 'a10');
+			bandit.hp = 1e4;
+			w.air.push(bandit);
+			const { decoyed } = shot(w, bandit, 'player');
+			if (decoyed) flared++;
+			if (bandit.hp < 1e4) hit++;
+		}
+		expect(flared).toBeGreaterThan(0);
+		expect(hit).toBeGreaterThan(0);
+	});
+
+	it('has our commander’s aircraft flare theirs the same way', () => {
+		let flared = 0,
+			hit = 0;
+		for (let i = 0; i < 24; i++) {
+			const w = command(2000);
+			w.command.order(w, 'b1');
+			const jet = w.escorts[0];
+			// Cruising level and well clear of the ground, the missile coming up behind.
+			jet.x = 1500;
+			jet.y = w.ground(1500) + 260;
+			jet.angle = 0;
+			jet.vx = jet.speed;
+			jet.vy = 0;
+			jet.hp = 1e4;
+			const { decoyed } = shot(w, jet, 'enemy');
+			if (decoyed) flared++;
+			if (jet.hp < 1e4) hit++;
+		}
+		expect(flared).toBeGreaterThan(0);
+		expect(hit).toBeGreaterThan(0);
 	});
 });
