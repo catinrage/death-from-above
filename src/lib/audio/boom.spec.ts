@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { softClipCurve, synthBoom, type BoomContext, type BoomParams } from './boom';
+import { BoomBank, softClipCurve, synthBoom, type BoomContext, type BoomParams } from './boom';
 
 interface FakeParam {
 	value: number;
@@ -13,16 +13,14 @@ interface FakeOsc {
 	dest: { gain?: FakeParam } | null;
 }
 
-/** Records what an explosion voice builds, standing in for Web Audio. */
+/** Records what an explosion voice plays, standing in for Web Audio. */
 function recorder() {
 	const made = {
-		oscFreqs: [] as number[],
 		oscs: [] as FakeOsc[],
-		highpass: 0,
-		curves: 0,
-		sources: 0
+		plays: [] as { length: number; rate: number; at: number }[],
+		renders: 0
 	};
-	const param = (initial: number, onSet?: (v: number) => void) => ({
+	const param = (initial: number) => ({
 		value: initial,
 		first: Infinity,
 		firstValue: NaN,
@@ -33,17 +31,11 @@ function recorder() {
 			}
 		},
 		setValueAtTime(v: number, t: number) {
-			onSet?.(v);
 			this.note(v, t);
 			return this;
 		},
 		exponentialRampToValueAtTime(v: number, t: number) {
 			this.note(v, t);
-			return this;
-		},
-		setValueCurveAtTime(curve: Float32Array, t: number) {
-			made.curves++;
-			this.note(curve[0], t);
 			return this;
 		}
 	});
@@ -52,19 +44,11 @@ function recorder() {
 		currentTime: 0,
 		createGain: () => ({ ...node(), gain: param(1) }),
 		createStereoPanner: () => ({ ...node(), pan: param(0) }),
-		createBiquadFilter() {
-			const f = { ...node(), Q: param(1), frequency: param(350), type: '' };
-			return new Proxy(f, {
-				set(target, key, v) {
-					if (key === 'type' && v === 'highpass') made.highpass++;
-					return Reflect.set(target, key, v);
-				}
-			});
-		},
+		createBiquadFilter: () => ({ ...node(), Q: param(1), frequency: param(350), type: '' }),
 		createOscillator() {
 			const o = {
 				type: '',
-				frequency: param(440, (v) => made.oscFreqs.push(v)),
+				frequency: param(440),
 				started: NaN,
 				dest: null as FakeOsc['dest'],
 				connect(n: FakeOsc['dest']) {
@@ -78,24 +62,40 @@ function recorder() {
 			made.oscs.push(o);
 			return o;
 		},
-		createBufferSource: () => {
-			made.sources++;
+		createBuffer(channels: number, length: number, sampleRate: number) {
+			if (channels === 2 && length > sampleRate) made.renders++;
+			const data = Array.from({ length: channels }, () => new Float32Array(length));
 			return {
-				...node(),
-				buffer: null,
-				loop: false,
-				start: () => undefined,
-				stop: () => undefined
+				length,
+				sampleRate,
+				duration: length / sampleRate,
+				getChannelData: (c: number) => data[c]
 			};
+		},
+		createBufferSource() {
+			const s = {
+				...node(),
+				buffer: null as { length: number; duration: number } | null,
+				playbackRate: param(1),
+				start(t: number) {
+					made.plays.push({ length: s.buffer?.duration ?? 0, rate: s.playbackRate.value, at: t });
+				}
+			};
+			return s;
 		}
 	};
-	const buf = { duration: 2 };
-	const b = { ctx, out: node(), dry: node(), reverb: node(), white: buf, brown: buf };
+	const bank = new BoomBank(ctx as unknown as BaseAudioContext);
+	const b = { ctx, out: node(), dry: node(), reverb: node(), bank };
 	return { b: b as unknown as BoomContext, made };
 }
 
+// One shared bank: rendering is the slow part, and every test may reuse its takes.
+const shared = recorder();
+
 const boom = (o: Partial<BoomParams>) => {
-	const { b, made } = recorder();
+	const { b, made } = shared;
+	made.oscs.length = 0;
+	made.plays.length = 0;
 	const life = synthBoom(b, {
 		power: 1,
 		pan: 0,
@@ -106,38 +106,30 @@ const boom = (o: Partial<BoomParams>) => {
 		air: false,
 		...o
 	});
-	return { life, made };
+	return { life, oscs: [...made.oscs], plays: [...made.plays] };
 };
 
 describe('explosion voice', () => {
-	it('rings on longer and builds more layers the bigger the blast', () => {
-		const lives = [0.4, 1, 1.8, 4].map((power) => boom({ power }));
-		for (let i = 1; i < lives.length; i++) {
-			expect(lives[i].life).toBeGreaterThan(lives[i - 1].life);
-			expect(lives[i].made.sources).toBeGreaterThanOrEqual(lives[i - 1].made.sources);
-		}
-		expect(lives[3].life).toBeGreaterThan(5);
-		expect(lives[0].life).toBeLessThan(2.5);
+	it('rings on longer the bigger the blast', () => {
+		const lives = [0.4, 1, 1.8, 4].map((power) => boom({ power }).life);
+		for (let i = 1; i < lives.length; i++) expect(lives[i]).toBeGreaterThan(lives[i - 1]);
+		expect(lives[3]).toBeGreaterThan(5);
+		expect(lives[0]).toBeLessThan(3.5);
 	});
 
-	it('pitches the thump lower for bigger blasts', () => {
-		const small = Math.max(...boom({ power: 0.5 }).made.oscFreqs);
-		const huge = Math.max(...boom({ power: 4 }).made.oscFreqs);
-		expect(huge).toBeLessThan(small);
+	it('is built from rendered blasts, not ringing oscillators', () => {
+		expect(boom({ power: 1.8, near: 0.9 }).oscs).toHaveLength(0);
 	});
 
-	it('only cracks up close and only rumbles on the ground', () => {
-		expect(boom({ near: 0.6 }).made.highpass).toBe(1);
-		expect(boom({ near: 0 }).made.highpass).toBe(0);
-		expect(boom({ air: false }).made.curves).toBe(1);
-		expect(boom({ air: true }).made.curves).toBe(0);
+	it('only adds the crack and debris up close', () => {
+		expect(boom({ near: 0.6 }).plays).toHaveLength(2);
+		expect(boom({ near: 0 }).plays).toHaveLength(1);
 	});
 
-	it('starts every tone silent instead of at full gain', () => {
-		// Power 4 point blank builds every layer, ear ringing included.
-		const { made } = boom({ power: 4, near: 0.9 });
-		expect(made.oscs.length).toBeGreaterThan(3);
-		for (const o of made.oscs) {
+	it('starts the ear ringing silent instead of at full gain', () => {
+		const { oscs } = boom({ power: 4, near: 0.9 });
+		expect(oscs).toHaveLength(1);
+		for (const o of oscs) {
 			const g = o.dest?.gain;
 			if (!g) throw new Error('oscillator not routed through a gain');
 			const atStart = g.first <= o.started ? g.firstValue : g.value;
@@ -146,10 +138,22 @@ describe('explosion voice', () => {
 	});
 
 	it('arrives late from far away and drags out deeper in slow motion', () => {
-		expect(boom({ delay: 0.3 }).life).toBeCloseTo(boom({}).life + 0.3);
+		const late = boom({ delay: 0.3 });
+		expect(late.plays[0].at).toBeCloseTo(0.305);
 		const slow = boom({ warp: 0.7 });
-		expect(slow.life).toBeGreaterThan(boom({}).life);
-		expect(Math.max(...slow.made.oscFreqs)).toBeLessThan(Math.max(...boom({}).made.oscFreqs));
+		const normal = boom({});
+		expect(slow.plays[0].rate).toBeLessThan(normal.plays[0].rate);
+		expect(slow.life).toBeGreaterThan(normal.life);
+	});
+
+	it('picks the nearest size class and renders each take only once', () => {
+		expect(BoomBank.classFor(0.3, false)).toBe(0.4);
+		expect(BoomBank.classFor(1.4, false)).toBe(1);
+		expect(BoomBank.classFor(4.5, false)).toBe(4);
+		expect(BoomBank.classFor(4.5, true)).toBe(2);
+		const before = shared.made.renders;
+		for (let i = 0; i < 6; i++) boom({ power: 1 });
+		expect(shared.made.renders).toBe(before);
 	});
 });
 
