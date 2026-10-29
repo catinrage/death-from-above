@@ -47,6 +47,8 @@ const STAGE_BEHIND = 70;
 export const ENEMY_EDGE = 2.2;
 /** In a war, infantry on both sides moves at this multiple of its walking pace (the road is long). */
 export const MARCH = 1.6;
+/** Enemy emplacements dig in at least this far ahead of our foremost troops and checkpoint. */
+export const DIG_CLEAR = 200;
 /** HQ strength in a war that sets none. */
 export const HQ_HP = 1500;
 
@@ -303,6 +305,19 @@ export class War {
 		for (const c of this.checkpoints)
 			if (c.owner === 'enemy' && c.x + STAGE_BEHIND < x) x = c.x + STAGE_BEHIND;
 		return x;
+	}
+
+	/**
+	 * The stretch of road the enemy can still dig emplacements into: clear
+	 * ahead of our foremost checkpoint and troops, short of the HQ's own guns.
+	 */
+	enemyGround(w: World): [number, number] {
+		let front: number = WORLD.baseMaxX;
+		for (const c of this.checkpoints) if (c.owner === 'player') front = Math.max(front, c.x);
+		const lead = w.allies.spearhead();
+		if (lead) front = Math.max(front, lead.x);
+		for (const t of w.troops.list) if (t.alive && t.landed) front = Math.max(front, t.x);
+		return [Math.max(WORLD.baseMaxX + 600, front + DIG_CLEAR), WORLD.hqMinX - 200];
 	}
 
 	/**

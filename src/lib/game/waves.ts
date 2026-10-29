@@ -40,6 +40,8 @@ export interface WaveTweaks {
 	boss?: UnitKind;
 	/** Replaces the number of armoured trains sent down the railway. */
 	trains?: number;
+	/** The stretch of road emplacements may dig in on (a war keeps them past the front). */
+	dig?: [number, number];
 }
 
 export interface WaveOptions {
@@ -97,6 +99,8 @@ function leadFor(wave: number, rng: Rng, bias: WaveTweaks['lead'] = {}): UnitKin
 
 /** Heavy launchers that only ever lead a convoy, never ride along as an escort. */
 const REAR_KINDS: readonly UnitKind[] = ['sam', 'artillery', 'rocketTruck'];
+/** Emplacements need at least this much road to dig in on. */
+const DIG_MIN = 60;
 
 /** Weighted pick of a soldier for a squad: mostly riflemen, specialists as the war goes on. */
 function soldierFor(wave: number, rng: Rng): UnitKind {
@@ -188,16 +192,22 @@ export function planWave(
 	const want = Math.max(0, Math.min(1 + Math.floor(wave * 0.8), 9) - existingStatics);
 	const options = STATIC_KINDS.filter((k) => UNITS[k].minWave <= wave);
 	const used: number[] = [];
+	const [lo, hi] = tweaks.dig ?? [WORLD.baseMaxX + 600, WORLD.hqMinX - 200];
 	const place = (kind: UnitKind): void => {
+		// No room left between the front and the HQ's own guns.
+		if (hi - lo < DIG_MIN) return;
 		let x = 0;
 		for (let tries = 0; tries < 20; tries++) {
-			x = rng.range(WORLD.baseMaxX + 600, WORLD.hqMinX - 200);
+			x = rng.range(lo, hi);
 			const wet = avoid !== null && x > avoid[0] && x < avoid[1];
 			if (!wet && used.every((u) => Math.abs(u - x) > 70)) break;
 		}
-		// Never dig in on the river bank: slide out of the valley.
-		if (avoid && x > avoid[0] && x < avoid[1])
-			x = x - avoid[0] < avoid[1] - x ? avoid[0] - 16 : avoid[1] + 16;
+		// Never dig in on the river bank: slide out of the valley, staying on the stretch allowed.
+		if (avoid && x > avoid[0] && x < avoid[1]) {
+			const near = x - avoid[0] < avoid[1] - x ? avoid[0] - 16 : avoid[1] + 16;
+			x = near >= lo && near <= hi ? near : avoid[1] + 16;
+		}
+		if (x < lo || x > hi) return;
 		used.push(x);
 		statics.push({ kind, x });
 		if (kind === 'flak' && wave >= 3 && rng.chance(0.6))
@@ -297,8 +307,11 @@ export class WaveDirector {
 			? [r.x0 - r.bridgeHalf - 40, r.x0 + r.bridgeHalf + 40]
 			: null;
 		const tweaks = { ...this.opts.tweaks?.(this.wave) };
-		// Every checkpoint the enemy holds swells its waves.
-		if (w.war.active) tweaks.budget = (tweaks.budget ?? 1) * w.war.enemyBudgetScale();
+		// Every checkpoint the enemy holds swells its waves, and it only digs in on its own side of the front.
+		if (w.war.active) {
+			tweaks.budget = (tweaks.budget ?? 1) * w.war.enemyBudgetScale();
+			tweaks.dig = w.war.enemyGround(w);
+		}
 		const plan = planWave(
 			this.difficulty(),
 			this.seed,
@@ -315,8 +328,10 @@ export class WaveDirector {
 		for (const s of plan.statics) {
 			const z =
 				s.kind === 'depot' || s.kind === 'radar' ? -14 : s.kind === 'searchlight' ? -9 : -11;
-			// Emplacements never dig in among the houses of a no-fire zone.
-			const u = w.spawnUnit(s.kind, clearOfZones(s.x), z, -1);
+			// Emplacements never dig in among the houses of a no-fire zone (nor slide out of one behind the front).
+			const x = clearOfZones(s.x);
+			if (tweaks.dig && x < tweaks.dig[0]) continue;
+			const u = w.spawnUnit(s.kind, x, z, -1);
 			u.yaw = Math.PI;
 		}
 		this.state = 'active';
