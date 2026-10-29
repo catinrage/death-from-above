@@ -11,6 +11,7 @@ import {
 	FOE_SLOTS,
 	type AllyMarker,
 	type PilotTagView,
+	type PlaceTag,
 	type TargetingLayer,
 	type TargetingView,
 	type ThreatMarker
@@ -19,7 +20,14 @@ import { Focus } from './focus';
 import { KillCam } from './killcam';
 import { Targeting } from './targeting';
 import { Autopilot } from './autopilot';
-import { AIR_LIMIT, ARMY_LIMIT, COMMAND_ORDER, COMMANDS, type CommandId } from './command';
+import {
+	AIR_LIMIT,
+	ARMY_LIMIT,
+	COMMAND_ORDER,
+	COMMANDS,
+	enemyArmy,
+	type CommandId
+} from './command';
 import { CommandAutopilot } from './command-ai';
 import { bossStatus } from './boss';
 import { WORLD } from './constants';
@@ -149,6 +157,8 @@ export class Game {
 	private readonly autopilot = new Autopilot();
 	/** Plays the commander for autoplay (demo and soak runs). */
 	private readonly commandAuto = new CommandAutopilot();
+	/** Runs the enemy's side of a command game. */
+	private readonly enemyCommander = new CommandAutopilot('enemy');
 	/** Command mode: the strike waiting for a spot, and where the cursor meets the battlefield. */
 	private aiming: CommandId | null = null;
 	private aimX = Number.NaN;
@@ -329,7 +339,8 @@ export class Game {
 		this.focus.reward(0.04);
 		this.comboTimer = 3;
 		this.bestCombo = Math.max(this.bestCombo, this.combo);
-		if (name === 'Interceptor' || name === 'Gunship') this.audio.radio(['splash']);
+		if (name === 'Interceptor' || name === 'Gunship' || name === 'Attack jet')
+			this.audio.radio(['splash']);
 		if (this.combo === 6) this.audio.radio(['streak']);
 		const mult = this.multiplier();
 		const pts = score * mult;
@@ -530,7 +541,10 @@ export class Game {
 		// Training has no war in it: just the lessons' targets.
 		if (this.mode !== 'tutorial') w.war.start(w, { hqHp: HQ_HP, auto: !command }, seed);
 		if (command) {
+			// The enemy commander buys their whole army, as we buy ours: no waves.
 			w.command.start();
+			w.enemyCommand.start();
+			w.wave = 1;
 			this.aimX = Number.NaN;
 			this.viewX = WORLD.baseMaxX + 420;
 			this.viewZoom = VIEW_ZOOM;
@@ -543,7 +557,7 @@ export class Game {
 		else {
 			const brief = command ? COMMAND_BRIEF : BRIEF;
 			this.cb.message({ id: this.msgId++, text: brief.text, sub: brief.sub, tone: 'info' });
-			this.waves.begin(w, 1);
+			if (!command) this.waves.begin(w, 1);
 		}
 		void this.audio.unlock();
 	}
@@ -885,7 +899,7 @@ export class Game {
 			this.viewX += ci.pan * span * (ci.fast ? 2.4 : 1.2) * raw;
 			if (ci.front) this.viewX = w.command.front(w);
 		}
-		this.viewX = clamp(this.viewX, WORLD.arenaMinX + 150, WORLD.hqMaxX + 60);
+		this.viewX = clamp(this.viewX, WORLD.arenaMinX + 150, WORLD.enemyBaseMaxX + 30);
 		const dist = lerp(VIEW_NEAR, VIEW_FAR, this.viewZoom);
 		cam.x = snap ? this.viewX : damp(cam.x, this.viewX, 7, raw);
 		cam.dist = snap ? dist : damp(cam.dist, dist, 6, raw);
@@ -921,7 +935,12 @@ export class Game {
 			armyMax: ARMY_LIMIT,
 			air: c.airborne(w),
 			airMax: AIR_LIMIT,
-			queued: c.queue.length
+			queued: c.queue.length,
+			enemy: {
+				funds: Math.floor(w.enemyCommand.funds),
+				army: enemyArmy(w),
+				air: w.enemyCommand.airborne(w)
+			}
 		};
 	}
 
@@ -990,7 +1009,10 @@ export class Game {
 				if (p.ammo[id] < 1 && id !== 'thunder' && id !== 'nuke') p.ammo[id] = p.capacity(id);
 		}
 		if (this.phase === 'playing') {
-			if (this.autoplay && this.mode === 'command') this.commandAuto.update(w, dt);
+			if (this.mode === 'command') {
+				if (this.autoplay) this.commandAuto.update(w, dt);
+				this.enemyCommander.update(w, dt);
+			}
 			this.waves.update(w, dt);
 			this.rules(dt);
 		}
@@ -1326,8 +1348,27 @@ export class Game {
 			threats: visible ? this.threatMarkers() : [],
 			pilots: visible && this.coop ? this.pilotTags() : [],
 			allies: visible ? this.allyMarkers() : [],
-			foes: visible && this.mode === 'command' ? this.foeMarkers() : []
+			foes: visible && this.mode === 'command' ? this.foeMarkers() : [],
+			places: visible && this.mode === 'command' ? this.placeTags() : []
 		};
+	}
+
+	/** Name boards over both airfields and the enemy HQ, wherever they are in shot. */
+	private placeTags(): PlaceTag[] {
+		const w = this.world;
+		const hq = w.war.hq;
+		const out: PlaceTag[] = [];
+		const add = (x: number, z: number, up: number, label: string, enemy: boolean): void => {
+			const s = w.camera.project(x, w.terrain.heightAtXZ(x, z) + up, z, this.cssW, this.cssH);
+			if (!s || s[0] < -60 || s[0] > this.cssW + 60 || s[1] < 0 || s[1] > this.cssH) return;
+			out.push({ x: s[0], y: s[1], label, enemy });
+		};
+		add(307.5, -34, 24, 'OUR AIRFIELD', false);
+		if (w.war.active) {
+			add((hq.x0 + hq.x1) / 2, -26, 26, hq.destroyed ? 'ENEMY HQ · DOWN' : 'ENEMY HQ', true);
+			add(WORLD.enemyBaseMaxX + WORLD.baseMinX - 307.5, -27, 24, 'ENEMY AIRFIELD', true);
+		}
+		return out;
 	}
 
 	/** A red tick over each enemy unit in shot (command mode, where they are small). */
@@ -1477,7 +1518,12 @@ export class Game {
 			multiplier: this.multiplier(),
 			comboTime: Math.max(0, this.comboTimer / 3),
 			wave: this.waves.wave,
-			waveLabel: this.mode === 'tutorial' ? 'TRAINING' : this.waves.label,
+			waveLabel:
+				this.mode === 'tutorial'
+					? 'TRAINING'
+					: this.mode === 'command'
+						? 'COMMAND'
+						: this.waves.label,
 			waveState: this.waves.state,
 			mode: this.mode,
 			mission: this.mode !== 'tutorial' ? 'Objectives' : '',

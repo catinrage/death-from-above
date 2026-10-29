@@ -145,8 +145,13 @@ export class Props {
 		return p;
 	}
 
+	/** On our airfield, or in the enemy's compound (their HQ and airfield). */
 	private inBase(x: number, z: number): boolean {
-		return x > WORLD.baseMinX - 40 && x < WORLD.baseMaxX + 30 && z > -80 && z < 34;
+		if (z <= -80 || z >= 34) return false;
+		return (
+			(x > WORLD.baseMinX - 40 && x < WORLD.baseMaxX + 30) ||
+			(x > WORLD.hqMinX - 30 && x < WORLD.enemyBaseMaxX + 40)
+		);
 	}
 
 	private forests(rng: Rng, noise: Noise): void {
@@ -214,7 +219,7 @@ export class Props {
 	}
 
 	private villages(rng: Rng): void {
-		for (const vx of [800, 1500, 2200, 3350, 4150, -500]) {
+		for (const vx of [800, 1500, 2200, 3350, 4820, -500]) {
 			const zone = NO_FIRE_ZONES.find((z) => z.x === vx);
 			const n = zone ? rng.int(5, 7) : rng.int(3, 6);
 			for (let i = 0; i < n; i++) {
@@ -302,11 +307,13 @@ export class Props {
 
 	private roadside(rng: Rng): void {
 		for (let x = WORLD.baseMaxX + 60; x < WORLD.terrainMaxX; x += 46 + rng.range(-4, 4)) {
+			if (this.inBase(x, -7.5)) continue;
 			const p = this.add(this.near, 'pole', 'pole', x, -7.5, 1, rng);
 			p.yaw = rng.range(-0.08, 0.08);
 		}
 		for (let x = 2000; x < 3700; x += rng.range(60, 140)) {
 			const z = rng.pick([-6.5, 6.5]);
+			if (this.inBase(x, z)) continue;
 			const p = this.add(
 				this.near,
 				rng.chance(0.5) ? 'tankTrap' : 'sandbagWall',

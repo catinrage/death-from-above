@@ -16,6 +16,16 @@ export interface TargetingView {
 	allies: AllyMarker[];
 	/** Command mode: a red tick over each enemy unit in shot, since the view sits so far out. */
 	foes: AllyMarker[];
+	/** Command mode: name boards over both airfields and the enemy HQ. */
+	places: PlaceTag[];
+}
+
+export interface PlaceTag {
+	x: number;
+	y: number;
+	label: string;
+	/** Theirs (red) or ours (blue). */
+	enemy: boolean;
 }
 
 export interface AllyMarker {
@@ -57,6 +67,7 @@ const PILOT_SLOTS = 2;
 /** Enough for a full army plus a paratroop drop. */
 export const ALLY_SLOTS = 40;
 export const FOE_SLOTS = 60;
+const PLACE_SLOTS = 3;
 
 /** DOM overlay for the aiming reticle, the target under it and painted locks. */
 export class TargetingLayer {
@@ -68,11 +79,13 @@ export class TargetingLayer {
 	private readonly pilots: HTMLDivElement[] = [];
 	private readonly allies: HTMLDivElement[] = [];
 	private readonly foes: HTMLDivElement[] = [];
+	private readonly places: HTMLDivElement[] = [];
 
 	constructor(private readonly root: HTMLElement) {
 		// First, so the reticle and lock boxes draw over them.
 		for (let i = 0; i < ALLY_SLOTS; i++) this.allies.push(this.el('tl-ally', ''));
 		for (let i = 0; i < FOE_SLOTS; i++) this.foes.push(this.el('tl-foe', ''));
+		for (let i = 0; i < PLACE_SLOTS; i++) this.places.push(this.el('tl-place', ''));
 		this.reticle = this.el(
 			'tl-reticle',
 			'<i class="ring"></i><i class="ticks"></i><i class="dot"></i>'
@@ -173,6 +186,17 @@ export class TargetingLayer {
 				continue;
 			}
 			this.place(el, f.x, f.y);
+		}
+		for (let i = 0; i < PLACE_SLOTS; i++) {
+			const el = this.places[i];
+			const t = v.places[i];
+			if (!t) {
+				el.style.display = 'none';
+				continue;
+			}
+			this.place(el, t.x, t.y);
+			el.classList.toggle('enemy', t.enemy);
+			if (el.textContent !== t.label) el.textContent = t.label;
 		}
 	}
 }

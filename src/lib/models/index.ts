@@ -104,6 +104,9 @@ const BUILDERS = {
 	civArm: [inf.civilianArm, true],
 
 	bunker: [st.bunker, true],
+	gunPit: [st.gunPit, true],
+	launchPad: [st.launchPad, true],
+	missileSilo: [st.missileSilo, true],
 	flakBase: [st.flakBase, true],
 	flakMount: [st.flakMount, true],
 	flakBarrel: [st.flakBarrel, true],

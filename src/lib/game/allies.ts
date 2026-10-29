@@ -412,8 +412,12 @@ export class Allies {
 							'warn'
 						);
 					}
-				} else if (u.def.category !== 'infantry')
-					w.events.message('', `${u.def.name} destroyed`, 'warn');
+				} else {
+					// The enemy commander is paid for our losses as ours is for theirs.
+					w.enemyCommand.reward(UNITS[u.def.kind].score);
+					if (u.def.category !== 'infantry')
+						w.events.message('', `${u.def.name} destroyed`, 'warn');
+				}
 				this.lastHitOurs.delete(u);
 			}
 			if (!u.alive) {

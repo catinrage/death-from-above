@@ -37,6 +37,44 @@ export function bunker(): Float32Array {
 	return b.build();
 }
 
+/** Sandbagged pit for one gun of an airfield's artillery battery. */
+export function gunPit(): Float32Array {
+	const b = new MeshBuilder();
+	sandbagRing(b, 4.2, 18, 2, 0.16);
+	b.cylinder(3.6, 3.6, 0.12, 14, P.concreteDark);
+	for (let i = 0; i < 4; i++) b.box(0.5, 0.5, 0.5, P.armyDark, -2.6 + i * 0.6, 0.25, -2.5);
+	return b.build();
+}
+
+/** Concrete pad and blast wall behind the airfield's cruise missile rack. */
+export function launchPad(): Float32Array {
+	const b = new MeshBuilder();
+	b.box(9, 0.3, 6, P.concrete, 0, 0.15, 0);
+	b.box(0.6, 2.4, 5, P.concreteDark, -4.3, 1.5, 0);
+	b.box(1.6, 1.0, 1.0, P.armyDark, -2.6, 0.8, 0);
+	b.push().translate(-2.6, 1.3, 0).cylinder(0.12, 0.12, 1.2, 6, P.gunMetal).pop();
+	for (const s of [1, -1]) b.box(8, 0.06, 0.18, P.red, 0.2, 0.32, 2.7 * s);
+	return b.build();
+}
+
+/** A missile silo: a concrete collar, its two doors folded open and the warhead's nose showing. */
+export function missileSilo(): Float32Array {
+	const b = new MeshBuilder();
+	b.box(10, 0.3, 10, P.concrete, 0, 0.15, 0);
+	b.cylinder(2.6, 2.4, 0.9, 16, P.concreteDark);
+	b.push().translate(0, 0.86, 0).cylinder(1.8, 1.8, 0.06, 16, P.asphalt).pop();
+	b.push().translate(0, 0.5, 0).cylinder(0.75, 0.0, 1.6, 10, P.armyLight).pop();
+	for (const s of [1, -1]) {
+		b.push()
+			.translate(2.5 * s, 0.9, 0)
+			.rotateZ(-0.35 * s)
+			.box(0.25, 2.6, 4.2, P.armyDark, 0, 1.2, 0)
+			.pop();
+		b.box(9.6, 0.06, 0.2, P.red, 0, 0.32, 4.6 * s);
+	}
+	return b.build();
+}
+
 export function flakBase(): Float32Array {
 	const b = new MeshBuilder();
 	sandbagRing(b, 3.5, 16, 2);

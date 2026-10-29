@@ -139,6 +139,8 @@ export class World {
 	readonly war = new War();
 	/** The commander's war chest, orders and strikes (inactive unless commanding). */
 	readonly command = new Command();
+	/** The enemy commander: the same chest and orders, run from their airfield (command mode only). */
+	readonly enemyCommand = new Command('enemy');
 	/** Chemical clouds. */
 	readonly gas = new GasClouds();
 	/** Wind, rain, snow and lightning. */
@@ -311,6 +313,7 @@ export class World {
 		this.base.reset();
 		this.war.stop();
 		this.command.stop();
+		this.enemyCommand.stop();
 		this.player = null;
 		this.wingman = null;
 		this.escorts.length = 0;

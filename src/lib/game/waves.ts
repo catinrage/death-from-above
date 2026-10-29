@@ -11,7 +11,7 @@ import type { World } from './world';
 export interface SpawnOrder {
 	t: number;
 	/** A road unit, an aircraft, or a whole armoured train on the railway. */
-	kind: UnitKind | AirKind | 'train';
+	kind: UnitKind | WaveAir | 'train';
 	z: number;
 }
 
@@ -69,8 +69,10 @@ const SPENT = 0.3;
 /** ...or this many seconds after its last unit set off. */
 const SPENT_AFTER = 50;
 
-const AIR: AirKind[] = ['fighter', 'heli'];
-const isAir = (k: SpawnOrder['kind']): k is AirKind => (AIR as string[]).includes(k);
+/** Waves bring interceptors and gunships; attack jets only come from the enemy commander. */
+type WaveAir = Exclude<AirKind, 'striker'>;
+const AIR: WaveAir[] = ['fighter', 'heli'];
+const isAir = (k: SpawnOrder['kind']): k is WaveAir => (AIR as string[]).includes(k);
 
 /** Armoured trains a wave sends by default: none early on, then more and more often one. */
 function stockTrains(wave: number, seed: number): number {

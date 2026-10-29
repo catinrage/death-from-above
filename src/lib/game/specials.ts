@@ -9,6 +9,7 @@ import {
 	TESLA_REACH,
 	type BlastSpec
 } from './defs-bombs';
+import { UNITS } from './defs-units';
 import type { Player } from './player';
 import { trackUnit } from './targeting';
 import { predictImpact } from './weapons';
@@ -155,10 +156,30 @@ export function seek(w: World, x: number, dir: number, nearPoint: boolean): Trac
 	return best ? trackUnit(best) : null;
 }
 
+/** The most valuable of our units near x, for an enemy cruise missile. */
+export function seekAlly(w: World, x: number): Trackable | null {
+	let best: Unit | null = null;
+	let bestScore = 0;
+	for (const u of w.allies.list) {
+		if (!u.alive) continue;
+		const d = Math.abs(u.x - x);
+		if (d > 160) continue;
+		const score = Math.max(10, UNITS[u.def.kind].score) / (1 + d / 60);
+		if (score > bestScore) {
+			bestScore = score;
+			best = u;
+		}
+	}
+	return best ? trackUnit(best) : null;
+}
+
 function cruise(w: World, s: Strike, dt: number): void {
 	s.age += dt;
 	// Target destroyed on the way in: the seeker hunts for the next one nearby.
-	if (!s.target.alive) s.target = seek(w, s.target.x, 1, true) ?? { ...s.target, alive: true };
+	if (!s.target.alive) {
+		const next = s.owner === 'enemy' ? seekAlly(w, s.target.x) : seek(w, s.target.x, 1, true);
+		s.target = next ?? { ...s.target, alive: true };
+	}
 	const t = s.target;
 	const dx = t.x - s.x;
 	const dir = Math.sign(dx) || 1;
@@ -177,6 +198,8 @@ function cruise(w: World, s: Strike, dt: number): void {
 	s.vy = Math.sin(s.angle) * speed;
 	s.x += s.vx * dt;
 	s.y += s.vy * dt;
+	// Launched from a pad off the road, it settles onto the battle line.
+	s.z += (t.z - s.z) * Math.min(1, dt * 1.2);
 	s.trail += dt;
 	if (s.trail > 0.02) {
 		s.trail = 0;
@@ -216,6 +239,7 @@ function ballistic(w: World, s: Strike, dt: number): void {
 		if (s.delay <= 0) {
 			s.x = t.x - 120;
 			s.y = t.y + 900;
+			s.z = t.z;
 			const d = Math.hypot(t.x - s.x, t.y - s.y);
 			s.vx = ((t.x - s.x) / d) * BALLISTIC_SPEED;
 			s.vy = ((t.y - s.y) / d) * BALLISTIC_SPEED;

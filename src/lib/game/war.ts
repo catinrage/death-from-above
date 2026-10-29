@@ -2,6 +2,7 @@ import { clamp } from '../engine/math';
 import { pickWeighted, Rng, fx as rnd } from '../engine/rng';
 import type { MeshName } from '../models';
 import type { AllyKind } from './allies';
+import { EnemyAirfield } from './base';
 import { WORLD } from './constants';
 import { UNITS } from './defs-units';
 import type { FireSource } from './fires';
@@ -238,6 +239,8 @@ export class War {
 	/** Off in training, the title demo and tests that don't start one. */
 	active = false;
 	readonly hq = new EnemyHQ();
+	/** Their airfield behind the HQ, where their jets and strikes come from. */
+	readonly airfield = new EnemyAirfield();
 	checkpoints: Checkpoint[] = [];
 	/** HQs destroyed this game. */
 	hqsDestroyed = 0;
@@ -262,6 +265,7 @@ export class War {
 		this.taken = this.lost = this.groups = 0;
 		this.hinted = false;
 		this.hq.reset(setup.hqHp ?? HQ_HP);
+		this.airfield.reset();
 		const r = w.river;
 		const layout = checkpointLayout(r ? r.x0 : null, r?.bridgeHalf);
 		this.checkpoints = layout.map((c, i) => {
@@ -283,6 +287,7 @@ export class War {
 		this.active = false;
 		this.checkpoints = [];
 		this.hq.reset(this.hq.maxHp);
+		this.airfield.reset();
 	}
 
 	held(side: Side): number {
@@ -367,6 +372,7 @@ export class War {
 		if (!this.active) return;
 		this.capture(w, dt);
 		this.hq.update(w, dt);
+		this.airfield.update(w, dt);
 		if (this.hq.destroyed && this.hqsDestroyed === 0) this.hqFell(w);
 		this.reinforce(w, dt);
 	}
@@ -374,6 +380,7 @@ export class War {
 	/** The HQ just fell: count it and tell everyone. */
 	private hqFell(w: World): void {
 		this.hqsDestroyed++;
+		this.airfield.burn(w);
 		w.events.message('ENEMY HQ DESTROYED', 'The sector is ours', 'good');
 	}
 
