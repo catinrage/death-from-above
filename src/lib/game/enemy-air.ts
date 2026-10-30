@@ -7,6 +7,7 @@ import { BOMBS, type BlastSpec } from './defs-bombs';
 import { FlareDrill, launchMissile, spawnBullet } from './projectiles';
 import { FlatTurn } from './flat-turn';
 import { spread } from './spacing';
+import { agility, cadence, credit, power, toughness, type Veteran } from './veterancy';
 import { bomberAltitude, TACTICS } from './wing-profile';
 import { dropBomb, predictImpact } from './weapons';
 import { levelOff, pullUpRoom, safeTurn } from './terrain-floor';
@@ -70,6 +71,10 @@ export class AirUnit implements Trackable {
 	x: number;
 	y: number;
 	z = 0;
+	/** Their side, and the pilot's experience and rank (veterancy). */
+	readonly side = 'enemy' as const;
+	xp = 0;
+	rank = 0;
 	/** Turn away from the road, only during a heavy bomber's flat turn. */
 	yaw = 0;
 	private readonly flat = new FlatTurn();
@@ -138,11 +143,12 @@ export class AirUnit implements Trackable {
 		this.roll = Math.PI;
 	}
 
-	damage(w: World, amount: number, by: Owner): void {
+	damage(w: World, amount: number, by: Owner, src?: Veteran): void {
 		if (!this.alive || this.dying) return;
-		this.hp -= amount;
+		this.hp -= amount * toughness(this);
 		this.flash = 1;
 		if (this.hp > 0) return;
+		credit(w, src, this);
 		this.dying = true;
 		this.spinRate = rnd.sign() * rnd.range(2, 4);
 		w.fx.explosion(this.x, this.y, this.z, 0.6, false);
@@ -192,7 +198,8 @@ export class AirUnit implements Trackable {
 		} else {
 			const low = agl < (2 * speed) / TURN + floor;
 			const turn = safeTurn(this.angle, target, low);
-			this.angle = wrapAngle(this.angle + clamp(turn, -TURN * dt, TURN * dt));
+			const rate = TURN * agility(this);
+			this.angle = wrapAngle(this.angle + clamp(turn, -rate * dt, rate * dt));
 			this.vx = Math.cos(this.angle) * speed;
 			this.vy = Math.sin(this.angle) * speed;
 			this.x += this.vx * dt;
@@ -234,7 +241,7 @@ export class AirUnit implements Trackable {
 		const err = Math.abs(angleDiff(this.angle, aim));
 		if (err < 0.13 && dist < 430) this.guns(w);
 		if (err < 0.45 && dist > 260 && dist < 720 * w.weather.irScale() && this.missileCd <= 0) {
-			this.missileCd = rnd.range(11, 16);
+			this.missileCd = rnd.range(11, 16) * cadence(this);
 			launchMissile(w, {
 				kind: 'air',
 				x: this.x,
@@ -248,7 +255,8 @@ export class AirUnit implements Trackable {
 				target: p,
 				burn: 2.6,
 				life: 6,
-				damage: 30,
+				damage: 30 * power(this),
+				src: this,
 				owner: 'enemy',
 				seeker: 'heat'
 			});
@@ -337,7 +345,9 @@ export class AirUnit implements Trackable {
 			const along = (hit.x - aimX) * Math.sign(this.vx || 1);
 			if (along > -BOMB_STICK && along < BOMB_STICK) {
 				this.bombCd = BOMB_GAP;
-				dropBomb(w, BOMBS.gp, this.x, this.y - 2, 0, this.vx, this.vy, this.angle).owner = 'enemy';
+				const bomb = dropBomb(w, BOMBS.gp, this.x, this.y - 2, 0, this.vx, this.vy, this.angle);
+				bomb.owner = 'enemy';
+				bomb.src = this;
 			}
 		}
 		return this.runDir > 0 ? pitch : Math.PI - pitch;
@@ -362,7 +372,9 @@ export class AirUnit implements Trackable {
 				damage: 12,
 				radius: 6,
 				owner: 'enemy',
-				trail: 0
+				trail: 0,
+				src: this,
+				power: power(this)
 			});
 		}
 		w.sound.play('missileLaunch', this.x, this.y, 0.5, 1.5);
@@ -374,7 +386,7 @@ export class AirUnit implements Trackable {
 			this.burst = 8;
 		}
 		this.burst--;
-		this.gunCd = this.burst > 0 ? 0.07 : rnd.range(0.8, 1.4);
+		this.gunCd = (this.burst > 0 ? 0.07 : rnd.range(0.8, 1.4)) * cadence(this);
 		const a = this.angle + rnd.gauss(0.03);
 		const mx = this.x + Math.cos(this.angle) * 5,
 			my = this.y + Math.sin(this.angle) * 5;
@@ -385,13 +397,14 @@ export class AirUnit implements Trackable {
 			vx: Math.cos(a) * 640 + this.vx,
 			vy: Math.sin(a) * 640 + this.vy,
 			life: 1.2,
-			damage: 3.2,
+			damage: 3.2 * power(this),
 			pierce: 0,
 			owner: 'enemy',
 			tracer: true,
 			color: [12, 3, 1.5],
 			size: 0.2,
-			explosive: 0
+			explosive: 0,
+			src: this
 		});
 		w.fx.muzzleFlash(mx, my, 0, Math.cos(a), Math.sin(a), 0.9, [12, 5, 2]);
 		w.sound.play('mg', mx, my, 0.4, 1.3);
@@ -424,7 +437,7 @@ export class AirUnit implements Trackable {
 		this.y += this.vy * dt;
 		this.tilt = damp(this.tilt, this.vx * 0.012, 2, dt);
 		if (p && near < 380 && this.gunCd <= 0) {
-			this.gunCd = this.burst > 0 ? 0.09 : rnd.range(1.4, 2.2);
+			this.gunCd = (this.burst > 0 ? 0.09 : rnd.range(1.4, 2.2)) * cadence(this);
 			this.burst = this.burst > 0 ? this.burst - 1 : 6;
 			const t = near / 520;
 			const a = Math.atan2(p.y + p.vy * t - this.y, p.x + p.vx * t - this.x) + rnd.gauss(0.04);
@@ -435,13 +448,14 @@ export class AirUnit implements Trackable {
 				vx: Math.cos(a) * 520,
 				vy: Math.sin(a) * 520,
 				life: 1.4,
-				damage: 2.4,
+				damage: 2.4 * power(this),
 				pierce: 0,
 				owner: 'enemy',
 				tracer: true,
 				color: [12, 4, 1.4],
 				size: 0.18,
-				explosive: 0
+				explosive: 0,
+				src: this
 			});
 			w.fx.muzzleFlash(this.x + 2.8, this.y + 1.2, 0, Math.cos(a), Math.sin(a), 0.8, [12, 5, 2]);
 			w.sound.play('mg', this.x, this.y, 0.4, 1.1);
@@ -465,7 +479,9 @@ export class AirUnit implements Trackable {
 				damage: 12,
 				radius: 6,
 				owner: 'enemy',
-				trail: 0
+				trail: 0,
+				src: this,
+				power: power(this)
 			});
 			w.sound.play('missileLaunch', this.x, this.y, 0.5, 1.6);
 		}

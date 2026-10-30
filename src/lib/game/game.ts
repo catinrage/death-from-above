@@ -1499,21 +1499,27 @@ export class Game {
 			z: number,
 			foe: boolean,
 			small: boolean,
-			hurt: boolean
+			hurt: boolean,
+			rank = 0
 		): void => {
 			if (out.length >= PLANE_SLOTS) return;
 			const s = w.camera.project(x, y + (small ? 2.5 : 6), z, this.cssW, this.cssH);
 			if (!s || s[0] < -20 || s[0] > this.cssW + 20 || s[1] < -20 || s[1] > this.cssH + 20) return;
-			out.push({ x: s[0], y: s[1] - 2, foe, small, hurt });
+			out.push({ x: s[0], y: s[1] - 2, foe, small, hurt, rank });
 		};
 		const wing = w.wingman;
-		if (wing?.active) add(wing.x, wing.y, wing.z, false, false, wing.hp < wing.profile.hp * 0.35);
+		if (wing?.active)
+			add(wing.x, wing.y, wing.z, false, false, wing.hp < wing.profile.hp * 0.35, wing.rank);
 		for (const e of w.escorts)
-			if (e.active) add(e.x, e.y, e.z, false, false, e.hp < e.profile.hp * 0.35);
+			if (e.active) add(e.x, e.y, e.z, false, false, e.hp < e.profile.hp * 0.35, e.rank);
 		if (this.mode === 'command') {
-			for (const a of w.air) if (a.alive && !a.dying) add(a.x, a.y, a.z, true, false, false);
+			for (const a of w.air)
+				if (a.alive && !a.dying && w.vision.seen('player', a))
+					add(a.x, a.y, a.z, true, false, false, a.rank);
 		}
-		for (const d of w.drones) add(d.x, d.y, d.z, d.side === 'enemy', true, false);
+		for (const d of w.drones)
+			if (d.side === 'player' || w.vision.seen('player', d))
+				add(d.x, d.y, d.z, d.side === 'enemy', true, false);
 		return out;
 	}
 

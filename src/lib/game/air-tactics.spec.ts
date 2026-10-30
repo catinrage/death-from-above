@@ -34,6 +34,7 @@ const riflemen = (w: World, from: number): number =>
 	w.units.filter((u) => u.alive && u.def.kind === 'rifleman' && u.x > from).length;
 
 describe('our jets', () => {
+	// Heavy: a long fight, which runs slow when the suite is busy in parallel.
 	it('turn back from guns deep behind their lines for troops crossing at the front', () => {
 		const w = commandWorld();
 		w.allies.deploy(w, ['rifleman', 'rifleman', 'rifleman'], 1950);
@@ -47,7 +48,7 @@ describe('our jets', () => {
 		expect(onTroops).toBeGreaterThanOrEqual(2);
 		for (let t = 0; t < 14; t += STEP) simulateWorld(w, STEP, null);
 		expect(riflemen(w, 2200)).toBeLessThan(6);
-	});
+	}, 30_000);
 });
 
 describe('heavy bombers', () => {

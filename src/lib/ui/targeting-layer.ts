@@ -39,6 +39,8 @@ export interface PlaneMarker {
 	/** A drone: drawn smaller. */
 	small: boolean;
 	hurt: boolean;
+	/** The pilot's rank, 0..5: that many stars over the diamond. */
+	rank: number;
 }
 
 export interface StrikeLabel {
@@ -117,7 +119,8 @@ export class TargetingLayer {
 		for (let i = 0; i < FOE_SLOTS; i++)
 			this.foes.push(this.el('tl-foe', '<b class="tl-rank"></b>'));
 		for (let i = 0; i < PLACE_SLOTS; i++) this.places.push(this.el('tl-place', ''));
-		for (let i = 0; i < PLANE_SLOTS; i++) this.planes.push(this.el('tl-plane', ''));
+		for (let i = 0; i < PLANE_SLOTS; i++)
+			this.planes.push(this.el('tl-plane', '<b class="tl-rank"></b><i></i>'));
 		for (let i = 0; i < STRIKE_SLOTS; i++) this.strikes.push(this.el('tl-strike', ''));
 		this.reticle = this.el(
 			'tl-reticle',
@@ -250,6 +253,7 @@ export class TargetingLayer {
 			this.place(el, p.x, p.y);
 			const cls = `tl-plane${p.foe ? ' foe' : ''}${p.small ? ' small' : ''}${p.hurt ? ' hurt' : ''}`;
 			if (el.className !== cls) el.className = cls;
+			this.stars(el, p.rank);
 		}
 		for (let i = 0; i < STRIKE_SLOTS; i++) {
 			const el = this.strikes[i];

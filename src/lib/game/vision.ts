@@ -184,7 +184,8 @@ export function sensors(w: World, side: Side): Sensor[] {
 		for (const e of w.escorts) {
 			if (!e.active) continue;
 			const [air, gnd] = aircraftSensor(e.aircraft);
-			out.push({ x: e.x, y: e.y, air, ground: gnd });
+			const k = sight(e);
+			out.push({ x: e.x, y: e.y, air: air * k, ground: gnd * k });
 		}
 		for (const p of w.pilots()) {
 			if (!p.alive) continue;
@@ -195,7 +196,8 @@ export function sensors(w: World, side: Side): Sensor[] {
 		for (const a of w.air) {
 			if (!a.alive || a.dying) continue;
 			const [air, gnd] = aircraftSensor(a.airframe);
-			out.push({ x: a.x, y: a.y, air, ground: gnd });
+			const k = sight(a);
+			out.push({ x: a.x, y: a.y, air: air * k, ground: gnd * k });
 		}
 	}
 	const [air, gnd] = BASE_SENSOR;

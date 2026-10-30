@@ -1,3 +1,4 @@
+import type { Veteran } from './veterancy';
 import type { PointLight } from '../engine/lights';
 import type { MeshName } from '../models';
 
@@ -198,7 +199,7 @@ export interface Unit {
 	/** Veterancy: experience from kills, the rank it has earned (0..5), and the unit that last hit it. */
 	xp?: number;
 	rank?: number;
-	hitBy?: Unit | null;
+	hitBy?: Veteran | null;
 	/** Light carried by searchlights / vehicle headlights. */
 	lamp: PointLight | null;
 	/** Troops already unloaded (APCs) or timer scratch for other behaviours. */

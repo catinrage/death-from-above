@@ -19,6 +19,7 @@ import {
 import type { Designation, Owner, Unit } from './types';
 import { cryoBlast, empPulse, nuclearBlast, teslaStrike } from './specials';
 import type { World } from './world';
+import type { Veteran } from './veterancy';
 
 export interface Bomb {
 	id: number;
@@ -32,6 +33,8 @@ export interface Bomb {
 	spin: number;
 	age: number;
 	owner: Owner;
+	/** The jet that dropped it, credited with what it kills (veterancy). */
+	src?: Veteran;
 	target: Unit | null;
 	/** Guided bombs: ground x to glide to when there is no unit to track (NaN = none). */
 	aimX: number;
@@ -367,7 +370,7 @@ function updateMine(w: World, b: Bomb, dt: number): void {
 		if (!u.alive || u.def.isStatic || !inBattlePlane(u) || u.y - b.y > 3) continue;
 		if (Math.abs(u.x - b.x) > u.def.half[0] + MINE_TRIP) continue;
 		b.alive = false;
-		explode(w, b.x, b.y, b.z, b.def.blast, b.owner);
+		explode(w, b.x, b.y, b.z, b.def.blast, b.owner, { src: b.src });
 		w.fx.dirtFountain(b.x, b.y, b.z, 0.8);
 		return;
 	}
@@ -379,14 +382,14 @@ function bounce(w: World, b: Bomb, g: number): void {
 	b.y = g + 0.4;
 	b.vy = clamp(Math.abs(b.vy) * 0.4, 8, 16);
 	b.vx *= 0.82;
-	explode(w, b.x, g, b.z, SKIP_POP, b.owner);
+	explode(w, b.x, g, b.z, SKIP_POP, b.owner, { src: b.src });
 }
 
 /** Frag airburst: shrapnel raining down over a wide circle, no crater. */
 function fragBurst(w: World, b: Bomb): void {
 	w.fx.airburst(b.x, b.y, b.z, 1.4);
 	w.sound.play('flakBurst', b.x, b.y, 1.2);
-	explode(w, b.x, b.y, b.z, b.def.blast, b.owner, { visual: 'none' });
+	explode(w, b.x, b.y, b.z, b.def.blast, b.owner, { visual: 'none', src: b.src });
 	const g = w.ground(b.x);
 	for (let k = 0; k < 14; k++) w.fx.impact(b.x + rnd.range(-22, 22), g, b.z, 'ground');
 }
@@ -440,22 +443,22 @@ function impact(w: World, b: Bomb, y: number): void {
 	if (id === 'napalm') return napalm(w, b, y);
 	if (id === 'cryo') return cryoBlast(w, b.x, y, b.z, b.owner);
 	if (id === 'tesla') {
-		explode(w, b.x, y, b.z, b.def.blast, b.owner);
+		explode(w, b.x, y, b.z, b.def.blast, b.owner, { src: b.src });
 		teslaStrike(w, b.x, y, b.z, b.owner);
 		return;
 	}
 	if (id === 'chemical') {
-		explode(w, b.x, y, b.z, b.def.blast, b.owner);
+		explode(w, b.x, y, b.z, b.def.blast, b.owner, { src: b.src });
 		w.gas.release(b.x, y, b.z, 24, 15);
 		return;
 	}
 	if (id === 'thunder') {
 		w.fx.megaBlast(b.x, y, b.z);
-		explode(w, b.x, y, b.z, b.def.blast, b.owner, { visual: 'none' });
+		explode(w, b.x, y, b.z, b.def.blast, b.owner, { visual: 'none', src: b.src });
 		w.events.slowmo(0.25, 1.1);
 		return;
 	}
-	explode(w, b.x, y, b.z, b.def.blast, b.owner);
+	explode(w, b.x, y, b.z, b.def.blast, b.owner, { src: b.src });
 }
 
 /** The bunker buster burrows, then lifts the earth. */
@@ -465,7 +468,7 @@ function updateDig(w: World, b: Bomb, dt: number): void {
 	if (b.dig < 0.22) return;
 	b.alive = false;
 	const g = w.ground(b.x);
-	explode(w, b.x, g, b.z, b.def.blast, b.owner, { visual: 'none' });
+	explode(w, b.x, g, b.z, b.def.blast, b.owner, { visual: 'none', src: b.src });
 	w.fx.explosion(b.x, g, b.z, 1.2, true);
 	w.fx.dirtFountain(b.x, g, b.z, 3);
 	w.fx.dustRing(b.x, g, b.z, 2.2);
@@ -477,7 +480,7 @@ function napalm(w: World, b: Bomb, y: number): void {
 	const speed = Math.abs(b.vx);
 	w.fx.napalmSplash(b.x, y, b.z, dir, speed);
 	w.sound.play('napalm', b.x, y, 1.1);
-	explode(w, b.x, y, b.z, b.def.blast, b.owner, { visual: 'none' });
+	explode(w, b.x, y, b.z, b.def.blast, b.owner, { visual: 'none', src: b.src });
 	const length = clamp(24 + speed * 0.45, 26, 70);
 	const segments = 6;
 	for (let k = 0; k < segments; k++) {

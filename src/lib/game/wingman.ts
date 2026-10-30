@@ -9,6 +9,7 @@ import { FlareDrill, launchMissile, spawnBullet } from './projectiles';
 import { trackUnit } from './targeting';
 import { FlatTurn } from './flat-turn';
 import { spread } from './spacing';
+import { agility, cadence, credit, power, toughness, type Veteran } from './veterancy';
 import { levelOff, pullUpRoom, safeTurn } from './terrain-floor';
 import type { AircraftId, BombId, Trackable, Unit, UnitKind } from './types';
 import { dropBomb, predictImpact } from './weapons';
@@ -28,7 +29,8 @@ export interface AirAlly extends Trackable {
 	readonly landed: boolean;
 	/** Size of the circle enemy fire has to cross to hit it. */
 	readonly radius: number;
-	hit(w: World, amount: number): void;
+	/** `src`: the unit or jet that fired, credited with the kill (veterancy). */
+	hit(w: World, amount: number, src?: Veteran): void;
 }
 
 /** Who the wingman is fighting: one ground unit or one aircraft. */
@@ -183,6 +185,10 @@ export class Wingman implements AirAlly {
 	readonly profile: WingProfile;
 	/** Heading in the ground plane for aircraft that circle (gunship, drone); 0 flies along the road. */
 	yaw = 0;
+	/** Our side, and the pilot's experience and rank (veterancy). */
+	readonly side = 'player' as const;
+	xp = 0;
+	rank = 0;
 	/** Bombers swing round flat and level instead of looping over. */
 	private readonly flat = new FlatTurn();
 	/** Propeller and rotor angle. */
@@ -373,11 +379,12 @@ export class Wingman implements AirAlly {
 		return best;
 	}
 
-	hit(w: World, amount: number): void {
+	hit(w: World, amount: number, src?: Veteran): void {
 		if (!this.active || w.godMode) return;
-		this.hp -= amount;
+		this.hp -= amount * toughness(this);
 		this.flash = 1;
 		if (this.hp > 0) return;
+		credit(w, src, this);
 		this.dying = true;
 		this.spinRate = rnd.sign() * rnd.range(2, 4);
 		w.fx.explosion(this.x, this.y, this.z, 0.6, false);
@@ -868,7 +875,7 @@ export class Wingman implements AirAlly {
 		if (w.allies.list.some((a) => a.alive && Math.abs(a.x - hit.x) < def.blast.radius + 6)) return;
 		this.rack[id] = (this.rack[id] ?? 0) - 1;
 		this.bombCd = bomber ? 0.14 : 0.6;
-		dropBomb(w, def, this.x, this.y - 1.5, 0, vx, vy, this.angle);
+		dropBomb(w, def, this.x, this.y - 1.5, 0, vx, vy, this.angle).src = this;
 	}
 
 	private pickBomb(u: Unit): BombId | null {
@@ -908,7 +915,9 @@ export class Wingman implements AirAlly {
 			damage: 0,
 			radius: 0,
 			owner: 'player',
-			trail: 0
+			trail: 0,
+			src: this,
+			power: power(this)
 		});
 		w.fx.muzzleFlash(this.x + ca * 2, this.y - 0.8, this.z, ca, sa, 1, [12, 7, 3]);
 		w.sound.play('missileLaunch', this.x, this.y, 0.3);
@@ -940,11 +949,12 @@ export class Wingman implements AirAlly {
 			vy: Math.sin(a) * HEAVY_SHELL.speed,
 			age: 0,
 			fuse: Infinity,
-			damage: HEAVY_SHELL.damage,
+			damage: HEAVY_SHELL.damage * power(this),
 			radius: HEAVY_SHELL.radius,
 			owner: 'player',
 			trail: 0,
-			aimX: tx
+			aimX: tx,
+			src: this
 		});
 		w.fx.muzzleFlash(this.x, this.y - 1, this.z, Math.cos(a), Math.sin(a), 3, [12, 6, 2]);
 		w.sound.play('tankGun', this.x, this.y, 0.5);
@@ -972,7 +982,7 @@ export class Wingman implements AirAlly {
 		let target = desired;
 		const ground = w.surface.clearance(this.x);
 		const right = Math.cos(this.angle) >= 0;
-		const rate = this.profile.turn * (this.speed < 80 ? 1.2 : 1);
+		const rate = this.profile.turn * (this.speed < 80 ? 1.2 : 1) * agility(this);
 		// Pull up early enough for this airframe to come out of its dive: bombers turn slowly.
 		const room = pullUpRoom(this.angle, this.speed, rate);
 		const agl = this.y - ground;
@@ -1022,7 +1032,7 @@ export class Wingman implements AirAlly {
 		const heavy = p.explosive > 0;
 		if (this.burst <= 0) this.burst = heavy ? 4 : 10;
 		this.burst--;
-		this.gunCd = this.burst > 0 ? (heavy ? 0.22 : 0.06) : rnd.range(0.5, 0.9);
+		this.gunCd = (this.burst > 0 ? (heavy ? 0.22 : 0.06) : rnd.range(0.5, 0.9)) * cadence(this);
 		const a = aim + rnd.gauss(heavy ? 0.012 : 0.02);
 		const mx = this.x + Math.cos(aim) * 5,
 			my = this.y + Math.sin(aim) * 5;
@@ -1033,13 +1043,14 @@ export class Wingman implements AirAlly {
 			vx: Math.cos(a) * 700 + this.vx,
 			vy: Math.sin(a) * 700 + this.vy,
 			life: 1.1,
-			damage: p.gun,
+			damage: p.gun * power(this),
 			pierce: 0.3,
 			owner: 'player',
 			tracer: true,
 			color: [3, 9, 12],
 			size: heavy ? 0.32 : 0.2,
-			explosive: p.explosive
+			explosive: p.explosive,
+			src: this
 		});
 		w.fx.muzzleFlash(mx, my, this.z, Math.cos(a), Math.sin(a), heavy ? 1.6 : 0.9, [8, 10, 12]);
 		w.sound.play(heavy ? 'aaGun' : 'gun', mx, my, 0.3, heavy ? 0.8 : 1.15);
@@ -1047,7 +1058,7 @@ export class Wingman implements AirAlly {
 
 	private fireMissile(w: World, t: Unit | AirUnit, kind: 'air' | 'agm'): void {
 		this.missiles--;
-		this.missileCd = kind === 'air' ? rnd.range(6, 9) : rnd.range(3, 4.5);
+		this.missileCd = (kind === 'air' ? rnd.range(6, 9) : rnd.range(3, 4.5)) * cadence(this);
 		const track = kind === 'agm' ? this.trackOf(t as Unit) : (t as AirUnit);
 		launchMissile(w, {
 			kind,
@@ -1062,8 +1073,9 @@ export class Wingman implements AirAlly {
 			target: track,
 			burn: 3,
 			life: 7,
-			damage: kind === 'air' ? WING_AAM_DAMAGE : 0,
+			damage: kind === 'air' ? WING_AAM_DAMAGE * power(this) : 0,
 			owner: 'player',
+			src: this,
 			seeker: kind === 'air' ? 'heat' : 'radar',
 			blast: kind === 'agm' ? AGM_BLAST : undefined
 		});
@@ -1095,6 +1107,9 @@ export class Wingman implements AirAlly {
 	private relaunch(w: World): void {
 		this.rejoinPending = false;
 		this.rejoins++;
+		// A fresh pilot.
+		this.xp = 0;
+		this.rank = 0;
 		this.x = WORLD.runwayMaxX;
 		this.y = w.ground(this.x) + 30;
 		this.angle = 0.22;

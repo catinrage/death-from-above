@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { damageUnit } from './combat';
 import { simulateWorld } from './simulate';
 import { testWorld } from './test-world';
-import { cadence, credit, MAX_RANK, nextRankXp, power, toughness } from './veterancy';
+import { AirUnit } from './enemy-air';
+import { agility, cadence, credit, MAX_RANK, nextRankXp, power, toughness } from './veterancy';
+import { Wingman } from './wingman';
+import { wingProfile } from './wing-profile';
 import { HQ_HP } from './war';
 import type { World } from './world';
 
@@ -76,5 +79,62 @@ describe('veterancy', () => {
 		const gunner = w.spawnUnit('mgTeam', 1520, 0, -1);
 		for (let t = 0; t < 60 && (gunner.rank ?? 0) === 0; t += STEP) simulateWorld(w, STEP, null);
 		expect(gunner.rank).toBeGreaterThan(0);
+	});
+});
+
+describe('pilot ranks', () => {
+	function jet(w: World, id: 'f16' | 'su25' | 'b1', x: number, alt = 160): Wingman {
+		const j = new Wingman(x, w.ground(x) + alt, {
+			aircraft: id,
+			callsign: null,
+			profile: wingProfile(id),
+			autoRearm: true
+		});
+		w.escorts.push(j);
+		return j;
+	}
+
+	it('a pilot is promoted for shooting down a jet', () => {
+		const w = battle();
+		const ours = jet(w, 'f16', 1500);
+		const theirs = new AirUnit(w.newId(), 'fighter', 2000, w.ground(2000) + 160, 'su27');
+		expect(credit(w, ours, theirs)).toBe(1);
+		expect(ours.rank).toBe(1);
+		expect(credit(w, theirs, ours)).toBe(1);
+		expect(theirs.rank).toBe(1);
+	});
+
+	it('our fighter earns its rank in a real dogfight', () => {
+		const w = battle();
+		w.player = null;
+		const ours = jet(w, 'f16', 1500);
+		ours.hp = 1e5;
+		for (let i = 0; i < 3; i++) {
+			const bandit = new AirUnit(w.newId(), 'fighter', 2100 + i * 60, w.ground(2100) + 180);
+			bandit.role = 'attack';
+			w.air.push(bandit);
+		}
+		for (let t = 0; t < 90 && (ours.xp ?? 0) === 0; t += STEP) simulateWorld(w, STEP, null);
+		expect(ours.xp).toBeGreaterThan(0);
+	});
+
+	it('an attack jet earns experience from what its bombs and rockets kill', () => {
+		const w = battle();
+		w.player = null;
+		const ours = jet(w, 'su25', 1100);
+		for (let i = 0; i < 6; i++) w.spawnUnit('apc', 1700 + i * 12, 0, -1).stun = 1e4;
+		for (let t = 0; t < 90 && (ours.xp ?? 0) === 0; t += STEP) simulateWorld(w, STEP, null);
+		expect(ours.xp).toBeGreaterThan(0);
+	});
+
+	it('a veteran pilot takes less damage and turns tighter', () => {
+		const w = battle();
+		const green = new AirUnit(w.newId(), 'fighter', 2000, 200);
+		const ace = new AirUnit(w.newId(), 'fighter', 2100, 200);
+		ace.rank = 4;
+		green.damage(w, 20, 'player');
+		ace.damage(w, 20, 'player');
+		expect(ace.hp).toBeGreaterThan(green.hp);
+		expect(agility(ace)).toBeGreaterThan(agility(green));
 	});
 });

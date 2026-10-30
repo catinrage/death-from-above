@@ -2,7 +2,7 @@ import { FROZEN_DAMAGE, type BlastSpec } from './defs-bombs';
 import { killUnit } from './deaths';
 import type { Owner, Unit } from './types';
 import type { World } from './world';
-import { credit, toughness } from './veterancy';
+import { credit, toughness, type Veteran } from './veterancy';
 
 export type DamageCause = 'bullet' | 'blast' | 'fire';
 
@@ -114,8 +114,8 @@ export function damageUnit(
 	by: Owner,
 	fromX: number,
 	cause: DamageCause,
-	/** The ground unit behind it, if any: credited with the kill (veterancy). */
-	src?: Unit
+	/** The unit or jet behind it, if any: credited with the kill (veterancy). */
+	src?: Veteran
 ): void {
 	if (!u.alive || amount <= 0) return;
 	const armorK = 1 - u.def.armor * (1 - Math.min(pierce, 1));
@@ -147,8 +147,8 @@ export interface ExplodeOptions {
 	 * friendly fire. Defaults to any player-side blast; our ground guns pass false.
 	 */
 	fromAircraft?: boolean;
-	/** The ground unit that fired it, credited with what it kills (veterancy). */
-	src?: Unit;
+	/** The unit or jet that fired it, credited with what it kills (veterancy). */
+	src?: Veteran;
 }
 
 /** Applies a blast: damage, impulses, craters, scenery destruction and effects. */
@@ -182,7 +182,7 @@ export function explode(
 	for (const a of w.air) {
 		if (!a.alive) continue;
 		const d = Math.hypot(a.x - x, a.y - y) - a.radius;
-		if (d < r) a.damage(w, b.damage * (1 - Math.max(d, 0) / r) * 0.8, by);
+		if (d < r) a.damage(w, b.damage * (1 - Math.max(d, 0) / r) * 0.8, by, o.src);
 	}
 	// Their kamikaze drones are flimsy: any of our blasts near one brings it down.
 	if (by === 'player')

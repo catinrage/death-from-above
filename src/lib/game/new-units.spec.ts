@@ -55,8 +55,10 @@ describe('new ground units', () => {
 		const tank = w.allies.list[0];
 		tank.stun = 1e4;
 		const hp = tank.hp;
+		// Two of them, and a minute: a single gun can miss for a while (the aim is random).
 		w.spawnUnit('tankDestroyer', 1520, 0, -1);
-		run(w, 30, () => tank.hp < hp);
+		w.spawnUnit('tankDestroyer', 1560, 0, -1);
+		run(w, 60, () => tank.hp < hp);
 		expect(tank.hp).toBeLessThan(hp);
 	});
 

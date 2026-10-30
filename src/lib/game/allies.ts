@@ -12,7 +12,7 @@ import { aimAt, lobShell, wreck, type Lob } from './unit-ai';
 import { muzzlePoint } from './unit-pose';
 import { MARCH } from './war';
 import type { World } from './world';
-import { cadence, credit, power, toughness } from './veterancy';
+import { cadence, credit, power, toughness, type Veteran } from './veterancy';
 
 /** Troops and vehicles our side can send up the road. */
 export type AllyKind =
@@ -388,7 +388,7 @@ export class Allies {
 	}
 
 	/** `ours`: the hit came from our own side (the player's guns or bombs): friendly fire. */
-	hit(u: Unit, amount: number, pierce: number, ours = false, src?: Unit): void {
+	hit(u: Unit, amount: number, pierce: number, ours = false, src?: Veteran): void {
 		if (!u.alive || amount <= 0) return;
 		u.hp -= amount * (1 - u.def.armor * (1 - Math.min(pierce, 1))) * toughness(u);
 		u.flash = Math.min(1, u.flash + 0.6);
@@ -406,7 +406,7 @@ export class Allies {
 		damage: number,
 		pierce = 0,
 		ours = false,
-		src?: Unit
+		src?: Veteran
 	): Unit | null {
 		for (const u of this.list) {
 			if (!u.alive || segmentVsUnit(u, x0, y0, x1, y1) < 0) continue;
@@ -441,7 +441,7 @@ export class Allies {
 		y1: number,
 		punch = TANK_ROUND,
 		pierce = 0.7,
-		src?: Unit
+		src?: Veteran
 	): Unit | null {
 		for (const u of this.list) {
 			if (!u.alive || segmentVsUnit(u, x0, y0, x1, y1, 0.3) < 0) continue;
@@ -459,7 +459,7 @@ export class Allies {
 		damage: number,
 		pierce: number,
 		ours = false,
-		src?: Unit
+		src?: Veteran
 	): void {
 		for (const u of this.list) {
 			if (!u.alive || Math.abs(u.x - x) > radius + u.def.half[0]) continue;

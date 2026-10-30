@@ -8,6 +8,7 @@ import type { Player } from './player';
 import type { AirUnit } from './enemy-air';
 import type { AirAlly } from './wingman';
 import type { Owner, Trackable, Unit } from './types';
+import type { Veteran } from './veterancy';
 import { flareEmit, flareHeat } from './flare-fx';
 import { ALLY_BULLET_K } from './allies';
 import type { World } from './world';
@@ -34,8 +35,8 @@ export interface Bullet {
 	aimX?: number;
 	/** Fired from the player's aircraft: friendly fire, so it strikes our own troops too. */
 	aircraft?: boolean;
-	/** The ground unit that fired it, credited with what it kills (veterancy). */
-	src?: Unit;
+	/** The unit or jet that fired it, credited with what it kills (veterancy). */
+	src?: Veteran;
 }
 
 /** How far short of its aim point a ground-to-ground round can strike the ground. */
@@ -66,8 +67,8 @@ export interface Shell {
 	/** Enemy fire: what a direct hit does to a friendly unit, and how much armour it defeats. */
 	punch?: number;
 	pierce?: number;
-	/** The ground unit that fired it, and its rank's multiplier on the shell's burst (veterancy). */
-	src?: Unit;
+	/** The unit or jet that fired it, and its rank's multiplier on the shell's burst (veterancy). */
+	src?: Veteran;
 	power?: number;
 }
 
@@ -94,6 +95,8 @@ export interface Missile extends Trackable {
 	trackVy: number;
 	/** Anti-radiation missiles: the radar they are riding (null once it goes dark). */
 	emitter?: Unit | null;
+	/** The unit or jet that fired it, credited with what it kills (veterancy). */
+	src?: Veteran;
 }
 
 export interface Flare extends Trackable {
@@ -235,7 +238,7 @@ function bulletHitsPlayerSide(w: World, b: Bullet, x0: number, y0: number): bool
 		w.fx.impact(hx, hy, unit.z, soft ? 'soft' : 'metal', b.explosive > 0);
 		if (!soft && rnd.chance(0.3)) w.sound.play('impactMetal', hx, hy, 0.35);
 	} else if (airHit) {
-		airHit.damage(w, b.damage, 'player');
+		airHit.damage(w, b.damage, 'player', b.src);
 		w.fx.impact(hx, hy, airHit.z, 'metal');
 	}
 	if (b.explosive > 0) {
@@ -284,7 +287,7 @@ function updateBullets(w: World, dt: number): void {
 				for (const wing of jets) {
 					if (dead || !wing.active) continue;
 					if (segmentVsCircle(x0, y0, b.x, b.y, wing.x, wing.y, wing.radius) < 0) continue;
-					wing.hit(w, b.damage);
+					wing.hit(w, b.damage, b.src);
 					w.fx.impact(wing.x, wing.y, 0, 'metal');
 					dead = true;
 				}
@@ -401,7 +404,7 @@ function updateShells(w: World, dt: number): void {
 			for (const wing of jets) {
 				if (!wing.active) continue;
 				const d = Math.hypot(wing.x - s.x, wing.y - s.y);
-				if (d < s.radius) wing.hit(w, s.damage * (1 - d / s.radius) ** 1.4);
+				if (d < s.radius) wing.hit(w, s.damage * (1 - d / s.radius) ** 1.4, s.src);
 			}
 			if (!air) w.fx.impact(s.x, g, s.z, 'ground', true);
 			continue;
@@ -426,7 +429,7 @@ function updateShells(w: World, dt: number): void {
 			// A shell bursting next to the aircraft: a sharp flak-style pop, not a bomb.
 			w.fx.airburst(s.x, s.y, s.z, 0.8);
 			w.sound.play('flakBurst', s.x, s.y, 0.7);
-			if (wingHit) wingHit.hit(w, s.damage);
+			if (wingHit) wingHit.hit(w, s.damage, s.src);
 			else if (struck?.alive) struck.hit(s.damage, w, s.x, s.y, false, `shell:${s.kind}`);
 			continue;
 		}
@@ -473,7 +476,11 @@ function ffarHit(w: World, s: Shell, x0: number, y0: number): boolean {
 		if (s.y >= g) return s.age > 12;
 		y = g;
 	}
-	explode(w, x, y, s.z, BOMBS.rockets.blast, s.owner, { playerScale: 0 });
+	const blast = BOMBS.rockets.blast;
+	explode(w, x, y, s.z, { ...blast, damage: blast.damage * (s.power ?? 1) }, s.owner, {
+		playerScale: 0,
+		src: s.src
+	});
 	return true;
 }
 
@@ -576,7 +583,8 @@ function updateMissiles(w: World, dt: number): void {
 		if (m.y < g || m.age > m.life) {
 			const air = m.y >= g;
 			explode(w, m.x, air ? m.y : g, m.z, m.blast ?? MISSILE_BLAST, m.owner, {
-				playerScale: m.owner === 'player' ? 0 : 0.4
+				playerScale: m.owner === 'player' ? 0 : 0.4,
+				src: m.src
 			});
 			if (!air) w.fx.impact(m.x, g, m.z, 'ground', true);
 			w.missiles.splice(i, 1);
@@ -588,17 +596,17 @@ function detonateMissile(w: World, m: Missile, t: Trackable): void {
 	m.alive = false;
 	if (m.blast) {
 		// Our missiles: the warhead does the work (ground targets and aircraft alike).
-		explode(w, m.x, m.y, m.z, m.blast, m.owner, { playerScale: 0 });
+		explode(w, m.x, m.y, m.z, m.blast, m.owner, { playerScale: 0, src: m.src });
 		return;
 	}
-	explode(w, m.x, m.y, m.z, MISSILE_BLAST, m.owner, { playerScale: 0 });
+	explode(w, m.x, m.y, m.z, MISSILE_BLAST, m.owner, { playerScale: 0, src: m.src });
 	const p = w.pilots().find((q) => q === t);
 	if (p) {
 		p.hit(m.damage, w, m.x, m.y, false, `missile:${m.kind}`);
 	} else if (w.jets().some((j) => j === t)) {
-		(t as AirAlly).hit(w, m.damage);
+		(t as AirAlly).hit(w, m.damage, m.src);
 	} else {
-		for (const a of w.air) if (a === t) a.damage(w, m.damage * 3, m.owner);
+		for (const a of w.air) if (a === t) a.damage(w, m.damage * 3, m.owner, m.src);
 		for (const d of w.drones) if (d === t) d.hit(w, m.damage * 3);
 	}
 }

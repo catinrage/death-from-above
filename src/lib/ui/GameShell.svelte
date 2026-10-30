@@ -715,26 +715,31 @@
 		width: 15px;
 		height: 15px;
 		translate: -50% -100%;
-		clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
-		/* The dark rim, so it reads against sky, snow and smoke alike. */
-		background: rgba(0, 8, 20, 0.85);
 		pointer-events: none;
 		opacity: 0.95;
 	}
 
-	.targeting :global(.tl-plane::before),
-	.targeting :global(.tl-plane::after) {
+	/* The diamond, with a dark rim so it reads against sky, snow and smoke alike. */
+	.targeting :global(.tl-plane > i) {
+		position: absolute;
+		inset: 0;
+		clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+		background: rgba(0, 8, 20, 0.85);
+	}
+
+	.targeting :global(.tl-plane > i::before),
+	.targeting :global(.tl-plane > i::after) {
 		content: '';
 		position: absolute;
 		clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
 	}
 
-	.targeting :global(.tl-plane::before) {
+	.targeting :global(.tl-plane > i::before) {
 		inset: 1.5px;
 		background: var(--c);
 	}
 
-	.targeting :global(.tl-plane::after) {
+	.targeting :global(.tl-plane > i::after) {
 		inset: 5px;
 		background: rgba(0, 8, 20, 0.85);
 	}
@@ -750,7 +755,7 @@
 		opacity: 0.85;
 	}
 
-	.targeting :global(.tl-plane.small::after) {
+	.targeting :global(.tl-plane.small > i::after) {
 		display: none;
 	}
 
