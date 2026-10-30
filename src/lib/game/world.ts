@@ -21,6 +21,7 @@ import { Surface } from './surface';
 import { Troops } from './troops';
 import { CLEAR, Weather } from './weather';
 import { Terrain } from './terrain';
+import { Vision } from './vision';
 import { War } from './war';
 import type { AirUnit } from './enemy-air';
 import type { Player } from './player';
@@ -142,6 +143,8 @@ export class World {
 	readonly command = new Command();
 	/** The enemy commander: the same chest and orders, run from their airfield (command mode only). */
 	readonly enemyCommand = new Command('enemy');
+	/** Who knows about what (fog of war, command mode only). */
+	readonly vision = new Vision();
 	/** Chemical clouds. */
 	readonly gas = new GasClouds();
 	/** Wind, rain, snow and lightning. */
@@ -309,6 +312,7 @@ export class World {
 	/** Fresh battlefield for a new game. */
 	reset(): void {
 		this.clearCombat();
+		this.vision.reset(false);
 		this.terrain.reset();
 		this.bridge?.rebuild(this);
 		this.railBridge?.rebuild(this);

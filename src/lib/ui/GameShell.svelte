@@ -154,6 +154,7 @@
 			if (start.mode === 'command') {
 				if (start.difficulty) remember.difficulty = start.difficulty;
 				if (start.challenge) remember.challenge = start.challenge;
+				remember.fog = !!start.fog;
 			}
 			settings = { ...settings, ...remember };
 			saveSettings(settings);
@@ -335,6 +336,7 @@
 			biome={settings.biome}
 			difficulty={settings.difficulty}
 			challenge={settings.challenge}
+			fog={settings.fog}
 			onLaunch={launch}
 			onClose={() => (modeOpen = false)}
 		/>

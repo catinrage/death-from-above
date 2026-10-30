@@ -517,7 +517,7 @@ function pickPrey(w: World, a: AirUnit): Unit | null {
 	let best: Unit | null = null;
 	let bestScore = 900;
 	for (const u of w.allies.list) {
-		if (!u.alive) continue;
+		if (!u.alive || !w.vision.seen('enemy', u)) continue;
 		const weight = a.role === 'sams' ? (PREY_WEIGHT[u.def.kind] ?? 1) : 1;
 		const score = Math.abs(u.x - a.patrol) * weight + (u.def.category === 'infantry' ? 40 : 0);
 		if (score < bestScore) {

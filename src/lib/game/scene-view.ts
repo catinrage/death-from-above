@@ -381,6 +381,8 @@ export class SceneView {
 		const root = this.root;
 		for (const u of list) {
 			if (u.x < minX || u.x > maxX) continue;
+			// Fog of war: enemies we haven't spotted aren't shown (their wrecks are).
+			if (!friend && u.alive && !w.vision.seen('player', u)) continue;
 			rootMatrix(root, u);
 			if (!u.alive && u.def.death === 'collapse') mat4.scale(root, root, 1, 0.45, 1);
 			const mats = poseParts(u, root, poseScratch);
@@ -440,6 +442,7 @@ export class SceneView {
 			const m = this.m;
 			for (const j of c.jumpers) {
 				if (j.chute <= 0.02) continue;
+				if (c.side !== 'player' && !w.vision.seen('player', j.unit)) continue;
 				const u = j.unit;
 				mat4.fromTranslation(m, u.x, u.y + 1.7, u.z);
 				mat4.rotateZ(m, m, Math.sin(w.time * 1.3 + u.id) * 0.06 - j.vx * 0.01);
@@ -539,6 +542,7 @@ export class SceneView {
 	private air(w: World): void {
 		const m = this.m;
 		for (const a of w.air) {
+			if (!a.dying && !w.vision.seen('player', a)) continue;
 			mat4.fromTranslation(m, a.x, a.y, a.z);
 			const st = this.style(a.dying ? 0.6 : 0, a.flash * 0.7, 0, 1, 1, a.dying ? 1 : 0);
 			if (a.kind !== 'heli') {
@@ -575,7 +579,8 @@ export class SceneView {
 		for (const a of w.escorts) this.wingman(w, a, time);
 		for (const f of w.command.flybys) this.flyby(f);
 		for (const f of w.enemyCommand.flybys) this.flyby(f);
-		for (const d of w.drones) this.drone(w, d);
+		for (const d of w.drones)
+			if (d.side === 'player' || w.vision.seen('player', d)) this.drone(w, d);
 	}
 
 	/** A kamikaze drone: the quadcopter tilts into its flight path, the delta flies along it. */

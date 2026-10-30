@@ -68,6 +68,7 @@ export type UnitKind =
 	| 'apc'
 	| 'spaag'
 	| 'sam'
+	| 'radarTruck'
 	| 'artillery'
 	| 'flak'
 	| 'bunker'

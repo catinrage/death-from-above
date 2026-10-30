@@ -32,6 +32,7 @@ export type AllyKind =
 	| 'spaag'
 	| 'rocketTruck'
 	| 'sam'
+	| 'radarTruck'
 	| 'artillery'
 	| 'superTank';
 export const ALLY_KINDS: readonly AllyKind[] = [
@@ -52,6 +53,7 @@ export const ALLY_KINDS: readonly AllyKind[] = [
 	'spaag',
 	'rocketTruck',
 	'sam',
+	'radarTruck',
 	'artillery',
 	'superTank'
 ];
@@ -341,11 +343,17 @@ export class Allies {
 	 * Nearest live friendly unit to (x, y) within `range`, for enemy gunners.
 	 * `armourFirst` passes over troops for any vehicle up to twice as far.
 	 */
-	nearest(x: number, y: number, range: number, armourFirst = false): Unit | null {
+	nearest(
+		x: number,
+		y: number,
+		range: number,
+		armourFirst = false,
+		known: (u: Unit) => boolean = () => true
+	): Unit | null {
 		let best: Unit | null = null;
 		let bestD = range;
 		for (const u of this.list) {
-			if (!u.alive) continue;
+			if (!u.alive || !known(u)) continue;
 			const d = Math.hypot(u.x - x, u.y - y);
 			if (d > range) continue;
 			if (armourFirst && u.def.category === 'infantry') {
@@ -578,7 +586,7 @@ export class Allies {
 		let foe: Unit | null = null;
 		let best = gun.range;
 		for (const o of w.units) {
-			if (!o.alive || !inBattlePlane(o)) continue;
+			if (!o.alive || !inBattlePlane(o) || !w.vision.seen('player', o)) continue;
 			// Facing the enemy: things already behind count for more distance.
 			let d = Math.abs(o.x - u.x) * (o.x < u.x ? 1.6 : 1);
 			if (gun.antiArmor && o.def.category === 'infantry') d *= 2;
@@ -676,7 +684,7 @@ export class Allies {
 		const ox = u.x,
 			oy = u.y + u.def.half[1] * 2;
 		for (const a of w.air) {
-			if (!a.alive || a.dying) continue;
+			if (!a.alive || a.dying || !w.vision.seen('player', a)) continue;
 			const d = Math.hypot(a.x - ox, a.y - oy);
 			if (d < best && a.y > oy + 15) {
 				best = d;
@@ -685,7 +693,7 @@ export class Allies {
 		}
 		// Their drones too, though they come in low: anything clear of the ground.
 		for (const a of w.drones) {
-			if (!a.alive || a.side !== 'enemy') continue;
+			if (!a.alive || a.side !== 'enemy' || !w.vision.seen('player', a)) continue;
 			const d = Math.hypot(a.x - ox, a.y - oy);
 			if (d < best && a.y > w.ground(a.x) + 6) {
 				best = d;

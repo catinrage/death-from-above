@@ -362,6 +362,7 @@ export class Wingman implements AirAlly {
 		for (const u of w.units) {
 			const weight = AIR_DEFENCE[u.def.kind];
 			if (!u.alive || weight === undefined || !inBattlePlane(u)) continue;
+			if (!w.vision.seen('player', u)) continue;
 			if (u.x < WORLD.arenaMinX || u.x > WORLD.arenaMaxX) continue;
 			const score = Math.abs(u.x - this.x) * weight;
 			if (score < bestScore) {
@@ -532,6 +533,7 @@ export class Wingman implements AirAlly {
 		const airWeight = tactic === 'fighter' ? 0.5 : tactic === 'attack' ? 2.5 : Infinity;
 		for (const a of w.air) {
 			if (!a.alive || a.dying || Math.abs(a.x - cx) > HUNT_RADIUS) continue;
+			if (!w.vision.seen('player', a)) continue;
 			const score =
 				(Math.abs(a.x - cx) + NEAR_WEIGHT * Math.hypot(a.x - this.x, a.y - this.y)) * airWeight;
 			if (score < bestScore) {
@@ -541,6 +543,7 @@ export class Wingman implements AirAlly {
 		}
 		for (const u of w.units) {
 			if (!u.alive || !inBattlePlane(u) || Math.abs(u.x - cx) > HUNT_RADIUS) continue;
+			if (!w.vision.seen('player', u)) continue;
 			if (u.x < WORLD.arenaMinX || u.x > WORLD.arenaMaxX) continue;
 			const score = this.targetScore(u, cx);
 			if (score < bestScore) {
@@ -558,7 +561,7 @@ export class Wingman implements AirAlly {
 		let best: AirUnit | null = null;
 		let bestD = COVER_RADIUS;
 		for (const a of w.air) {
-			if (!a.alive || a.dying) continue;
+			if (!a.alive || a.dying || !w.vision.seen('player', a)) continue;
 			const d = Math.hypot(a.x - cx, a.y - cy);
 			if (d < bestD) {
 				bestD = d;
@@ -1120,12 +1123,13 @@ export class Wingman implements AirAlly {
  */
 export function nearestFriendly(w: World, x: number, y: number): Player | AirAlly | null {
 	if (w.godMode) return null;
-	// In co-op, the closer of the two human pilots.
-	const p = w.nearestPilot(x, y);
+	// In co-op, the closer of the two human pilots (enemies only see what their side knows about).
+	const pilot = w.nearestPilot(x, y);
+	const p = pilot && w.vision.seen('enemy', pilot) ? pilot : null;
 	let wing: AirAlly | null = null;
 	let dw = Infinity;
 	for (const j of w.jets()) {
-		if (!j.active) continue;
+		if (!j.active || !w.vision.seen('enemy', j)) continue;
 		const d = Math.hypot(j.x - x, j.y - y);
 		if (d < dw) {
 			dw = d;

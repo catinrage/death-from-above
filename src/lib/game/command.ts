@@ -47,6 +47,7 @@ export type GroundOrder =
 	| 'behemoth'
 	| 'aa'
 	| 'sam'
+	| 'radarTruck'
 	| 'rockets'
 	| 'howitzer';
 export type DroneOrder = 'fpv' | 'delta';
@@ -258,6 +259,14 @@ const VEHICLES: Partial<Record<GroundOrder, Spec>> = {
 };
 
 const SUPPORT: Partial<Record<GroundOrder | DroneOrder, Spec>> = {
+	radarTruck: {
+		name: 'Radar truck',
+		short: 'Radar',
+		tip: 'Unarmed. With fog of war on, shows every gun on our side what it can see, far out.',
+		cost: 240,
+		cooldown: 0,
+		units: ['radarTruck']
+	},
 	aa: {
 		name: 'AA carrier',
 		short: 'AA gun',

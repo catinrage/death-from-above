@@ -11,7 +11,7 @@
 		type Difficulty
 	} from '$lib/game/command-setup';
 	import type { GameMode, ModeStart } from '$lib/game/hud';
-	import { BOARD_SIZE, clockTime, readTimes } from '$lib/game/records';
+	import { BOARD_SIZE, boardChallenge, clockTime, readTimes } from '$lib/game/records';
 	import { blip, menu, powerOn } from './menu-fx';
 
 	interface Props {
@@ -25,6 +25,7 @@
 		biome: BiomeId;
 		difficulty: Difficulty;
 		challenge: Challenge;
+		fog: boolean;
 		onLaunch: (start: ModeStart) => void;
 		onClose: () => void;
 	}
@@ -37,6 +38,7 @@
 		biome: savedBiome,
 		difficulty: savedDifficulty,
 		challenge: savedChallenge,
+		fog: savedFog,
 		onLaunch,
 		onClose
 	}: Props = $props();
@@ -47,10 +49,12 @@
 	let difficulty = $state<Difficulty>(savedDifficulty);
 	// svelte-ignore state_referenced_locally
 	let challenge = $state<Challenge>(savedChallenge);
+	// svelte-ignore state_referenced_locally
+	let fog = $state(savedFog);
 	const level = $derived(difficultyDef(difficulty));
 	const rule = $derived(challengeDef(challenge));
 	/** The fastest wins on the chosen setup, padded with empty rows. */
-	const times = $derived(readTimes(difficulty, challenge));
+	const times = $derived(readTimes(difficulty, boardChallenge(challenge, fog)));
 	const board = $derived(Array.from({ length: BOARD_SIZE }, (_, i) => times[i] ?? null));
 
 	// The menu opens on the last mode flown, or training for a new pilot.
@@ -93,7 +97,7 @@
 			tab === 'war'
 				? { mode: 'war', coop, biome }
 				: tab === 'command'
-					? { mode: 'command', biome, difficulty, challenge }
+					? { mode: 'command', biome, difficulty, challenge, fog }
 					: { mode: 'tutorial' }
 		);
 	}
@@ -244,10 +248,30 @@
 									{/each}
 								</div>
 								<p class="blurb">{rule.blurb}</p>
+								<p class="m-label setup-label">Fog of war</p>
+								<div class="chips" role="radiogroup" aria-label="Fog of war">
+									{#each [false, true] as on (on)}
+										<button
+											role="radio"
+											aria-checked={fog === on}
+											class="m-tile chip"
+											class:on={fog === on}
+											data-nav
+											onclick={() => (fog = on)}
+										>
+											<strong>{on ? 'On' : 'Off'}</strong>
+										</button>
+									{/each}
+								</div>
+								<p class="blurb">
+									{fog
+										? 'You see only what your units and radar see. Better sensors win: radar trucks, SAMs and modern jets find the enemy first.'
+										: 'Everything on the battlefield is in plain sight.'}
+								</p>
 							</div>
 							<aside class="board" aria-label="Fastest wins">
 								<p class="m-label">Fastest wins</p>
-								<p class="setup">{level.name} · {rule.name}</p>
+								<p class="setup">{level.name} · {rule.name}{fog ? ' · Fog' : ''}</p>
 								<ol>
 									{#each board as t, i (i)}
 										<li class:record={i === 0 && t !== null} class:empty={t === null}>

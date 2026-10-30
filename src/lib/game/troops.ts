@@ -45,10 +45,16 @@ export class Troops {
 	}
 
 	/** Nearest live trooper to (x, y) within `range`, for enemy riflemen to shoot at. */
-	nearest(x: number, y: number, range: number): Trooper | null {
+	nearest(
+		x: number,
+		y: number,
+		range: number,
+		known: (t: Trooper) => boolean = () => true
+	): Trooper | null {
 		let best: Trooper | null = null;
 		let bestD = range;
 		for (const t of this.list) {
+			if (!known(t)) continue;
 			if (!t.alive || !t.landed) continue;
 			const d = Math.hypot(t.x - x, t.y - y);
 			if (d < bestD) {

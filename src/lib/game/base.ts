@@ -127,11 +127,13 @@ function nearestAir(
 			target = t;
 		}
 	};
+	// Each side's guns only engage what that side knows about (always, without fog of war).
+	const seen = (t: object): boolean => w.vision.seen(side === 'player' ? 'player' : 'enemy', t);
 	if (side === 'player') {
-		for (const a of w.air) if (a.alive && !a.dying) consider(a.x, a.y, a);
+		for (const a of w.air) if (a.alive && !a.dying && seen(a)) consider(a.x, a.y, a);
 	} else {
-		for (const p of w.pilots()) if (p.alive && !p.landed) consider(p.x, p.y, p);
-		for (const j of w.jets()) if (j.active) consider(j.x, j.y, j);
+		for (const p of w.pilots()) if (p.alive && !p.landed && seen(p)) consider(p.x, p.y, p);
+		for (const j of w.jets()) if (j.active && seen(j)) consider(j.x, j.y, j);
 	}
 	return { target, dist: best };
 }

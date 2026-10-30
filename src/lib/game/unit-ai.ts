@@ -115,6 +115,12 @@ export function updateUnits(w: World, dt: number): void {
 }
 
 /** Where an enemy unit stops to bombard our side: off our HQ in command mode, else off the airfield. */
+/** The enemy's guns only shoot at what their side knows about (always, without fog of war). */
+const theyKnow =
+	(w: World) =>
+	(u: object): boolean =>
+		w.vision.seen('enemy', u);
+
 function siegeLine(w: World, u: Unit): number {
 	const at = w.war.ourHqUp ? WORLD.ourHqMaxX : WORLD.baseAttackX;
 	if (u.def.kind === 'artillery') return at + 480;
@@ -231,7 +237,7 @@ function engage(w: World, u: Unit, dt: number): void {
 		oy = u.y + u.def.half[1] * 2;
 	const lob = kind ? LOB[kind] : undefined;
 	if (lob) {
-		const a = w.allies.nearest(ox, oy, lob.range);
+		const a = w.allies.nearest(ox, oy, lob.range, false, theyKnow(w));
 		if (a) return bombard(w, u, dt, spec, lob, a.x);
 		if (u.state === 'siege') return siege(w, u, dt);
 		u.aimPitch = moveToward(u.aimPitch, 0.1, dt * 0.5);
@@ -239,7 +245,7 @@ function engage(w: World, u: Unit, dt: number): void {
 	}
 	if (kind === 'rpg') {
 		// Anti-tank teams only take on the column, armour first.
-		const a = w.allies.nearest(ox, oy, u.def.range, true);
+		const a = w.allies.nearest(ox, oy, u.def.range, true, theyKnow(w));
 		if (a) {
 			const t = Math.abs(a.x - ox) / spec.speed;
 			const ty = a.y + a.def.half[1] + 0.5 * WORLD.gravity * t * t;
@@ -257,7 +263,7 @@ function engage(w: World, u: Unit, dt: number): void {
 	const p = nearestFriendly(w, ox, oy);
 	// Small arms turn on paratroopers that land close by.
 	if (kind === 'rifle' || kind === 'mg' || kind === 'autocannon') {
-		const t = w.troops.nearest(ox, oy, 95);
+		const t = w.troops.nearest(ox, oy, 95, theyKnow(w));
 		if (t) {
 			const ty = t.y + 1.1;
 			if (aimAt(u, dt, t.x, ty, ox, oy)) fire(w, u, dt, spec, t.x, ty, 0.2);
@@ -274,7 +280,7 @@ function engage(w: World, u: Unit, dt: number): void {
 	) {
 		// Snipers pick troops off from beyond where everyone else opens up.
 		const reach = kind === 'sniper' ? u.def.range : Math.min(u.def.range, ALLY_REACH);
-		const a = w.allies.nearest(ox, oy, reach);
+		const a = w.allies.nearest(ox, oy, reach, false, theyKnow(w));
 		if (a) {
 			const t = Math.abs(a.x - ox) / Math.max(spec.speed, 1);
 			const gravity = kind === 'cannon' ? WORLD.gravity : 4;

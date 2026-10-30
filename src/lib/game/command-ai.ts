@@ -39,6 +39,7 @@ export class CommandAutopilot {
 		if (this.strike(w, c, read)) return;
 		if (this.air(w, c, read)) return;
 		if (this.drones(w, c, read)) return;
+		if (this.radar(w, c)) return;
 		if (this.paratroopers(w, c)) return;
 		this.ground(w, c, read);
 	}
@@ -62,8 +63,11 @@ export class CommandAutopilot {
 			threat: null,
 			home
 		};
+		// Under fog of war it only reacts to what its side has spotted.
+		const side = this.side;
+		const seen = (t: object): boolean => w.vision.seen(side, t);
 		for (const u of foes) {
-			if (!u.alive || u.def.isStatic || u.def.rail) continue;
+			if (!u.alive || u.def.isStatic || u.def.rail || !seen(u)) continue;
 			if (u.def.category === 'infantry') r.infantry++;
 			else r.armour += u.def.kind === 'superTank' ? 3 : 1;
 			// Closest of them to our HQ, if it is getting close.
@@ -77,7 +81,7 @@ export class CommandAutopilot {
 		}
 		if (ours) {
 			for (const a of w.air) {
-				if (!a.alive || a.dying) continue;
+				if (!a.alive || a.dying || !seen(a)) continue;
 				if (a.kind === 'heli') r.helos++;
 				else r.air++;
 			}
@@ -88,7 +92,7 @@ export class CommandAutopilot {
 			}
 		} else {
 			for (const e of w.escorts) {
-				if (!e.active) continue;
+				if (!e.active || !seen(e)) continue;
 				if (e.tactic === 'helo') r.helos++;
 				else r.air++;
 			}
@@ -149,6 +153,16 @@ export class CommandAutopilot {
 		return c.order(w, rnd.chance(0.6) ? 'fpv' : 'delta') === null;
 	}
 
+	/** Under fog of war, a radar truck or two behind the front: what they show, every gun can hit. */
+	private radar(w: World, c: Command): boolean {
+		if (!w.vision.enabled || !rnd.chance(this.skill)) return false;
+		const own = this.side === 'player' ? w.allies.list : w.units;
+		let trucks = 0;
+		for (const u of own) if (u.alive && u.def.kind === 'radarTruck') trucks++;
+		if (trucks >= RADAR_TRUCKS) return false;
+		return this.buy(w, c, ['radarTruck']);
+	}
+
 	/** Paratroopers onto the next checkpoint ahead, now and then. */
 	private paratroopers(w: World, c: Command): boolean {
 		if (c.funds < COMMANDS.para.cost + 300 || !rnd.chance(PARA_CHANCE * (0.5 + this.skill)))
@@ -197,6 +211,7 @@ export class CommandAutopilot {
 		let best: Cluster | null = null;
 		for (const u of foes) {
 			if (!u.alive || u.def.isStatic || Math.abs(u.x - x) > reach) continue;
+			if (!w.vision.seen(this.side, u)) continue;
 			let weight = 0;
 			for (const o of foes) if (o.alive && Math.abs(o.x - u.x) < 40) weight += worth(o);
 			if (!best || weight > best.weight) best = { x: u.x, weight };
@@ -235,6 +250,8 @@ const RICH = 2200;
 const BIG_CHANCE = 0.3;
 /** Funds it waits for before it sends an aircraft up. */
 const AIR_FUNDS = 700;
+/** Radar trucks it keeps on the road under fog of war. */
+const RADAR_TRUCKS = 2;
 /** Chance per decision of sending paratroopers when it can afford them (at middling skill). */
 const PARA_CHANCE = 0.05;
 

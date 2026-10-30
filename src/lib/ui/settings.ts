@@ -27,6 +27,8 @@ export interface Settings {
 	/** Command mode: last difficulty and challenge chosen. */
 	difficulty: Difficulty;
 	challenge: Challenge;
+	/** Command mode: fog of war. */
+	fog: boolean;
 }
 
 const KEY = 'dfa.settings';
@@ -38,7 +40,8 @@ const DEFAULTS: Settings = {
 	loadouts: {},
 	biome: 'temperate',
 	difficulty: DEFAULT_DIFFICULTY,
-	challenge: DEFAULT_CHALLENGE
+	challenge: DEFAULT_CHALLENGE,
+	fog: false
 };
 const QUALITIES: QualityLevel[] = ['low', 'medium', 'high'];
 const AIRCRAFT: readonly AircraftId[] = AIRCRAFT_ORDER;
@@ -66,7 +69,8 @@ export function loadSettings(): Settings {
 				: DEFAULTS.difficulty,
 			challenge: CHALLENGES.some((c) => c.id === r.challenge)
 				? (r.challenge as Challenge)
-				: DEFAULTS.challenge
+				: DEFAULTS.challenge,
+			fog: typeof r.fog === 'boolean' ? r.fog : DEFAULTS.fog
 		};
 	} catch {
 		return { ...DEFAULTS };

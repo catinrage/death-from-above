@@ -233,6 +233,7 @@ export class Drone implements AirAlly {
 		let bestScore = 0;
 		for (const u of foes) {
 			if (!u.alive || !inBattlePlane(u) || u.def.kind === 'cruiser') continue;
+			if (!w.vision.seen(this.side, u)) continue;
 			if (Math.abs(u.x - this.patrol) > HUNT) continue;
 			// Never back over its own base.
 			if (ours ? u.x < WORLD.baseMaxX : u.x > WORLD.hqMinX) continue;

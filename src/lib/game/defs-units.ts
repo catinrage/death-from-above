@@ -404,6 +404,29 @@ export const UNITS: Record<UnitKind, UnitDef> = {
 		boom: 1.5,
 		siege: 0
 	},
+	radarTruck: {
+		kind: 'radarTruck',
+		name: 'Radar Truck',
+		hp: 110,
+		armor: 0.3,
+		speed: 7,
+		half: [3.9, 1.6, 1.4],
+		score: 160,
+		cost: 24,
+		minWave: 5,
+		isStatic: false,
+		category: 'aa',
+		weapon: null,
+		range: 0,
+		parts: [
+			{ mesh: 'samChassis', at: [0, 0, 0] },
+			...wheels('wheelBig', [2.6, -0.6, -2.0], 0.58, 1.15),
+			{ mesh: 'radarDish', at: [-2.0, 2.4, 0], drive: 'spin', detach: true }
+		],
+		death: 'blast',
+		boom: 1,
+		siege: 0
+	},
 	artillery: {
 		kind: 'artillery',
 		name: 'Howitzer',

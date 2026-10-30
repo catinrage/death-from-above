@@ -45,6 +45,10 @@ export const BOARD_SIZE = 5;
 
 const boardKey = (difficulty: string, challenge: string): string => `${difficulty}/${challenge}`;
 
+/** The board a challenge's wins go on: fog of war games keep boards of their own. */
+export const boardChallenge = (challenge: string, fog: boolean): string =>
+	fog ? `${challenge}+fog` : challenge;
+
 function readBoards(): Record<string, number[]> {
 	try {
 		const raw: unknown = JSON.parse(localStorage.getItem(TIMES_KEY) ?? '{}');

@@ -131,14 +131,14 @@ export function enemyContacts(w: World, project: Project): EdgeContact[] {
 	const out: EdgeContact[] = [];
 	const pilots = w.pilots();
 	for (const u of w.units) {
-		if (!u.alive) continue;
+		if (!u.alive || !w.vision.seen('player', u)) continue;
 		const y = u.y + u.def.half[1];
 		if (pilots.some((p) => p.lockers.some((l) => l.x === u.x && l.y === y))) continue;
 		const s = project(u.x, y, u.z);
 		if (s) out.push({ kind: u.def.boss ? 'boss' : 'ground', sx: s[0], sy: s[1] });
 	}
 	for (const a of w.air) {
-		if (!a.alive || a.dying) continue;
+		if (!a.alive || a.dying || !w.vision.seen('player', a)) continue;
 		const s = project(a.x, a.y, a.z);
 		if (s) out.push({ kind: 'air', sx: s[0], sy: s[1] });
 	}

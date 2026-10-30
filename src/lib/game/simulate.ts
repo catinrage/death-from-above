@@ -26,6 +26,7 @@ export function simulateWorld(
 	const q = w.player2;
 	if (q && p2Input) q.update(dt, p2Input, w);
 	w.railway?.update(w, dt);
+	w.vision.update(w, dt);
 	updateUnits(w, dt);
 	updateAir(w, dt);
 	updateWingman(w, dt);

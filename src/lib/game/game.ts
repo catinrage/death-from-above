@@ -66,7 +66,7 @@ import { TerrainView } from './terrain-view';
 import type { AircraftId, Owner } from './types';
 import { planWave, waveBonus, WaveDirector, warTweaks } from './waves';
 import { Tutorial } from './tutorial';
-import { readBest, readTimes, writeBest, writeTime, writeTrained } from './records';
+import { boardChallenge, readBest, readTimes, writeBest, writeTime, writeTrained } from './records';
 import {
 	challengeDef,
 	DEFAULT_CHALLENGE,
@@ -189,6 +189,8 @@ export class Game {
 	/** Command mode: how hard the enemy commander plays, and the challenge taken on. */
 	private difficulty: Difficulty = DEFAULT_DIFFICULTY;
 	private challenge: Challenge = DEFAULT_CHALLENGE;
+	/** Command mode: fog of war is on. */
+	private fog = false;
 	private readonly p2Autopilot = new Autopilot();
 	/** Bullet time. */
 	readonly focus = new Focus();
@@ -573,6 +575,8 @@ export class Game {
 			const rules = challengeDef(this.challenge);
 			w.command.start(undefined, { income: rules.income, allows: rules.allows });
 			w.enemyCommand.start(level.enemyFunds, { income: level.enemyIncome });
+			this.fog = start.mode === 'command' && !!start.fog;
+			w.vision.reset(this.fog);
 			this.enemyCommander.pace = level.pace;
 			this.enemyCommander.skill = level.skill;
 			w.wave = 1;
@@ -1009,11 +1013,14 @@ export class Game {
 			drones: c.drones(w),
 			dronesMax: DRONE_LIMIT,
 			queued: c.queue.length,
-			enemy: {
-				funds: Math.floor(w.enemyCommand.funds),
-				army: enemyArmy(w),
-				air: w.enemyCommand.airborne(w)
-			}
+			// Under fog of war we only know what we have spotted, and nothing of their war chest.
+			enemy: w.vision.enabled
+				? { funds: -1, army: spotted(w, w.units), air: spotted(w, w.air) }
+				: {
+						funds: Math.floor(w.enemyCommand.funds),
+						army: enemyArmy(w),
+						air: w.enemyCommand.airborne(w)
+					}
 		};
 	}
 
@@ -1221,11 +1228,13 @@ export class Game {
 	/** A command win goes on the board for its difficulty and challenge. */
 	private commandRecord(outcome: 'failed' | 'complete'): GameOverStats['command'] {
 		const difficulty = difficultyDef(this.difficulty).name;
-		const challenge = challengeDef(this.challenge).name;
+		// Fog of war plays differently enough to keep boards of its own.
+		const challenge = challengeDef(this.challenge).name + (this.fog ? ' · Fog of war' : '');
+		const key = boardChallenge(this.challenge, this.fog);
 		const board =
 			outcome === 'complete'
-				? writeTime(this.difficulty, this.challenge, this.playTime)
-				: { times: readTimes(this.difficulty, this.challenge), rank: null };
+				? writeTime(this.difficulty, key, this.playTime)
+				: { times: readTimes(this.difficulty, key), rank: null };
 		return { difficulty, challenge, ...board };
 	}
 
@@ -1539,7 +1548,7 @@ export class Game {
 		const w = this.world;
 		const out: AllyMarker[] = [];
 		for (const u of w.units) {
-			if (!u.alive || out.length >= FOE_SLOTS) continue;
+			if (!u.alive || out.length >= FOE_SLOTS || !w.vision.seen('player', u)) continue;
 			const s = w.camera.project(u.x, u.y + u.def.half[1] * 2 + 1, u.z, this.cssW, this.cssH);
 			if (!s || s[0] < -20 || s[0] > this.cssW + 20 || s[1] < -20 || s[1] > this.cssH + 20)
 				continue;
@@ -1694,7 +1703,7 @@ export class Game {
 			objectives: this.mode === 'war' ? objectives(w) : [],
 			boss: bossStatus(w),
 			tutorial: this.tutorial?.card() ?? null,
-			enemies: this.waves.remaining(w),
+			enemies: w.vision.enabled ? spotted(w, w.units) + spotted(w, w.air) : this.waves.remaining(w),
 			war: warStatus(w),
 			home: w.war.ourHqUp ? 'hq' : 'airfield',
 			baseHp: w.war.ourHqUp ? w.war.ourHq.hp : w.base.hp,
@@ -1816,6 +1825,13 @@ const BRIEF = {
 	text: 'DESTROY THE ENEMY HQ',
 	sub: 'Their army outnumbers ours. Bomb their columns so our troops can take the flags and reach the HQ at the far end. Only troops can bring it down.'
 };
+
+/** How many of `list` (theirs) are alive and spotted by our side. */
+function spotted(w: World, list: readonly { alive: boolean }[]): number {
+	let n = 0;
+	for (const u of list) if (u.alive && w.vision.seen('player', u)) n++;
+	return n;
+}
 
 /** The objectives panel: what wins, what loses, and how far along the road we are. */
 function objectives(w: World): ObjectiveStatus[] {

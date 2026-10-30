@@ -74,7 +74,10 @@
 				/>/{command.dronesMax}</span
 			>
 			<span class="foe" title="The enemy commander: same chest, same orders">
-				ENEMY <RollingNumber value={command.enemy.funds} width={5} /> · ARMY
+				ENEMY {#if command.enemy.funds < 0}<span
+						class="unknown"
+						title="Fog of war: their war chest is hidden">?</span
+					>{:else}<RollingNumber value={command.enemy.funds} width={5} />{/if} · ARMY
 				<RollingNumber value={command.enemy.army} width={2} /> · AIR
 				<RollingNumber value={command.enemy.air} width={2} />
 			</span>
@@ -218,6 +221,12 @@
 
 	.foe {
 		color: #ff8a6a;
+	}
+
+	/* Same room as the number it stands in for, so the line keeps its shape. */
+	.unknown {
+		display: inline-block;
+		min-width: 5ch;
 	}
 
 	/* Takes whatever room the order bar leaves, never widening the panel. */

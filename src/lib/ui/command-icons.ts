@@ -139,6 +139,18 @@ const NEW_ICONS = {
 		hub(30, 18.5),
 		hub(38, 18.5)
 	],
+	radarTruck: [
+		body('M3 15.5H44V12H31L28 8H22V12H3Z'),
+		body('M11 11.5H14V6H11Z'),
+		body('M4 2.5Q12.5 9 21 2.5L19.5 5.5Q12.5 9.8 5.5 5.5Z'),
+		line('M12.5 6L12.5 3', 0.7),
+		wheel(9, 18.5, 3.4),
+		wheel(30, 18.5, 3.4),
+		wheel(38, 18.5, 3.4),
+		hub(9, 18.5),
+		hub(30, 18.5),
+		hub(38, 18.5)
+	],
 	howitzer: [
 		body('M4 18L20 15.5L22 17.5L6 21Z'),
 		body('M16 12H28V17H16Z'),

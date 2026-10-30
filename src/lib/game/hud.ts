@@ -16,7 +16,14 @@ export type ModeStart = (
 	/** The war, on a given map (a random one when left out). */
 	| { mode: 'war'; biome?: BiomeId }
 	/** The same war with the player as its commander instead of a pilot. */
-	| { mode: 'command'; biome?: BiomeId; difficulty?: Difficulty; challenge?: Challenge }
+	| {
+			mode: 'command';
+			biome?: BiomeId;
+			difficulty?: Difficulty;
+			challenge?: Challenge;
+			/** Fog of war: each side sees only what its sensors pick up. */
+			fog?: boolean;
+	  }
 ) & {
 	/** Local two-player co-op: a second aircraft flown from a gamepad (not in training). */
 	coop?: boolean;
