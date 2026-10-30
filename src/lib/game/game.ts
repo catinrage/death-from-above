@@ -1552,7 +1552,7 @@ export class Game {
 			const s = w.camera.project(u.x, u.y + u.def.half[1] * 2 + 1, u.z, this.cssW, this.cssH);
 			if (!s || s[0] < -20 || s[0] > this.cssW + 20 || s[1] < -20 || s[1] > this.cssH + 20)
 				continue;
-			out.push({ x: s[0], y: s[1] - 2, hurt: false });
+			out.push({ x: s[0], y: s[1] - 2, hurt: false, rank: u.rank ?? 0 });
 		}
 		return out;
 	}
@@ -1567,7 +1567,7 @@ export class Game {
 				const s = w.camera.project(u.x, u.y + u.def.half[1] * 2 + 1, u.z, this.cssW, this.cssH);
 				if (!s || s[0] < -20 || s[0] > this.cssW + 20 || s[1] < -20 || s[1] > this.cssH + 20)
 					continue;
-				out.push({ x: s[0], y: s[1] - 2, hurt: u.hp < u.def.hp * 0.35 });
+				out.push({ x: s[0], y: s[1] - 2, hurt: u.hp < u.def.hp * 0.35, rank: u.rank ?? 0 });
 			}
 		}
 		return out;

@@ -195,6 +195,10 @@ export interface Unit {
 	fire: FireHandle | null;
 	panic: number;
 	lastHitBy: Owner;
+	/** Veterancy: experience from kills, the rank it has earned (0..5), and the unit that last hit it. */
+	xp?: number;
+	rank?: number;
+	hitBy?: Unit | null;
 	/** Light carried by searchlights / vehicle headlights. */
 	lamp: PointLight | null;
 	/** Troops already unloaded (APCs) or timer scratch for other behaviours. */

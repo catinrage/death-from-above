@@ -8,7 +8,8 @@ import type { Player } from './player';
 import type { Owner, Unit, WeaponKind } from './types';
 import { muzzlePoint } from './unit-pose';
 import { nearestFriendly, type AirAlly } from './wingman';
-import { CLOSE, CREEP, tend } from './allies';
+import { CLOSE, CREEP, TANK_ROUND, tend } from './allies';
+import { cadence, power } from './veterancy';
 import { MARCH } from './war';
 import type { World } from './world';
 
@@ -50,7 +51,9 @@ export function lobShell(
 	tx: number,
 	theta: number,
 	damage: number,
-	owner: Owner
+	owner: Owner,
+	/** The unit that fired it, credited with what it kills (veterancy). */
+	src?: Unit
 ): void {
 	const dist = Math.max(20, Math.abs(tx - x));
 	const v = Math.sqrt((WORLD.gravity * dist) / Math.sin(2 * theta));
@@ -67,7 +70,9 @@ export function lobShell(
 		damage,
 		radius: 6,
 		owner,
-		trail: 0
+		trail: 0,
+		src,
+		power: src ? power(src) : 1
 	});
 	w.fx.muzzleFlash(x, y, z, Math.cos(a), Math.sin(a), 2.6, [12, 6, 2]);
 	w.fx.gunSmoke(x, y, z, 3);
@@ -363,7 +368,7 @@ function fire(
 			vy: Math.sin(a) * spec.speed,
 			age: 0,
 			fuse: t * rnd.range(0.94, 1.08),
-			damage: spec.damage,
+			damage: spec.damage * power(u),
 			radius: 16,
 			owner: 'enemy',
 			trail: 0
@@ -385,14 +390,18 @@ function fire(
 			vy: Math.sin(a) * spec.speed,
 			age: 0,
 			fuse: Infinity,
-			damage: spec.damage,
+			damage: spec.damage * power(u),
 			radius: 6,
 			owner: 'enemy',
 			trail: 0,
 			aimX,
 			// The tank destroyer's long gun goes through armour like a rocket does.
-			punch: rpg || hunter ? RPG_PUNCH : u.def.kind === 'lightTank' ? LIGHT_PUNCH : undefined,
-			pierce: rpg || hunter ? RPG_PIERCE : undefined
+			punch:
+				(rpg || hunter ? RPG_PUNCH : u.def.kind === 'lightTank' ? LIGHT_PUNCH : TANK_ROUND) *
+				power(u),
+			pierce: rpg || hunter ? RPG_PIERCE : undefined,
+			src: u,
+			power: power(u)
 		});
 		w.fx.muzzleFlash(m[0], m[1], m[2], Math.cos(a), Math.sin(a), rpg ? 1.6 : 3, [12, 6, 2]);
 		w.fx.gunSmoke(m[0], m[1], m[2], rpg ? 2 : 3.5);
@@ -406,14 +415,15 @@ function fire(
 		vx: Math.cos(a) * spec.speed,
 		vy: Math.sin(a) * spec.speed,
 		life: 2.4,
-		damage: spec.damage,
+		damage: spec.damage * power(u),
 		pierce: 0,
 		owner: 'enemy',
 		tracer: true,
 		color: spec.tracer,
 		size: kind === 'rifle' || kind === 'sniper' ? 0.1 : kind === 'autocannon' ? 0.26 : 0.18,
 		explosive: 0,
-		aimX
+		aimX,
+		src: u
 	});
 	if ((kind !== 'rifle' && kind !== 'sniper') || rnd.chance(0.5)) {
 		w.fx.muzzleFlash(
@@ -444,7 +454,7 @@ function trigger(u: Unit, spec: EnemyWeapon, dt: number): boolean {
 		return true;
 	}
 	if (u.cooldown > 0) return false;
-	u.cooldown = spec.interval * rnd.range(0.8, 1.25);
+	u.cooldown = spec.interval * rnd.range(0.8, 1.25) * cadence(u);
 	u.burst = spec.burst - 1;
 	u.gap = spec.burstGap;
 	return true;
@@ -460,7 +470,7 @@ function bombard(w: World, u: Unit, dt: number, spec: EnemyWeapon, lob: Lob, tx:
 	}
 	if (!trigger(u, spec, dt)) return;
 	const m = muzzlePoint(u, m3);
-	lobShell(w, m[0], m[1], m[2], tx + rnd.gauss(lob.scatter), lob.theta, 0, 'enemy');
+	lobShell(w, m[0], m[1], m[2], tx + rnd.gauss(lob.scatter), lob.theta, 0, 'enemy', u);
 	w.sound.play(u.def.weapon === 'artillery' ? 'artillery' : 'tankGun', m[0], m[1], 0.55);
 }
 

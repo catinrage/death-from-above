@@ -56,6 +56,8 @@ export interface AllyMarker {
 	y: number;
 	/** Badly hurt: the chevron blinks. */
 	hurt: boolean;
+	/** Veterancy rank, 0..5: that many stars over the chevron. */
+	rank: number;
 }
 
 export interface PilotTagView {
@@ -110,8 +112,10 @@ export class TargetingLayer {
 
 	constructor(private readonly root: HTMLElement) {
 		// First, so the reticle and lock boxes draw over them.
-		for (let i = 0; i < ALLY_SLOTS; i++) this.allies.push(this.el('tl-ally', ''));
-		for (let i = 0; i < FOE_SLOTS; i++) this.foes.push(this.el('tl-foe', ''));
+		for (let i = 0; i < ALLY_SLOTS; i++)
+			this.allies.push(this.el('tl-ally', '<b class="tl-rank"></b>'));
+		for (let i = 0; i < FOE_SLOTS; i++)
+			this.foes.push(this.el('tl-foe', '<b class="tl-rank"></b>'));
 		for (let i = 0; i < PLACE_SLOTS; i++) this.places.push(this.el('tl-place', ''));
 		for (let i = 0; i < PLANE_SLOTS; i++) this.planes.push(this.el('tl-plane', ''));
 		for (let i = 0; i < STRIKE_SLOTS; i++) this.strikes.push(this.el('tl-strike', ''));
@@ -127,6 +131,13 @@ export class TargetingLayer {
 		for (let i = 0; i < THREAT_SLOTS; i++)
 			this.threats.push(this.el('tl-threat', '<i class="chev"></i><b></b>'));
 		for (let i = 0; i < PILOT_SLOTS; i++) this.pilots.push(this.el('tl-pilot', ''));
+	}
+
+	/** A unit marker's rank: one star per rank, nothing for a recruit. */
+	private stars(el: HTMLElement, rank: number): void {
+		const label = el.firstElementChild as HTMLElement;
+		const text = '★'.repeat(rank);
+		if (label.textContent !== text) label.textContent = text;
 	}
 
 	private el(cls: string, html: string): HTMLDivElement {
@@ -206,6 +217,7 @@ export class TargetingLayer {
 			}
 			this.place(el, a.x, a.y);
 			el.classList.toggle('hurt', a.hurt);
+			this.stars(el, a.rank);
 		}
 		for (let i = 0; i < FOE_SLOTS; i++) {
 			const el = this.foes[i];
@@ -215,6 +227,7 @@ export class TargetingLayer {
 				continue;
 			}
 			this.place(el, f.x, f.y);
+			this.stars(el, f.rank);
 		}
 		for (let i = 0; i < PLACE_SLOTS; i++) {
 			const el = this.places[i];

@@ -653,10 +653,34 @@
 		height: 8px;
 		translate: -50% -100%;
 		pointer-events: none;
-		background: #ff5a3c;
-		clip-path: polygon(0 0, 100% 0, 50% 100%);
 		filter: drop-shadow(0 0 1px rgba(20, 0, 0, 0.9));
 		opacity: 0.9;
+	}
+
+	.targeting :global(.tl-foe::before) {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: #ff5a3c;
+		clip-path: polygon(0 0, 100% 0, 50% 100%);
+	}
+
+	/* Veterancy: a star per rank over the marker. */
+	.targeting :global(.tl-rank) {
+		position: absolute;
+		left: 50%;
+		bottom: 100%;
+		translate: -50% -1px;
+		font-size: 8px;
+		line-height: 1;
+		letter-spacing: -1px;
+		white-space: nowrap;
+		color: #ffd27a;
+		text-shadow: 0 0 3px rgba(0, 0, 0, 0.9);
+	}
+
+	.targeting :global(.tl-foe .tl-rank) {
+		color: #ffb27a;
 	}
 
 	/* Command mode: a name board over each airfield and the enemy HQ, so both ends of the road read. */

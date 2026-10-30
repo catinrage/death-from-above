@@ -6,6 +6,7 @@ import type { FireSource } from './fires';
 import type { Owner } from './types';
 import { spawnBullet } from './projectiles';
 import type { World } from './world';
+import { power } from './veterancy';
 
 export interface BaseStructure {
 	mesh: MeshName;
@@ -98,8 +99,10 @@ export class AirBase {
 		const hq = w.war.ourHqUp && !w.war.ourHq.destroyed ? w.war.ourHq : null;
 		for (const u of w.units) {
 			if (!u.alive || u.state !== 'siege') continue;
-			if (hq) hq.damage(w, u.def.siege * dt);
-			else this.damage(w, u.def.siege * dt);
+			// Veteran crews shell harder.
+			const dmg = u.def.siege * power(u) * dt;
+			if (hq) hq.damage(w, dmg);
+			else this.damage(w, dmg);
 		}
 		for (const g of this.guns) aimGun(w, g, dt, 'player');
 	}

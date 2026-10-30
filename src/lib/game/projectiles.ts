@@ -34,6 +34,8 @@ export interface Bullet {
 	aimX?: number;
 	/** Fired from the player's aircraft: friendly fire, so it strikes our own troops too. */
 	aircraft?: boolean;
+	/** The ground unit that fired it, credited with what it kills (veterancy). */
+	src?: Unit;
 }
 
 /** How far short of its aim point a ground-to-ground round can strike the ground. */
@@ -64,6 +66,9 @@ export interface Shell {
 	/** Enemy fire: what a direct hit does to a friendly unit, and how much armour it defeats. */
 	punch?: number;
 	pierce?: number;
+	/** The ground unit that fired it, and its rank's multiplier on the shell's burst (veterancy). */
+	src?: Unit;
+	power?: number;
 }
 
 export interface Missile extends Trackable {
@@ -222,11 +227,11 @@ function bulletHitsPlayerSide(w: World, b: Bullet, x0: number, y0: number): bool
 		droneHit.hit(w, b.damage);
 		w.fx.impact(hx, hy, droneHit.z, 'metal');
 	} else if (ally && !unit && !airHit) {
-		w.allies.hit(ally.unit, b.damage, b.pierce, true);
+		w.allies.hit(ally.unit, b.damage, b.pierce, true, b.src);
 		w.fx.impact(hx, hy, ally.unit.z, ally.unit.def.category === 'infantry' ? 'soft' : 'metal');
 	} else if (unit) {
 		const soft = unit.def.category === 'infantry';
-		damageUnit(w, unit, b.damage, b.pierce, 'player', x0, 'bullet');
+		damageUnit(w, unit, b.damage, b.pierce, 'player', x0, 'bullet', b.src);
 		w.fx.impact(hx, hy, unit.z, soft ? 'soft' : 'metal', b.explosive > 0);
 		if (!soft && rnd.chance(0.3)) w.sound.play('impactMetal', hx, hy, 0.35);
 	} else if (airHit) {
@@ -264,7 +269,7 @@ function updateBullets(w: World, dt: number): void {
 			} else if (w.troops.bulletHit(x0, y0, b.x, b.y, b.damage)) {
 				w.fx.impact(b.x, b.y, b.z, 'soft');
 				dead = true;
-			} else if (w.allies.bulletHit(x0, y0, b.x, b.y, b.damage * ALLY_BULLET_K)) {
+			} else if (w.allies.bulletHit(x0, y0, b.x, b.y, b.damage * ALLY_BULLET_K, 0, false, b.src)) {
 				w.fx.impact(b.x, b.y, b.z, 'metal');
 				dead = true;
 			} else {
@@ -366,12 +371,12 @@ function updateShells(w: World, dt: number): void {
 		}
 		if (!detonate && s.kind === 'tank') {
 			if (s.owner === 'enemy') {
-				detonate = w.allies.shellHit(x0, y0, s.x, s.y, s.punch, s.pierce) !== null;
+				detonate = w.allies.shellHit(x0, y0, s.x, s.y, s.punch, s.pierce, s.src) !== null;
 			} else {
 				// A friendly tank round: a direct hit does the real damage, the burst the rest.
 				for (const u of w.units) {
 					if (!u.alive || segmentVsUnit(u, x0, y0, s.x, s.y, 0.3) < 0) continue;
-					damageUnit(w, u, s.damage, 0.7, 'player', x0, 'blast');
+					damageUnit(w, u, s.damage, 0.7, 'player', x0, 'blast', s.src);
 					detonate = true;
 					break;
 				}
@@ -425,15 +430,19 @@ function updateShells(w: World, dt: number): void {
 			else if (struck?.alive) struck.hit(s.damage, w, s.x, s.y, false, `shell:${s.kind}`);
 			continue;
 		}
-		const spec =
+		const base =
 			s.kind === 'rocket' ? SHELL_BLAST : s.kind === 'artillery' ? SHELL_BLAST : SMALL_BLAST;
+		// A veteran crew's rounds land harder.
+		const spec = { ...base, damage: base.damage * (s.power ?? 1) };
 		const by = Math.max(s.y, g);
 		// Enemy shells don't hurt their own side, but they do hurt the friendly column.
-		if (s.owner === 'enemy') w.allies.blast(s.x, by, spec.radius, spec.damage, spec.pierce);
+		if (s.owner === 'enemy')
+			w.allies.blast(s.x, by, spec.radius, spec.damage, spec.pierce, false, s.src);
 		explode(w, s.x, by, s.z, { ...spec, damage: s.owner === 'enemy' ? 0 : spec.damage }, s.owner, {
 			playerScale: 0,
 			// Our tanks and mortars, not the player.
-			fromAircraft: false
+			fromAircraft: false,
+			src: s.src
 		});
 	}
 }

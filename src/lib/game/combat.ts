@@ -2,6 +2,7 @@ import { FROZEN_DAMAGE, type BlastSpec } from './defs-bombs';
 import { killUnit } from './deaths';
 import type { Owner, Unit } from './types';
 import type { World } from './world';
+import { credit, toughness } from './veterancy';
 
 export type DamageCause = 'bullet' | 'blast' | 'fire';
 
@@ -112,17 +113,21 @@ export function damageUnit(
 	pierce: number,
 	by: Owner,
 	fromX: number,
-	cause: DamageCause
+	cause: DamageCause,
+	/** The ground unit behind it, if any: credited with the kill (veterancy). */
+	src?: Unit
 ): void {
 	if (!u.alive || amount <= 0) return;
 	const armorK = 1 - u.def.armor * (1 - Math.min(pierce, 1));
 	// Frozen solid: brittle, everything hits harder.
 	const brittle = u.frost && u.frost > 0 ? FROZEN_DAMAGE : 1;
-	u.hp -= amount * armorK * brittle;
+	u.hp -= amount * armorK * brittle * toughness(u);
 	u.flash = Math.min(1, u.flash + 0.6);
 	u.lastHitBy = by;
+	u.hitBy = src ?? null;
 	if (u.def.category === 'infantry' && cause !== 'bullet') u.panic = 2.5;
 	if (u.hp <= 0) {
+		credit(w, u.hitBy, u);
 		killUnit(w, u, fromX, cause, by);
 	} else if (u.def.kind === 'apc' && u.hp < u.def.hp * 0.55 && u.state !== 'deploy') {
 		u.state = 'deploy';
@@ -142,6 +147,8 @@ export interface ExplodeOptions {
 	 * friendly fire. Defaults to any player-side blast; our ground guns pass false.
 	 */
 	fromAircraft?: boolean;
+	/** The ground unit that fired it, credited with what it kills (veterancy). */
+	src?: Unit;
 }
 
 /** Applies a blast: damage, impulses, craters, scenery destruction and effects. */
@@ -167,7 +174,7 @@ export function explode(
 		if (d >= r) continue;
 		const k = 1 - d / r;
 		if (u.alive) {
-			damageUnit(w, u, b.damage * (0.15 + 0.85 * k * k), b.pierce, by, x, 'blast');
+			damageUnit(w, u, b.damage * (0.15 + 0.85 * k * k), b.pierce, by, x, 'blast', o.src);
 		} else {
 			u.char = Math.min(1, u.char + k);
 		}
@@ -232,7 +239,7 @@ export function explode(
 	w.railBridge?.blast(w, x, y, z, r, b.damage, b.pierce, by);
 	w.railway?.blast(w, x, y, r, b.damage, b.pierce, by);
 	w.troops.blast(x, y, r, b.damage * 0.6);
-	w.allies.blast(x, y, r, b.damage, b.pierce, o.fromAircraft ?? by === 'player');
+	w.allies.blast(x, y, r, b.damage, b.pierce, o.fromAircraft ?? by === 'player', o.src);
 	w.debris.impulse(x, y, z, r * 1.5, 16 * Math.sqrt(b.size));
 	if (wet) {
 		// The river swallows the blast: a towering column of water, no crater.

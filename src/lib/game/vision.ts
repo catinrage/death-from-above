@@ -1,6 +1,7 @@
 import { WORLD } from './constants';
 import { AIRCRAFT } from './defs-aircraft';
 import type { AircraftId, Unit, UnitKind } from './types';
+import { sight } from './veterancy';
 import type { Side } from './war';
 import type { World } from './world';
 
@@ -173,7 +174,9 @@ export function sensors(w: World, side: Side): Sensor[] {
 	const ground = (u: Unit): void => {
 		if (!u.alive) return;
 		const [air, gnd] = unitSensor(u.def.kind, u.def.category === 'infantry');
-		out.push({ x: u.x, y: u.y + u.def.half[1] * 2, air, ground: gnd });
+		// Veterans know where to look.
+		const k = sight(u);
+		out.push({ x: u.x, y: u.y + u.def.half[1] * 2, air: air * k, ground: gnd * k });
 	};
 	for (const u of ours ? w.allies.list : w.units) ground(u);
 	if (ours) {

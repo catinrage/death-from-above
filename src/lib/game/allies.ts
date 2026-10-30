@@ -12,6 +12,7 @@ import { aimAt, lobShell, wreck, type Lob } from './unit-ai';
 import { muzzlePoint } from './unit-pose';
 import { MARCH } from './war';
 import type { World } from './world';
+import { cadence, credit, power, toughness } from './veterancy';
 
 /** Troops and vehicles our side can send up the road. */
 export type AllyKind =
@@ -61,7 +62,7 @@ export const ALLY_KINDS: readonly AllyKind[] = [
 /** How hard enemy small arms hit a friendly unit (their rounds are tuned against aircraft). */
 export const ALLY_BULLET_K = 8;
 /** Damage a direct hit from an enemy tank gun deals to a friendly unit. */
-const TANK_ROUND = 55;
+export const TANK_ROUND = 55;
 /** Speed vehicles drive at when the road is clear. */
 const CRUISE = 11;
 /** Distance ahead at which a unit halts to fight whatever blocks the road. */
@@ -387,11 +388,13 @@ export class Allies {
 	}
 
 	/** `ours`: the hit came from our own side (the player's guns or bombs): friendly fire. */
-	hit(u: Unit, amount: number, pierce: number, ours = false): void {
+	hit(u: Unit, amount: number, pierce: number, ours = false, src?: Unit): void {
 		if (!u.alive || amount <= 0) return;
-		u.hp -= amount * (1 - u.def.armor * (1 - Math.min(pierce, 1)));
+		u.hp -= amount * (1 - u.def.armor * (1 - Math.min(pierce, 1))) * toughness(u);
 		u.flash = Math.min(1, u.flash + 0.6);
 		this.lastHitOurs.set(u, ours);
+		// Only the enemy earns from killing ours.
+		u.hitBy = ours ? null : (src ?? null);
 	}
 
 	/** Fire striking a friendly unit; returns the unit it hit. */
@@ -402,11 +405,12 @@ export class Allies {
 		y1: number,
 		damage: number,
 		pierce = 0,
-		ours = false
+		ours = false,
+		src?: Unit
 	): Unit | null {
 		for (const u of this.list) {
 			if (!u.alive || segmentVsUnit(u, x0, y0, x1, y1) < 0) continue;
-			this.hit(u, damage, pierce, ours);
+			this.hit(u, damage, pierce, ours, src);
 			return u;
 		}
 		return null;
@@ -436,24 +440,33 @@ export class Allies {
 		x1: number,
 		y1: number,
 		punch = TANK_ROUND,
-		pierce = 0.7
+		pierce = 0.7,
+		src?: Unit
 	): Unit | null {
 		for (const u of this.list) {
 			if (!u.alive || segmentVsUnit(u, x0, y0, x1, y1, 0.3) < 0) continue;
-			this.hit(u, punch, pierce);
+			this.hit(u, punch, pierce, false, src);
 			return u;
 		}
 		return null;
 	}
 
 	/** Blast damage, your own bombs included (`ours` marks it as friendly fire). */
-	blast(x: number, y: number, radius: number, damage: number, pierce: number, ours = false): void {
+	blast(
+		x: number,
+		y: number,
+		radius: number,
+		damage: number,
+		pierce: number,
+		ours = false,
+		src?: Unit
+	): void {
 		for (const u of this.list) {
 			if (!u.alive || Math.abs(u.x - x) > radius + u.def.half[0]) continue;
 			const d = Math.max(0, Math.hypot(u.x - x, u.y + u.def.half[1] - y) - u.def.half[0]);
 			if (d < radius) {
 				const k = 1 - d / radius;
-				this.hit(u, damage * (0.15 + 0.85 * k * k), pierce, ours);
+				this.hit(u, damage * (0.15 + 0.85 * k * k), pierce, ours, src);
 			}
 		}
 	}
@@ -477,6 +490,7 @@ export class Allies {
 			u.flash = Math.max(0, u.flash - dt * 4);
 			if (u.alive && u.hp <= 0) {
 				// Kills by the enemy score nothing; the wreck behaves like any other.
+				credit(w, u.hitBy, u);
 				killUnit(w, u, u.x + 10, 'blast', 'enemy');
 				this.lost++;
 				if (this.lastHitOurs.get(u)) {
@@ -507,7 +521,7 @@ export class Allies {
 			this.drive(w, u, dt);
 			if (u.def.kind === 'medic') tend(u, this.list, dt);
 			else this.engage(w, u, dt);
-			if (hq && u.state === 'siege') hq.damage(w, u.def.siege * dt);
+			if (hq && u.state === 'siege') hq.damage(w, u.def.siege * power(u) * dt);
 		}
 	}
 
@@ -631,11 +645,13 @@ export class Allies {
 				vy: cy * gun.speed,
 				age: 0,
 				fuse: Infinity,
-				damage: gun.damage,
+				damage: gun.damage * power(u),
 				radius: 6,
 				owner: 'player',
 				trail: 0,
-				aimX: tx
+				aimX: tx,
+				src: u,
+				power: power(u)
 			});
 			w.fx.muzzleFlash(m[0], m[1], m[2], cx, cy, 3, [12, 6, 2]);
 			w.fx.gunSmoke(m[0], m[1], m[2], 3.5);
@@ -650,14 +666,15 @@ export class Allies {
 			vx: cx * gun.speed,
 			vy: cy * gun.speed,
 			life: 1.4,
-			damage: gun.damage,
+			damage: gun.damage * power(u),
 			pierce: gun.pierce,
 			owner: 'player',
 			tracer: true,
 			color: [4, 9, 14],
 			size: kind === 'apc' ? 0.24 : kind === 'rifleman' || kind === 'sniper' ? 0.1 : 0.16,
 			explosive: 0,
-			aimX: tx
+			aimX: tx,
+			src: u
 		});
 		const smallArms = kind === 'rifleman' || kind === 'sniper';
 		if (!smallArms || rnd.chance(0.5))
@@ -673,7 +690,7 @@ export class Allies {
 		for (const o of this.list) if (o.alive && Math.abs(o.x - tx) < DANGER_CLOSE) return;
 		if (!this.trigger(u, gun, dt)) return;
 		const m = muzzlePoint(u, m3);
-		lobShell(w, m[0], m[1], m[2], tx + rnd.gauss(lob.scatter), lob.theta, 0, 'player');
+		lobShell(w, m[0], m[1], m[2], tx + rnd.gauss(lob.scatter), lob.theta, 0, 'player', u);
 		w.sound.play(u.def.kind === 'mortar' ? 'tankGun' : 'artillery', m[0], m[1], 0.45);
 	}
 
@@ -765,7 +782,7 @@ export class Allies {
 			return true;
 		}
 		if (u.cooldown > 0) return false;
-		u.cooldown = gun.interval * rnd.range(0.85, 1.2);
+		u.cooldown = gun.interval * rnd.range(0.85, 1.2) * cadence(u);
 		u.burst = gun.burst - 1;
 		u.gap = gun.gap;
 		return true;
