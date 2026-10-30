@@ -12,54 +12,61 @@ export interface DifficultyDef {
 	id: Difficulty;
 	name: string;
 	blurb: string;
-	/** How much faster than ours the enemy's war chest fills. */
+	/** How many times our income the enemy's war chest fills at (level N earns N times ours). */
 	enemyIncome: number;
 	/** What the enemy's war chest opens with. */
 	enemyFunds: number;
 	/** Seconds between the enemy commander's decisions. */
 	pace: number;
+	/** How sharply the enemy commander plays, 0..1 (see CommandAutopilot). */
+	skill: number;
 }
 
 export const DIFFICULTIES: readonly DifficultyDef[] = [
 	{
 		id: 'recruit',
 		name: 'Recruit',
-		blurb: 'Their chest fills no faster than ours, and they are slow to decide.',
+		blurb: 'They earn what we earn, and mostly buy whatever comes to hand.',
 		enemyIncome: 1,
 		enemyFunds: 400,
-		pace: 1.4
+		pace: 1.2,
+		skill: 0.15
 	},
 	{
 		id: 'regular',
 		name: 'Regular',
-		blurb: 'A little more money than us, and a steady hand.',
-		enemyIncome: 1.3,
-		enemyFunds: 500,
-		pace: 0.8
+		blurb: 'They earn twice what we do, and start to answer what we field.',
+		enemyIncome: 2,
+		enemyFunds: 600,
+		pace: 0.8,
+		skill: 0.4
 	},
 	{
 		id: 'veteran',
 		name: 'Veteran',
-		blurb: 'The standard war: their weaker army is paid for by a bigger chest.',
-		enemyIncome: 1.6,
-		enemyFunds: 600,
-		pace: 0.5
+		blurb: 'Three times our income, counters our army and defends its HQ.',
+		enemyIncome: 3,
+		enemyFunds: 900,
+		pace: 0.5,
+		skill: 0.65
 	},
 	{
 		id: 'elite',
 		name: 'Elite',
-		blurb: 'Twice our income, and quick to punish a crowded road.',
-		enemyIncome: 2,
-		enemyFunds: 900,
-		pace: 0.35
+		blurb: 'Four times our income, and it punishes every crowded road.',
+		enemyIncome: 4,
+		enemyFunds: 1200,
+		pace: 0.35,
+		skill: 0.85
 	},
 	{
 		id: 'legend',
 		name: 'Legend',
-		blurb: 'They outspend us more than two to one and never stop to think.',
-		enemyIncome: 2.5,
-		enemyFunds: 1400,
-		pace: 0.25
+		blurb: 'Five times our income, and it never makes the wrong call.',
+		enemyIncome: 5,
+		enemyFunds: 1600,
+		pace: 0.25,
+		skill: 1
 	}
 ];
 

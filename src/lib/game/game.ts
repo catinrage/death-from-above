@@ -574,6 +574,7 @@ export class Game {
 			w.command.start(undefined, { income: rules.income, allows: rules.allows });
 			w.enemyCommand.start(level.enemyFunds, { income: level.enemyIncome });
 			this.enemyCommander.pace = level.pace;
+			this.enemyCommander.skill = level.skill;
 			w.wave = 1;
 			this.aimX = Number.NaN;
 			this.viewX = WORLD.baseMaxX + 420;
